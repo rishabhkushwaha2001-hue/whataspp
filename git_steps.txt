@@ -1,0 +1,20 @@
+# Git Upload Steps for whataspsp
+
+Run these commands in your terminal inside the 'whataspsp' folder:
+
+1. Initialize Git:
+   git init
+
+2. Add all files:
+   git add .
+
+3. Commit changes:
+   git commit -m "Fresh project setup with WhatsApp automation"
+
+4. Link to your GitHub (Replace <REPO_NAME> with your actual repo name):
+   git remote add origin https://github.com/rishabhkushwaha2001-hue/<REPO_NAME>.git
+
+5. Push to GitHub:
+   git push -u origin main
+
+Note: Make sure you have created the repository on GitHub first!
