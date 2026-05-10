@@ -1,7 +1,12 @@
+import sys
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.members import router as members_router
-from .api.messages import router as messages_router
+# Ensure the 'app' directory is in the python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from api.members import router as members_router
+from api.messages import router as messages_router
 
 app = FastAPI(title="WhatsApp Gym Management")
 

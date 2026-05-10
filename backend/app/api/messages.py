@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from typing import Any
 from datetime import datetime
-from app.models.schemas import MessageCreate, MessageInDB
-from app.database import get_database
+from models.schemas import MessageCreate, MessageInDB
+from database import get_database
 
 router = APIRouter()
 
