@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.members import router as members_router
-from app.api.messages import router as messages_router
+from .api.members import router as members_router
+from .api.messages import router as messages_router
 
 app = FastAPI(title="WhatsApp Gym Management")
 
