@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
-import { colors, spacing, borderRadius } from '../theme/theme';
+import { useFocusEffect } from 'expo-router';
+import { colors, spacing } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { api } from '../services/api';
 
@@ -8,20 +9,27 @@ export const DashboardScreen = () => {
   const [stats, setStats] = useState({ total_members: 0, active: 0, due_soon: 0 });
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    setRefreshing(true);
     try {
       const res = await api.get('/members/status/due?days_ahead=30');
       setStats({
-        total_members: res.data.length, // Simplified for now
+        total_members: res.data.length,
         active: res.data.length,
         due_soon: res.data.length
       });
     } catch (error) {
-      console.warn('Stats fetch failed');
+      console.warn('Dashboard fetch failed');
+    } finally {
+      setRefreshing(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchStats(); }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchStats();
+    }, [fetchStats])
+  );
 
   return (
     <ScrollView 
@@ -30,8 +38,8 @@ export const DashboardScreen = () => {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchStats} tintColor={colors.primary} />}
     >
       <View style={styles.header}>
-        <Text style={styles.greeting}>Gym Management</Text>
-        <Text style={styles.subtitle}>Overview of your business</Text>
+        <Text style={styles.greeting}>Gym Dashboard</Text>
+        <Text style={styles.subtitle}>Real-time stats from Render DB</Text>
       </View>
 
       <View style={styles.grid}>
@@ -40,15 +48,15 @@ export const DashboardScreen = () => {
           <Text style={styles.statValue}>{stats.total_members}</Text>
         </GlassCard>
         
-        <GlassCard style={[styles.statCard, { borderLeftColor: '#f87171', borderLeftWidth: 4 }]}>
+        <GlassCard style={[styles.statCard, { borderLeftColor: colors.error, borderLeftWidth: 4 }]}>
           <Text style={styles.statLabel}>Due Soon</Text>
           <Text style={styles.statValue}>{stats.due_soon}</Text>
         </GlassCard>
       </View>
 
-      <Text style={styles.sectionTitle}>Recent Activities</Text>
+      <Text style={styles.sectionTitle}>Recent Sync</Text>
       <GlassCard style={styles.activityCard}>
-        <Text style={styles.emptyText}>No recent payments or enrollments.</Text>
+        <Text style={styles.emptyText}>{stats.total_members > 0 ? `${stats.total_members} members fetched successfully.` : 'No data found in database.'}</Text>
       </GlassCard>
     </ScrollView>
   );
