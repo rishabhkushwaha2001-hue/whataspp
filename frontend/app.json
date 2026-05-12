@@ -4,7 +4,6 @@
     "slug": "gym-manager-whatsapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
     "scheme": "gym-manager",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#030712",
@@ -20,11 +19,8 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#0f172a"
-      },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.mayankkush2001.gymmanagerwhatsapp"
     },
     "web": {
       "bundler": "metro",
@@ -35,6 +31,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8c31adb0-9041-4a70-8fda-531f1582b72e"
+      }
     }
   }
 }
