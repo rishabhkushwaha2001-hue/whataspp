@@ -3,13 +3,8 @@ uvicorn
 motor
 pydantic
 pydantic-settings
-passlib[bcrypt]
-python-jose[cryptography]
-python-multipart
-apscheduler
-twilio
 pymongo
 httpx
 python-dateutil
 gunicorn
-
+python-multipart

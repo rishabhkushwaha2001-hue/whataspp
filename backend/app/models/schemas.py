@@ -19,8 +19,27 @@ class MemberUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     monthly_fees: Optional[float] = None
+    plan_duration_months: Optional[int] = None
     status: Optional[str] = None
+
+class PaymentBase(BaseModel):
+    member_id: str
+    amount: float
+    plan_duration: int
+    payment_date: datetime = Field(default_factory=datetime.utcnow)
+    payment_method: str = "Cash"
     notes: Optional[str] = None
+
+class PaymentInDB(PaymentBase):
+    id: str = Field(alias="_id")
+
+class AttendanceBase(BaseModel):
+    member_id: str
+    check_in_time: datetime = Field(default_factory=datetime.utcnow)
+    status: str = "Present"
+
+class AttendanceInDB(AttendanceBase):
+    id: str = Field(alias="_id")
     photo_url: Optional[str] = None
 
 class MemberInDB(MemberCreate):
