@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Linking, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
@@ -59,6 +59,11 @@ export const DashboardScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchDashboardData();
+      
+      // Auto-refresh every 30 seconds while focused
+      const interval = setInterval(fetchDashboardData, 30000);
+      
+      return () => clearInterval(interval);
     }, [fetchDashboardData])
   );
 
@@ -88,14 +93,25 @@ export const DashboardScreen = () => {
           <Text style={styles.greeting}>Fitness Hub</Text>
           <Text style={styles.subtitle}>Premium Admin Dashboard</Text>
         </View>
-        <TouchableOpacity style={styles.profileBtn}>
-          <LinearGradient
-            colors={[colors.primary, colors.secondary]}
-            style={styles.avatar}
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <TouchableOpacity 
+            style={[styles.profileBtn, { backgroundColor: colors.surfaceLight, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border }]} 
+            onPress={() => {
+              const exportUrl = `${api.defaults.baseURL}/members/export/csv`;
+              Linking.openURL(exportUrl).catch(() => Alert.alert('Error', 'Export failed'));
+            }}
           >
-            <FontAwesome name="user" size={20} color="white" />
-          </LinearGradient>
-        </TouchableOpacity>
+            <FontAwesome name="file-excel-o" size={18} color={colors.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.profileBtn}>
+            <LinearGradient
+              colors={[colors.primary, colors.secondary]}
+              style={styles.avatar}
+            >
+              <FontAwesome name="user" size={20} color="white" />
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.statsGrid}>

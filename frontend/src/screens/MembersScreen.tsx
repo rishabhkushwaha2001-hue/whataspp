@@ -28,6 +28,11 @@ export const MembersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchMembers();
+
+      // Auto-refresh every 60 seconds while focused
+      const interval = setInterval(fetchMembers, 60000);
+
+      return () => clearInterval(interval);
     }, [fetchMembers])
   );
 
@@ -97,10 +102,23 @@ export const MembersScreen = () => {
     </GlassCard>
   );
 
+  const handleExport = () => {
+    const exportUrl = `${api.defaults.baseURL}/members/export/csv`;
+    Linking.openURL(exportUrl).catch(() => {
+      Alert.alert('Error', 'Could not open export URL');
+    });
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Manage Members</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>Manage Members</Text>
+          <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
+            <FontAwesome name="file-excel-o" size={16} color={colors.accent} />
+            <Text style={styles.exportBtnText}>Excel</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.searchBar}>
           <FontAwesome name="search" size={16} color={colors.textMuted} style={{ marginRight: 10 }} />
           <TextInput
@@ -132,7 +150,10 @@ export const MembersScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { padding: spacing.l, paddingTop: 60, backgroundColor: colors.surface },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.m },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: borderRadius.s, borderWidth: 1, borderColor: colors.border },
+  exportBtnText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text },
   searchBar: { 
     flexDirection: 'row', 
     alignItems: 'center', 

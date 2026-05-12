@@ -25,6 +25,11 @@ export const RemindersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchDueMembers();
+
+      // Auto-refresh every 60 seconds while focused
+      const interval = setInterval(fetchDueMembers, 60000);
+
+      return () => clearInterval(interval);
     }, [fetchDueMembers])
   );
 
