@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { colors, borderRadius, spacing } from '../theme/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, borderRadius, spacing, shadows } from '../theme/theme';
 
 interface GradientButtonProps {
   title: string;
   onPress: () => void;
   isLoading?: boolean;
   disabled?: boolean;
-  colors?: [string, string];
+  colors?: string[];
 }
 
 export const GradientButton: React.FC<GradientButtonProps> = ({
@@ -19,20 +20,23 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
 }) => {
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={0.7}
       onPress={onPress}
       disabled={disabled || isLoading}
       style={[styles.container, disabled && styles.disabled]}
     >
-      <View
-        style={[styles.gradient, { backgroundColor: gradientColors[0] || colors.primary }]}
+      <LinearGradient
+        colors={gradientColors as any}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.gradient}
       >
         {isLoading ? (
           <ActivityIndicator color={colors.text} />
         ) : (
           <Text style={styles.text}>{title}</Text>
         )}
-      </View>
+      </LinearGradient>
     </TouchableOpacity>
   );
 };
@@ -40,22 +44,24 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
 const styles = StyleSheet.create({
   container: {
     borderRadius: borderRadius.m,
-    overflow: 'hidden',
-    elevation: 8,
+    overflow: 'visible',
+    ...shadows.premium,
   },
   gradient: {
     paddingVertical: spacing.m,
     paddingHorizontal: spacing.l,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: borderRadius.m,
   },
   text: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   disabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
 });

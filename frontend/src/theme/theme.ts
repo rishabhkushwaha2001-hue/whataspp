@@ -1,15 +1,19 @@
 export const colors = {
-  primary: '#3b82f6',
-  secondary: '#8b5cf6',
-  background: '#0f172a',
-  surface: '#1e293b',
-  text: '#ffffff',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
-  border: '#334155',
-  error: '#ef4444',
-  success: '#22c55e',
-  glassBg: 'rgba(30, 41, 59, 0.7)',
+  primary: '#8B5CF6',     // Vibrant Purple
+  secondary: '#EC4899',   // Pink
+  accent: '#10B981',      // Emerald Green
+  background: '#030712',  // Deep Obsidian
+  surface: '#111827',     // Dark Gray
+  surfaceLight: '#1F2937', 
+  text: '#F9FAFB',
+  textSecondary: '#9CA3AF',
+  textMuted: '#6B7280',
+  error: '#EF4444',
+  success: '#10B981',
+  warning: '#F59E0B',
+  border: 'rgba(255, 255, 255, 0.08)',
+  glass: 'rgba(255, 255, 255, 0.03)',
+  glassBorder: 'rgba(255, 255, 255, 0.1)',
 };
 
 export const spacing = {
@@ -22,8 +26,19 @@ export const spacing = {
 };
 
 export const borderRadius = {
-  s: 4,
-  m: 8,
-  l: 16,
-  xl: 24,
+  s: 8,
+  m: 12,
+  l: 20,
+  xl: 28,
+  full: 999,
+};
+
+export const shadows = {
+  premium: {
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  }
 };

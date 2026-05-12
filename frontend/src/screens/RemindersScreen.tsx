@@ -1,13 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { colors, spacing, borderRadius } from '../theme/theme';
+import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export const RemindersScreen = () => {
-  const [members, setMembers] = useState([]);
+  const [members, setMembers] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchDueMembers = useCallback(async () => {
@@ -29,18 +29,23 @@ export const RemindersScreen = () => {
   );
 
   const sendReminder = async (member: any) => {
-    const message = `Hi ${member.full_name}, your gym fee is due on ${new Date(member.next_due_date).toLocaleDateString()}. Please pay to continue your workout!`;
+    const message = `Hello ${member.full_name} 💪\n\nThis is a gentle reminder from Fitness Hub that your membership is due for renewal on ${new Date(member.next_due_date).toLocaleDateString()}.\n\nPlease renew to continue your transformation journey! 🚀`;
     const url = `whatsapp://send?phone=${member.phone}&text=${encodeURIComponent(message)}`;
     
     try {
       await api.post('/messages/log', {
         recipient_phone: member.phone,
         message_body: message,
+        status: 'sent'
       });
       await Linking.openURL(url);
     } catch (error) {
-      Alert.alert('Error', 'Could not log message to DB, but opening WhatsApp...');
-      await Linking.openURL(url);
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('Error', 'WhatsApp not found');
+      }
     }
   };
 
@@ -53,26 +58,38 @@ export const RemindersScreen = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
         ListHeaderComponent={() => (
           <View style={styles.header}>
-            <Text style={styles.title}>Fee Reminders</Text>
-            <Text style={styles.subtitle}>Members with fees due in next 30 days</Text>
+            <Text style={styles.title}>Due Reminders</Text>
+            <Text style={styles.subtitle}>1-click reminders for upcoming renewals</Text>
           </View>
         )}
         renderItem={({ item }) => (
           <GlassCard style={styles.memberCard}>
-            <View style={styles.memberInfo}>
-              <Text style={styles.memberName}>{item.full_name}</Text>
-              <Text style={styles.memberDue}>Due: {new Date(item.next_due_date).toLocaleDateString()}</Text>
+            <View style={styles.infoContainer}>
+              <View style={styles.mainInfo}>
+                <Text style={styles.memberName}>{item.full_name}</Text>
+                <View style={[styles.badge, { backgroundColor: item.remaining_days <= 0 ? `${colors.error}20` : `${colors.warning}20` }]}>
+                  <Text style={[styles.badgeText, { color: item.remaining_days <= 0 ? colors.error : colors.warning }]}>
+                    {item.remaining_days <= 0 ? 'EXPIRED' : `${item.remaining_days} DAYS LEFT`}
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.memberPhone}>{item.phone}</Text>
+              <View style={styles.dueRow}>
+                <FontAwesome name="calendar" size={12} color={colors.textMuted} />
+                <Text style={styles.memberDue}>Expires: {new Date(item.next_due_date).toLocaleDateString()}</Text>
+              </View>
             </View>
-            <TouchableOpacity style={styles.whatsappButton} onPress={() => sendReminder(item)}>
-              <FontAwesome name="whatsapp" size={24} color={colors.text} />
-              <Text style={styles.buttonText}>Remind</Text>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => sendReminder(item)}>
+              <FontAwesome name="whatsapp" size={20} color={colors.success} />
             </TouchableOpacity>
           </GlassCard>
         )}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No pending reminders found.</Text>
+            <View style={styles.emptyIcon}>
+              <FontAwesome name="check-circle" size={48} color={colors.accent} />
+            </View>
+            <Text style={styles.emptyText}>All members are up to date!</Text>
           </View>
         )}
       />
@@ -82,17 +99,21 @@ export const RemindersScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.l, paddingTop: 60 },
+  content: { padding: spacing.l, paddingTop: 60, paddingBottom: 100 },
   header: { marginBottom: spacing.xl },
-  title: { fontSize: 28, fontWeight: 'bold', color: colors.text },
+  title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
-  memberCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m, padding: spacing.m },
-  memberInfo: { flex: 1 },
-  memberName: { fontSize: 18, fontWeight: 'bold', color: colors.text },
-  memberDue: { fontSize: 12, color: colors.error, marginTop: 2 },
-  memberPhone: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  whatsappButton: { backgroundColor: colors.success, flexDirection: 'row', alignItems: 'center', padding: spacing.s, paddingHorizontal: spacing.m, borderRadius: borderRadius.m, gap: 8 },
-  buttonText: { color: colors.text, fontWeight: 'bold' },
-  emptyContainer: { marginTop: 40, alignItems: 'center' },
-  emptyText: { color: colors.textMuted },
+  memberCard: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.m, padding: spacing.m },
+  infoContainer: { flex: 1 },
+  mainInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  memberName: { fontSize: 18, fontWeight: '700', color: colors.text },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  badgeText: { fontSize: 10, fontWeight: '800' },
+  memberPhone: { fontSize: 13, color: colors.textSecondary, marginBottom: 4 },
+  dueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  memberDue: { fontSize: 12, color: colors.textMuted },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  emptyContainer: { marginTop: 80, alignItems: 'center' },
+  emptyIcon: { marginBottom: spacing.m, opacity: 0.5 },
+  emptyText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
 });

@@ -15,34 +15,42 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
+          borderTopColor: 'rgba(255,255,255,0.05)',
+          height: 65,
+          paddingBottom: 10,
+          paddingTop: 10,
         },
-        headerStyle: {
-          backgroundColor: colors.surface,
-        },
-        headerTintColor: colors.text,
+        headerShown: false, // We'll use custom headers in screens
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ color }) => <TabBarIcon name="dashboard" color={color} />,
+          title: 'Home',
+          tabBarIcon: ({ color }) => <TabBarIcon name="th-large" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="members"
+        options={{
+          title: 'Members',
+          tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
         }}
       />
       <Tabs.Screen
         name="messages"
         options={{
           title: 'Enroll',
-          tabBarIcon: ({ color }) => <TabBarIcon name="user-plus" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="plus-circle" color={color} />,
         }}
       />
       <Tabs.Screen
         name="reminders"
         options={{
-          title: 'Reminders',
-          tabBarIcon: ({ color }) => <TabBarIcon name="bell" color={color} />,
+          title: 'Due',
+          tabBarIcon: ({ color }) => <TabBarIcon name="clock-o" color={color} />,
         }}
       />
     </Tabs>

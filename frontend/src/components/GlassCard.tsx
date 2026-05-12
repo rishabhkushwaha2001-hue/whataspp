@@ -17,15 +17,11 @@ export const GlassCard: React.FC<GlassCardProps> = ({ children, style }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.glassBg,
+    backgroundColor: colors.glass,
     borderRadius: borderRadius.l,
     padding: 20,
     borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 5,
+    borderColor: colors.glassBorder,
+    overflow: 'hidden',
   },
 });
