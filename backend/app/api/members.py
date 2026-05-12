@@ -111,7 +111,7 @@ async def get_dashboard_stats() -> Any:
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     
     # Total Revenue (Sum of all monthly_fees from all members)
-    total_pipeline = [{"$group": {"_id": None, "total": {"$sum": "$monthly_fees"}}}]
+    total_pipeline = [{"$group": {"_id": None, "total": {"$sum": {"$toDouble": "$monthly_fees"}}}}]
     total_cursor = db["members"].aggregate(total_pipeline)
     total_result = await total_cursor.to_list(length=1)
     total_revenue = total_result[0]["total"] if total_result else 0.0
