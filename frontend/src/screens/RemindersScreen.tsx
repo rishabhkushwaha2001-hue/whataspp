@@ -43,13 +43,19 @@ export const RemindersScreen = () => {
         message_body: message,
         status: 'sent'
       });
-      await Linking.openURL(url);
+      
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert('WhatsApp Error', 'WhatsApp app not found on this device. Please install it first.');
+      }
     } catch (error: any) {
-      console.error('Log failed', error);
+      console.error('Log or Link failed', error);
       Alert.alert(
         'Warning',
-        'Message opened on WhatsApp but could not be logged in database. Check your internet or server status.',
-        [{ text: 'OK', onPress: () => Linking.openURL(url) }]
+        'Could not complete the action. The number might be invalid or WhatsApp is not responding.',
+        [{ text: 'Try Anyway', onPress: () => Linking.openURL(url).catch(() => Alert.alert('Error', 'Invalid WhatsApp Number or Link')) }]
       );
     }
   };
@@ -82,6 +88,10 @@ export const RemindersScreen = () => {
               <View style={styles.dueRow}>
                 <FontAwesome name="calendar" size={12} color={colors.textMuted} />
                 <Text style={styles.memberDue}>Expires: {new Date(item.next_due_date).toLocaleDateString()}</Text>
+              </View>
+              <View style={[styles.dueRow, { marginTop: 4 }]}>
+                <FontAwesome name="money" size={12} color={colors.accent} />
+                <Text style={[styles.memberDue, { color: colors.text, fontWeight: '600' }]}>Rs. {item.monthly_fees} ({item.plan_duration_months}M)</Text>
               </View>
             </View>
             <TouchableOpacity style={styles.actionBtn} onPress={() => sendReminder(item)}>

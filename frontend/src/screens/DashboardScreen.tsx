@@ -31,6 +31,7 @@ const StatCard = ({ title, value, icon, color, subtitle, trend }: any) => (
 export const DashboardScreen = () => {
   const [stats, setStats] = useState<any>(null);
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
@@ -44,13 +45,20 @@ export const DashboardScreen = () => {
       console.warn('Dashboard stats fetch failed', error);
     }
 
+    // Fetch Attendance
+    try {
+      const attendRes = await api.get('/members/attendance/today');
+      setAttendance(attendRes.data);
+    } catch (error) {
+      console.warn('Attendance fetch failed', error);
+    }
+
     // Fetch History separately so it doesn't block stats if it fails
     try {
       const historyRes = await api.get('/messages/history?limit=8');
       setRecentMessages(historyRes.data);
     } catch (error) {
       console.warn('Dashboard history fetch failed', error);
-      // History might fail if not deployed yet, but we want stats to show
     }
 
     setRefreshing(false);
@@ -152,6 +160,31 @@ export const DashboardScreen = () => {
         {renderProgress('Active Status', stats?.active_members || 0, stats?.total_members || 1, colors.accent)}
         {renderProgress('New Joinings (Month)', stats?.new_members_this_month || 0, 20, colors.secondary)}
         {renderProgress('Retention Rate', 85, 100, colors.primary)}
+      </GlassCard>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Live Attendance (Today)</Text>
+        <TouchableOpacity onPress={fetchDashboardData}>
+          <Text style={styles.seeAll}>View All</Text>
+        </TouchableOpacity>
+      </View>
+
+      <GlassCard style={[styles.activityCard, { marginBottom: spacing.xl }]}>
+        {attendance.length === 0 ? (
+          <Text style={styles.emptyText}>No check-ins yet today.</Text>
+        ) : (
+          attendance.map((log, index) => (
+            <View key={log._id || index} style={styles.logItem}>
+              <View style={[styles.logIcon, { backgroundColor: `${colors.accent}20` }]}>
+                <FontAwesome name="check" size={14} color={colors.accent} />
+              </View>
+              <View style={{flex: 1}}>
+                <Text style={styles.logPhone}>{log.member_name}</Text>
+                <Text style={styles.logText}>Checked in at {new Date(log.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+              </View>
+            </View>
+          ))
+        )}
       </GlassCard>
 
       <View style={styles.sectionHeader}>

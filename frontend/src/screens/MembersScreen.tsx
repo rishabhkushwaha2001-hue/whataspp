@@ -57,6 +57,15 @@ export const MembersScreen = () => {
     Linking.openURL(`whatsapp://send?phone=${phone}`);
   };
 
+  const handleCheckIn = async (member: any) => {
+    try {
+      await api.post(`/members/${member._id}/checkin`);
+      Alert.alert('Success', `${member.full_name} checked in successfully!`);
+    } catch (error) {
+      Alert.alert('Error', 'Check-in failed. Please try again.');
+    }
+  };
+
   const renderMember = ({ item }: { item: any }) => (
     <GlassCard style={styles.card}>
       <View style={styles.cardHeader}>
@@ -71,6 +80,17 @@ export const MembersScreen = () => {
           <Text style={[styles.statusText, { color: item.status === 'active' ? colors.success : colors.error }]}>
             {item.status.toUpperCase()}
           </Text>
+        </View>
+      </View>
+
+      <View style={styles.cardDetails}>
+        <View style={styles.detailItem}>
+          <FontAwesome name="money" size={12} color={colors.accent} />
+          <Text style={[styles.detailText, { color: colors.text, fontWeight: '700' }]}>Rs. {item.monthly_fees}</Text>
+        </View>
+        <View style={styles.detailItem}>
+          <FontAwesome name="hourglass-half" size={12} color={colors.primary} />
+          <Text style={[styles.detailText, { color: colors.text, fontWeight: '700' }]}>{item.plan_duration_months} Month(s)</Text>
         </View>
       </View>
 
@@ -94,9 +114,9 @@ export const MembersScreen = () => {
           <FontAwesome name="whatsapp" size={16} color={colors.success} />
           <Text style={styles.actionText}>WhatsApp</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => Alert.alert('Export', 'Exporting member data to PDF...')}>
-          <FontAwesome name="download" size={16} color={colors.textSecondary} />
-          <Text style={styles.actionText}>PDF</Text>
+        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: `${colors.accent}15`, borderRadius: 8 }]} onPress={() => handleCheckIn(item)}>
+          <FontAwesome name="check-square-o" size={16} color={colors.accent} />
+          <Text style={[styles.actionText, { color: colors.accent }]}>Check-in</Text>
         </TouchableOpacity>
       </View>
     </GlassCard>

@@ -37,10 +37,17 @@ export const MessageScreen = () => {
       const formattedPhone = phone.replace(/[^0-9]/g, '');
       const finalPhone = formattedPhone.length === 10 ? '91' + formattedPhone : formattedPhone;
       
-      const expiryDate = new Date();
-      expiryDate.setMonth(expiryDate.getMonth() + parseInt(duration));
-      
-      const welcomeMsg = `Hello ${name}, welcome to Fitness Hub 💪\n\nYour membership is active!\nPlan: ${duration} Month(s)\nAmount: Rs. ${amount}\nExpiry: ${expiryDate.toLocaleDateString()}\n\nLet's crush those goals! 🚀`;
+      const welcomeMsg = `*FITNESS HUB - OFFICIAL RECEIPT* 🧾\n\n` +
+        `Hello *${name}*, welcome to the elite club! 💪\n\n` +
+        `*MEMBERSHIP DETAILS:*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `👤 *Member:* ${name}\n` +
+        `📱 *Phone:* ${finalPhone}\n` +
+        `🗓️ *Plan:* ${duration} Month(s)\n` +
+        `💰 *Amount Paid:* Rs. ${amount}\n` +
+        `📅 *Expiry Date:* ${expiryDate.toLocaleDateString()}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*Stay Strong & Let's Crush Your Goals!* 🚀`;
 
       // API Call - Enroll Member
       await api.post('/members/', {
