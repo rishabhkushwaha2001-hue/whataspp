@@ -64,6 +64,7 @@ export const MessageScreen = () => {
         });
       } catch (logError) {
         console.error('Log failed', logError);
+        Alert.alert('Database Warning', 'Member enrolled but message history could not be saved. Check server status.');
       }
 
       const whatsappUrl = `whatsapp://send?phone=${finalPhone}&text=${encodeURIComponent(welcomeMsg)}`;

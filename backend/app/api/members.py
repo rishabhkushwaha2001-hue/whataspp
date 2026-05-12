@@ -21,7 +21,12 @@ async def create_member(member_in: MemberCreate) -> Any:
     member_dict["status"] = "active"
     
     # Calculate remaining days
-    delta = next_due_date - datetime.utcnow()
+    now = datetime.utcnow()
+    # Ensure next_due_date is naive for comparison if joining_date was naive
+    if next_due_date.tzinfo is not None:
+        next_due_date = next_due_date.replace(tzinfo=None)
+        
+    delta = next_due_date - now
     member_dict["remaining_days"] = max(0, delta.days)
     
     result = await db["members"].insert_one(member_dict)
@@ -37,7 +42,12 @@ async def get_all_members() -> Any:
     for m in members:
         m["_id"] = str(m["_id"])
         # Update remaining days on the fly
-        delta = m["next_due_date"] - datetime.utcnow()
+        now = datetime.utcnow()
+        due_date = m["next_due_date"]
+        if due_date.tzinfo is not None:
+            due_date = due_date.replace(tzinfo=None)
+            
+        delta = due_date - now
         m["remaining_days"] = max(0, delta.days)
     return members
 
@@ -50,7 +60,12 @@ async def get_due_members(days_ahead: int = 3) -> Any:
     members = await cursor.to_list(length=100)
     for m in members:
         m["_id"] = str(m["_id"])
-        delta = m["next_due_date"] - datetime.utcnow()
+        now = datetime.utcnow()
+        due_date = m["next_due_date"]
+        if due_date.tzinfo is not None:
+            due_date = due_date.replace(tzinfo=None)
+            
+        delta = due_date - now
         m["remaining_days"] = max(0, delta.days)
     return members
 

@@ -35,18 +35,25 @@ export const DashboardScreen = () => {
 
   const fetchDashboardData = useCallback(async () => {
     setRefreshing(true);
+    
+    // Fetch Stats
     try {
-      const [statsRes, historyRes] = await Promise.all([
-        api.get('/members/stats/dashboard'),
-        api.get('/messages/history?limit=8')
-      ]);
+      const statsRes = await api.get('/members/stats/dashboard');
       setStats(statsRes.data);
+    } catch (error) {
+      console.warn('Dashboard stats fetch failed', error);
+    }
+
+    // Fetch History separately so it doesn't block stats if it fails
+    try {
+      const historyRes = await api.get('/messages/history?limit=8');
       setRecentMessages(historyRes.data);
     } catch (error) {
-      console.warn('Dashboard fetch failed', error);
-    } finally {
-      setRefreshing(false);
+      console.warn('Dashboard history fetch failed', error);
+      // History might fail if not deployed yet, but we want stats to show
     }
+
+    setRefreshing(false);
   }, []);
 
   useFocusEffect(

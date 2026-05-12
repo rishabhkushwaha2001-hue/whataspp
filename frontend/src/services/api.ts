@@ -9,4 +9,15 @@ const API_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 
 export const api = axios.create({
   baseURL: API_URL,
+  timeout: 15000, // 15 seconds for Render cold starts
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.code === 'ECONNABORTED') {
+      console.warn('API Timeout - Server might be sleeping');
+    }
+    return Promise.reject(error);
+  }
+);

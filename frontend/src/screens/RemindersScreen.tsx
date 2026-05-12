@@ -39,13 +39,13 @@ export const RemindersScreen = () => {
         status: 'sent'
       });
       await Linking.openURL(url);
-    } catch (error) {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert('Error', 'WhatsApp not found');
-      }
+    } catch (error: any) {
+      console.error('Log failed', error);
+      Alert.alert(
+        'Warning',
+        'Message opened on WhatsApp but could not be logged in database. Check your internet or server status.',
+        [{ text: 'OK', onPress: () => Linking.openURL(url) }]
+      );
     }
   };
 

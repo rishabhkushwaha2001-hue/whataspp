@@ -8,6 +8,14 @@ interface ModernInputProps extends TextInputProps {
   icon?: React.ReactNode;
 }
 
+export const ModernInput: React.FC<ModernInputProps> = ({
+  label,
+  error,
+  icon,
+  value,
+  onChangeText,
+  ...props
+}) => {
   const [isFocused, setIsFocused] = useState(false);
 
   return (
