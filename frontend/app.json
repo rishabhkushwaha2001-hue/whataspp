@@ -7,11 +7,14 @@
     "icon": "./assets/images/icon.png",
     "scheme": "gym-manager",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#030712",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0f172a"
+    "jsEngine": "hermes",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/your-project-id"
     },
     "ios": {
       "supportsTablet": true
