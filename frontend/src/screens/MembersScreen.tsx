@@ -1,165 +1,300 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Linking, Alert } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Linking, Alert, ScrollView } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
+import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export const MembersScreen = () => {
+  const router = useRouter();
   const [members, setMembers] = useState<any[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [renewalDuration, setRenewalDuration] = useState('1');
 
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);
     try {
       const res = await api.get('/members/');
       setMembers(res.data);
-      setFilteredMembers(res.data);
+      applyFilters(res.data, search, activeTab);
     } catch (error) {
       console.warn('Fetch members failed');
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [search, activeTab]);
 
   useFocusEffect(
     useCallback(() => {
       fetchMembers();
-
-      // Auto-refresh every 60 seconds while focused
-      const interval = setInterval(fetchMembers, 60000);
-
-      return () => clearInterval(interval);
     }, [fetchMembers])
   );
 
-  const handleSearch = (text: string) => {
-    setSearch(text);
-    if (!text) {
-      setFilteredMembers(members);
-      return;
+  const applyFilters = (data: any[], searchText: string, tab: string) => {
+    let filtered = data;
+    
+    if (searchText) {
+      filtered = filtered.filter(m => 
+        m.full_name.toLowerCase().includes(searchText.toLowerCase()) || 
+        m.phone.includes(searchText) ||
+        m.member_id?.toLowerCase().includes(searchText.toLowerCase())
+      );
     }
-    const filtered = members.filter(m => 
-      m.full_name.toLowerCase().includes(text.toLowerCase()) || 
-      m.phone.includes(text)
-    );
+
+    if (tab === 'Active') {
+      filtered = filtered.filter(m => m.status === 'active' && new Date(m.next_due_date) > new Date());
+    } else if (tab === 'Expired') {
+      filtered = filtered.filter(m => m.status === 'expired' || new Date(m.next_due_date) < new Date());
+    } else if (tab === 'Manual') {
+      filtered = filtered.filter(m => m.category === 'Manual');
+    }
+
     setFilteredMembers(filtered);
   };
 
-  const handleCall = (phone: string) => {
-    Linking.openURL(`tel:${phone}`);
+  const handleSearch = (text: string) => {
+    setSearch(text);
+    applyFilters(members, text, activeTab);
   };
 
-  const handleWhatsApp = (phone: string) => {
-    Linking.openURL(`whatsapp://send?phone=${phone}`);
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    applyFilters(members, search, tab);
   };
 
-  const handleCheckIn = async (member: any) => {
-    try {
-      await api.post(`/members/${member._id}/checkin`);
-      Alert.alert('Success', `${member.full_name} checked in successfully!`);
-    } catch (error) {
-      Alert.alert('Error', 'Check-in failed. Please try again.');
+  const handleRenew = (member: any) => {
+    const initialDuration = member.plan_duration_months?.toString() || '1';
+    setRenewalDuration(initialDuration);
+
+    const amountPerMonth = (member.monthly_fees || 0) / (member.plan_duration_months || 1);
+    const expiry = new Date(member.next_due_date);
+    const daysRemaining = Math.ceil((expiry.getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+
+    const confirmRenewal = (selectedDur: string) => {
+      const finalAmount = amountPerMonth * parseInt(selectedDur);
+      
+      setAlertConfig({
+        visible: true,
+        title: "Renew Membership",
+        message: `Renew ${member.full_name} for ${selectedDur} month(s)?\n\nTotal Amount: ₹${finalAmount}`,
+        type: "info",
+        showCancel: true,
+        confirmText: "Yes, Renew",
+        onConfirm: async () => {
+          setAlertConfig({ visible: false });
+          try {
+            const res = await api.post(`/members/${member.id || member._id}/renew`, {
+              plan_duration_months: parseInt(selectedDur),
+              amount: finalAmount,
+              payment_mode: "Cash"
+            });
+            
+            fetchMembers();
+            
+            const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
+            const msg = 
+              `*MBUDDY GYM - MEMBERSHIP RENEWED* 🔄\n\n` +
+              `Hello *${member.full_name}*, thank you for continuing your journey with us! 💪\n\n` +
+              `*RENEWAL DETAILS:*\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n` +
+              `🗓️ *New Plan:* ${selectedDur} Month(s)\n` +
+              `💰 *Amount Paid:* ₹${finalAmount}\n` +
+              `📅 *New Expiry:* ${nextDue}\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n\n` +
+              `*Let's push your limits again!* 🚀`;
+            const url = `whatsapp://send?phone=${member.phone}&text=${encodeURIComponent(msg)}`;
+            
+            setAlertConfig({
+                visible: true, title: "Success", message: "Renewed successfully!", type: "success",
+                onClose: () => {
+                  setAlertConfig({ visible: false });
+                  Linking.openURL(url).catch(() => {});
+                }
+            });
+          } catch (error) {
+            setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
+          }
+        }
+      });
+    };
+
+    const showRenewalPicker = () => {
+      setAlertConfig({
+        visible: true,
+        title: "Select Duration",
+        message: `Bhai, kitne mahine ke liye renew karna hai?`,
+        type: "info",
+        showCancel: true,
+        confirmText: "Continue",
+        isRenewalPicker: true,
+        renewalDuration,
+        setRenewalDuration,
+        onConfirm: () => confirmRenewal(renewalDuration)
+      });
+    };
+
+    if (daysRemaining > 10) {
+      setAlertConfig({
+        visible: true,
+        title: "Already Active!",
+        message: `Bhai, is user ka plan pehle se hi ${expiry.toLocaleDateString()} tak active hai (${daysRemaining} days left).\n\nKya aap sach mein renew karna chahte hain?`,
+        type: "warning",
+        showCancel: true,
+        cancelText: "Nahi (Cancel)",
+        confirmText: "Haan, continue",
+        onConfirm: () => {
+          setAlertConfig({ visible: false });
+          setTimeout(showRenewalPicker, 200);
+        }
+      });
+    } else {
+      showRenewalPicker();
     }
   };
 
-  const renderMember = ({ item }: { item: any }) => (
-    <GlassCard style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={styles.memberAvatar}>
-          <Text style={styles.avatarText}>{item.full_name.substring(0, 1).toUpperCase()}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.memberName}>{item.full_name}</Text>
-          <Text style={styles.memberPlan}>{item.plan_type || 'Monthly'} • {item.plan_duration_months} Month(s)</Text>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: item.status === 'active' ? `${colors.success}20` : `${colors.error}20` }]}>
-          <Text style={[styles.statusText, { color: item.status === 'active' ? colors.success : colors.error }]}>
-            {item.status.toUpperCase()}
-          </Text>
-        </View>
-      </View>
+  const renderMember = ({ item }: { item: any }) => {
+    const isExpired = new Date(item.next_due_date) < new Date();
+    const memberId = item.id || item._id;
+    
+    return (
+      <TouchableOpacity 
+        activeOpacity={0.7}
+        onPress={() => router.push(`/members/${memberId}` as any)}
+      >
+        <GlassCard style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.memberAvatar, { backgroundColor: item.category === 'Renewal' ? `${colors.primary}20` : `${colors.accent}20` }]}>
+              <Text style={[styles.avatarText, { color: item.category === 'Renewal' ? colors.primary : colors.accent }]}>
+                {item.full_name.substring(0, 1).toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.memberName}>{item.full_name}</Text>
+              <Text style={styles.memberId}>{item.member_id} • {item.category || 'New'}</Text>
+            </View>
+            <View style={[styles.statusBadge, { backgroundColor: isExpired ? `${colors.error}20` : `${colors.success}20` }]}>
+              <Text style={[styles.statusText, { color: isExpired ? colors.error : colors.success }]}>
+                {isExpired ? 'EXPIRED' : 'ACTIVE'}
+              </Text>
+            </View>
+          </View>
 
-      <View style={styles.cardDetails}>
-        <View style={styles.detailItem}>
-          <FontAwesome name="money" size={12} color={colors.accent} />
-          <Text style={[styles.detailText, { color: colors.text, fontWeight: '700' }]}>Rs. {item.monthly_fees}</Text>
-        </View>
-        <View style={styles.detailItem}>
-          <FontAwesome name="hourglass-half" size={12} color={colors.primary} />
-          <Text style={[styles.detailText, { color: colors.text, fontWeight: '700' }]}>{item.plan_duration_months} Month(s)</Text>
-        </View>
-      </View>
+          <View style={styles.cardDetails}>
+            <View style={styles.detailItem}>
+              <FontAwesome name="money" size={12} color={colors.accent} />
+              <Text style={styles.detailText}>₹{item.monthly_fees}</Text>
+            </View>
+            <View style={styles.detailItem}>
+              <FontAwesome name="clock-o" size={12} color={colors.primary} />
+              <Text style={styles.detailText}>Due: {new Date(item.next_due_date).toLocaleDateString()}</Text>
+            </View>
+          </View>
 
-      <View style={styles.cardDetails}>
-        <View style={styles.detailItem}>
-          <FontAwesome name="calendar" size={12} color={colors.textMuted} />
-          <Text style={styles.detailText}>Joined: {new Date(item.joining_date).toLocaleDateString()}</Text>
-        </View>
-        <View style={styles.detailItem}>
-          <FontAwesome name="clock-o" size={12} color={colors.textMuted} />
-          <Text style={styles.detailText}>Due: {new Date(item.next_due_date).toLocaleDateString()}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardActions}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => handleCall(item.phone)}>
-          <FontAwesome name="phone" size={16} color={colors.primary} />
-          <Text style={styles.actionText}>Call</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => handleWhatsApp(item.phone)}>
-          <FontAwesome name="whatsapp" size={16} color={colors.success} />
-          <Text style={styles.actionText}>WhatsApp</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionBtn, { backgroundColor: `${colors.accent}15`, borderRadius: 8 }]} onPress={() => handleCheckIn(item)}>
-          <FontAwesome name="check-square-o" size={16} color={colors.accent} />
-          <Text style={[styles.actionText, { color: colors.accent }]}>Check-in</Text>
-        </TouchableOpacity>
-      </View>
-    </GlassCard>
-  );
-
-  const handleExport = () => {
-    const exportUrl = `${api.defaults.baseURL}/members/export/csv`;
-    Linking.openURL(exportUrl).catch(() => {
-      Alert.alert('Error', 'Could not open export URL');
-    });
+          <View style={styles.cardActions}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${item.phone}`)}>
+              <FontAwesome name="phone" size={14} color={colors.primary} />
+              <Text style={styles.actionText}>Call</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`whatsapp://send?phone=${item.phone}`)}>
+              <FontAwesome name="whatsapp" size={14} color={colors.success} />
+              <Text style={styles.actionText}>WhatsApp</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.actionBtn, { backgroundColor: `${colors.primary}15`, paddingHorizontal: 12, borderRadius: 20 }]} 
+              onPress={() => handleRenew(item)}
+            >
+              <FontAwesome name="refresh" size={12} color={colors.primary} />
+              <Text style={[styles.actionText, { color: colors.primary, fontWeight: '700' }]}>Renew</Text>
+            </TouchableOpacity>
+          </View>
+        </GlassCard>
+      </TouchableOpacity>
+    );
   };
+
 
   return (
     <View style={styles.container}>
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        showCancel={alertConfig.showCancel}
+        cancelText={alertConfig.cancelText}
+        confirmText={alertConfig.confirmText}
+        onClose={alertConfig.onClose || (() => setAlertConfig({ ...alertConfig, visible: false }))}
+        onConfirm={alertConfig.onConfirm}
+      >
+        {alertConfig.isRenewalPicker && (
+          <View style={{ width: '100%', marginBottom: 20 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8, fontWeight: '700' }}>CHOOSE DURATION</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              {['1', '2', '3', '6', '12'].map(dur => (
+                <TouchableOpacity 
+                  key={dur}
+                  onPress={() => {
+                    setRenewalDuration(dur);
+                    setAlertConfig({ ...alertConfig, onConfirm: () => confirmRenewal(dur) });
+                  }}
+                  style={{
+                    backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.05)',
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    minWidth: 45,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ color: renewalDuration === dur ? '#fff' : 'rgba(255,255,255,0.7)', fontWeight: '700' }}>{dur}M</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+      </CustomAlert>
       <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Manage Members</Text>
-          <TouchableOpacity style={styles.exportBtn} onPress={handleExport}>
-            <FontAwesome name="file-excel-o" size={16} color={colors.accent} />
-            <Text style={styles.exportBtnText}>Excel</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.title}>Members List</Text>
         <View style={styles.searchBar}>
           <FontAwesome name="search" size={16} color={colors.textMuted} style={{ marginRight: 10 }} />
           <TextInput
-            placeholder="Search by name or phone..."
+            placeholder="Search name, phone or ID..."
             placeholderTextColor={colors.textMuted}
             style={styles.searchInput}
             value={search}
             onChangeText={handleSearch}
           />
         </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsContainer}>
+          {['All', 'Active', 'Expired', 'Manual'].map(tab => (
+            <TouchableOpacity 
+              key={tab} 
+              style={[styles.tab, activeTab === tab && styles.activeTab]} 
+              onPress={() => handleTabChange(tab)}
+            >
+              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       <FlatList
         data={filteredMembers}
         renderItem={renderMember}
-        keyExtractor={item => item._id}
+        keyExtractor={item => item.id || item._id}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchMembers} tintColor={colors.primary} />}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No members found.</Text>
+            <FontAwesome name="users" size={48} color={colors.surfaceLight} />
+            <Text style={styles.emptyText}>No members match your filter.</Text>
           </View>
         )}
       />
@@ -170,36 +305,29 @@ export const MembersScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { padding: spacing.l, paddingTop: 60, backgroundColor: colors.surface },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: borderRadius.s, borderWidth: 1, borderColor: colors.border },
-  exportBtnText: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text },
-  searchBar: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: colors.surfaceLight, 
-    borderRadius: borderRadius.m, 
-    paddingHorizontal: spacing.m, 
-    height: 48,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
+  title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.m },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, paddingHorizontal: spacing.m, height: 44, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.m },
   searchInput: { flex: 1, color: colors.text, fontSize: 14 },
+  tabsContainer: { flexDirection: 'row', marginBottom: -spacing.l / 2 },
+  tab: { paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, borderRadius: borderRadius.full, backgroundColor: colors.surfaceLight },
+  activeTab: { backgroundColor: colors.primary },
+  tabText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
+  activeTabText: { color: 'white' },
   listContent: { padding: spacing.m, paddingBottom: 100 },
   card: { padding: spacing.m, marginBottom: spacing.m },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.m },
-  memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary + '20', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  avatarText: { color: colors.primary, fontSize: 18, fontWeight: 'bold' },
+  memberAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  avatarText: { fontSize: 18, fontWeight: 'bold' },
   memberName: { fontSize: 18, fontWeight: '700', color: colors.text },
-  memberPlan: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  memberId: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   statusText: { fontSize: 10, fontWeight: '800' },
-  cardDetails: { flexDirection: 'row', gap: 15, marginBottom: spacing.m, paddingBottom: spacing.m, borderBottomWidth: 1, borderBottomColor: colors.border },
+  cardDetails: { flexDirection: 'row', gap: 20, marginBottom: spacing.m, paddingBottom: spacing.m, borderBottomWidth: 1, borderBottomColor: colors.border },
   detailItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailText: { fontSize: 11, color: colors.textSecondary },
-  cardActions: { flexDirection: 'row', justifyContent: 'space-between' },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
+  detailText: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  cardActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   actionText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
-  emptyContainer: { marginTop: 100, alignItems: 'center' },
+  emptyContainer: { marginTop: 100, alignItems: 'center', gap: 12 },
   emptyText: { color: colors.textMuted, fontSize: 16 },
 });

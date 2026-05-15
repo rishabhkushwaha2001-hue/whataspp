@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
+import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
@@ -28,60 +29,76 @@ const StatCard = ({ title, value, icon, color, subtitle, trend }: any) => (
   </GlassCard>
 );
 
+const FilterTab = ({ label, active, onPress }: any) => (
+  <TouchableOpacity 
+    onPress={onPress} 
+    style={[styles.filterTab, active && styles.filterTabActive]}
+  >
+    <Text style={[styles.filterTabText, active && styles.filterTabTextActive]}>{label}</Text>
+  </TouchableOpacity>
+);
+
 export const DashboardScreen = () => {
   const [stats, setStats] = useState<any>(null);
+  const [period, setPeriod] = useState<'month' | 'prev_month' | 'year' | 'all'>('month');
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [gymSettings, setGymSettings] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchDashboardData = useCallback(async () => {
+  const fetchDashboardData = useCallback(async (currentPeriod = period) => {
     setRefreshing(true);
-    
-    // Fetch Stats
     try {
-      const statsRes = await api.get('/members/stats/dashboard');
+      const statsRes = await api.get(`/members/stats/dashboard?period=${currentPeriod}`);
       setStats(statsRes.data);
     } catch (error) {
       console.warn('Dashboard stats fetch failed', error);
     }
 
-    // Fetch Attendance
     try {
-      const attendRes = await api.get('/members/attendance/today');
-      setAttendance(attendRes.data);
+      const attendanceRes = await api.get('/members/attendance/today');
+      setAttendance(attendanceRes.data);
     } catch (error) {
-      console.warn('Attendance fetch failed', error);
+      console.warn('Attendance fetch failed');
     }
 
-    // Fetch History separately so it doesn't block stats if it fails
     try {
-      const historyRes = await api.get('/messages/history?limit=8');
+      const historyRes = await api.get('/messages/history?limit=4');
       setRecentMessages(historyRes.data);
     } catch (error) {
-      console.warn('Dashboard history fetch failed', error);
+      console.warn('History fetch failed', error);
     }
 
+    try {
+      const settingsRes = await api.get('/settings/');
+      setGymSettings(settingsRes.data);
+    } catch (error) {
+      console.warn('Settings fetch failed');
+    }
     setRefreshing(false);
-  }, []);
+  }, [period]);
 
   useFocusEffect(
     useCallback(() => {
       fetchDashboardData();
-      
-      // Auto-refresh every 30 seconds while focused
-      const interval = setInterval(fetchDashboardData, 30000);
-      
-      return () => clearInterval(interval);
     }, [fetchDashboardData])
   );
 
-  const renderProgress = (label: string, value: number, total: number, color: string) => {
+  const handlePeriodChange = (newPeriod: 'month' | 'prev_month' | 'year' | 'all') => {
+    setPeriod(newPeriod);
+    fetchDashboardData(newPeriod);
+  };
+
+  const renderProgress = (label: string, value: number, total: number, color: string, icon?: string) => {
     const percentage = total > 0 ? (value / total) * 100 : 0;
     return (
       <View style={styles.progressItem}>
         <View style={styles.progressLabels}>
-          <Text style={styles.progressLabel}>{label}</Text>
-          <Text style={styles.progressValue}>{value} / {total}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {icon && <FontAwesome name={icon as any} size={12} color={color} style={{ marginRight: 6 }} />}
+            <Text style={styles.progressLabel}>{label}</Text>
+          </View>
+          <Text style={styles.progressValue}>{value}</Text>
         </View>
         <View style={styles.progressBarBg}>
           <View style={[styles.progressBarFill, { width: `${percentage}%`, backgroundColor: color }]} />
@@ -90,91 +107,114 @@ export const DashboardScreen = () => {
     );
   };
 
+  const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+
+  const handleReset = () => {
+    setAlertConfig({
+      visible: true,
+      title: "⚠️ Reset Database",
+      message: "Are you sure you want to DELETE ALL members, payments, and attendance records? This cannot be undone.",
+      type: "warning",
+      showCancel: true,
+      confirmText: "YES, DELETE ALL",
+      onConfirm: async () => {
+        setAlertConfig({ visible: false });
+        try {
+          await api.post('members/admin/reset-database');
+          setTimeout(() => {
+            setAlertConfig({ visible: true, title: "Success", message: "Database has been cleared.", type: "success", showCancel: false, confirmText: "OK", onConfirm: undefined });
+          }, 500);
+          fetchDashboardData();
+        } catch (error: any) {
+          const errMsg = error.response?.data?.detail || error.message;
+          setTimeout(() => {
+            setAlertConfig({ visible: true, title: "Error", message: `Failed to reset database: ${errMsg}`, type: "error", showCancel: false, confirmText: "OK", onConfirm: undefined });
+          }, 500);
+        }
+      }
+    });
+  };
+
   return (
     <ScrollView 
       style={styles.container} 
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDashboardData} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchDashboardData()} tintColor={colors.primary} />}
     >
+      <CustomAlert 
+        visible={alertConfig.visible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        showCancel={alertConfig.showCancel}
+        confirmText={alertConfig.confirmText}
+        onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
+        onConfirm={alertConfig.onConfirm}
+      />
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Fitness Hub</Text>
-          <Text style={styles.subtitle}>Premium Admin Dashboard</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-          <TouchableOpacity 
-            style={[styles.profileBtn, { backgroundColor: colors.surfaceLight, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border }]} 
-            onPress={() => {
-              const exportUrl = `${api.defaults.baseURL}/members/export/csv`;
-              Linking.openURL(exportUrl).catch(() => Alert.alert('Error', 'Export failed'));
-            }}
-          >
-            <FontAwesome name="file-excel-o" size={18} color={colors.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.profileBtn}>
-            <LinearGradient
-              colors={[colors.primary, colors.secondary]}
-              style={styles.avatar}
-            >
-              <FontAwesome name="user" size={20} color="white" />
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onLongPress={handleReset} delayLongPress={2000}>
+          <Text style={styles.greeting}>{gymSettings?.gym_name || 'MBUDDY GYM'}</Text>
+          <Text style={styles.subtitle}>{gymSettings?.address || 'Premium CRM Analytics'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.profileBtn}>
+          <LinearGradient colors={[colors.primary, colors.secondary]} style={styles.avatar}>
+            <FontAwesome name="user" size={20} color="white" />
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.filterContainer}>
+        <FilterTab label="This Month" active={period === 'month'} onPress={() => handlePeriodChange('month')} />
+        <FilterTab label="Prev Month" active={period === 'prev_month'} onPress={() => handlePeriodChange('prev_month')} />
+        <FilterTab label="Yearly" active={period === 'year'} onPress={() => handlePeriodChange('year')} />
+        <FilterTab label="All Time" active={period === 'all'} onPress={() => handlePeriodChange('all')} />
       </View>
 
       <View style={styles.statsGrid}>
         <StatCard 
-          title="Total Members" 
-          value={stats?.total_members || '0'} 
-          icon="users" 
-          color={colors.primary} 
-          subtitle="Overall growth"
-          trend="12"
-        />
-        <StatCard 
-          title="Monthly Revenue" 
-          value={`Rs. ${stats?.monthly_revenue?.toFixed(0) || '0'}`} 
+          title="Revenue" 
+          value={`₹${stats?.monthly_revenue?.toLocaleString() || '0'}`} 
           icon="money" 
           color={colors.accent} 
-          subtitle="Total collections"
-          trend="8"
+          subtitle={period === 'month' ? "This month" : period === 'prev_month' ? "Last month" : period === 'year' ? "This year" : "Overall"}
+        />
+        <StatCard 
+          title="Active Members" 
+          value={stats?.active_members || '0'} 
+          icon="users" 
+          color={colors.primary} 
+          subtitle={`${stats?.expired_members || 0} Expired`}
         />
         <StatCard 
           title="Expiring Soon" 
           value={stats?.expiring_soon || '0'} 
-          icon="clock-o" 
+          icon="hourglass-end" 
           color={colors.warning} 
           subtitle="Next 7 days"
         />
         <StatCard 
-          title="Pending" 
-          value={stats?.pending_payments || '0'} 
-          icon="exclamation-circle" 
-          color={colors.error} 
-          subtitle="Action required"
+          title="Today's Collection" 
+          value={`₹${stats?.todays_collections?.toLocaleString() || '0'}`} 
+          icon="calendar-check-o" 
+          color={colors.secondary} 
+          subtitle="Real-time update"
         />
       </View>
 
-      <Text style={styles.sectionTitle}>Membership Analytics</Text>
+      <Text style={styles.sectionTitle}>Registration Categories</Text>
       <GlassCard style={styles.analyticsCard}>
-        {renderProgress('Active Status', stats?.active_members || 0, stats?.total_members || 1, colors.accent)}
-        {renderProgress('New Joinings (Month)', stats?.new_members_this_month || 0, 20, colors.secondary)}
-        {renderProgress('Retention Rate', 85, 100, colors.primary)}
+        {renderProgress('New Enrollments', stats?.new_members_count || 0, stats?.total_members || 1, colors.secondary, 'plus-circle')}
+        {renderProgress('Renewals', stats?.renewal_members_count || 0, stats?.total_members || 1, colors.primary, 'refresh')}
+        {renderProgress('Manual (No WhatsApp)', stats?.manual_members_count || 0, stats?.total_members || 1, colors.textMuted, 'user-secret')}
       </GlassCard>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Live Attendance (Today)</Text>
-        <TouchableOpacity onPress={fetchDashboardData}>
-          <Text style={styles.seeAll}>View All</Text>
-        </TouchableOpacity>
-      </View>
-
-      <GlassCard style={[styles.activityCard, { marginBottom: spacing.xl }]}>
+      <Text style={styles.sectionTitle}>Today's Attendance</Text>
+      <GlassCard style={styles.activityCard}>
         {attendance.length === 0 ? (
           <Text style={styles.emptyText}>No check-ins yet today.</Text>
         ) : (
           attendance.map((log, index) => (
-            <View key={log._id || index} style={styles.logItem}>
+            <View key={log.id || index} style={styles.logItem}>
               <View style={[styles.logIcon, { backgroundColor: `${colors.accent}20` }]}>
                 <FontAwesome name="check" size={14} color={colors.accent} />
               </View>
@@ -188,15 +228,12 @@ export const DashboardScreen = () => {
       </GlassCard>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        <TouchableOpacity onPress={fetchDashboardData}>
-          <Text style={styles.seeAll}>Refresh</Text>
-        </TouchableOpacity>
+        <Text style={styles.sectionTitle}>Recent WhatsApp Logs</Text>
       </View>
 
       <GlassCard style={styles.activityCard}>
         {recentMessages.length === 0 ? (
-          <Text style={styles.emptyText}>No recent activity found.</Text>
+          <Text style={styles.emptyText}>No recent messages found.</Text>
         ) : (
           recentMessages.map((msg, index) => (
             <View key={msg.id || index} style={styles.logItem}>
@@ -211,9 +248,6 @@ export const DashboardScreen = () => {
                 <Text style={styles.logPhone}>{msg.recipient_phone}</Text>
                 <Text style={styles.logText} numberOfLines={1}>{msg.message_body}</Text>
               </View>
-              <Text style={styles.logTime}>
-                {new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
             </View>
           ))
         )}
@@ -227,24 +261,16 @@ export const DashboardScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.l, paddingTop: 60 },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: spacing.xl 
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl },
   greeting: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 2, fontWeight: '500' },
   profileBtn: { ...shadows.premium },
-  avatar: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 24, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)'
-  },
+  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.1)' },
+  filterContainer: { flexDirection: 'row', backgroundColor: colors.surface, padding: 4, borderRadius: borderRadius.m, marginBottom: spacing.xl },
+  filterTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: borderRadius.s },
+  filterTabActive: { backgroundColor: colors.surfaceLight },
+  filterTabText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  filterTabTextActive: { color: colors.text },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.m, marginBottom: spacing.xl },
   statCard: { width: (width - spacing.l * 2 - spacing.m) / 2, padding: spacing.m },
   statHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.s },
@@ -256,12 +282,11 @@ const styles = StyleSheet.create({
   trendText: { color: colors.success, fontSize: 10, fontWeight: '700', marginLeft: 2 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m },
   sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: spacing.m },
-  seeAll: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   analyticsCard: { padding: spacing.l, marginBottom: spacing.xl },
   progressItem: { marginBottom: spacing.m },
-  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' },
   progressLabel: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  progressValue: { color: colors.textSecondary, fontSize: 12 },
+  progressValue: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
   progressBarBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 4 },
   activityCard: { padding: spacing.m },

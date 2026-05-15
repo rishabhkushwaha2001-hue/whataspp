@@ -13,6 +13,11 @@ class MemberCreate(BaseModel):
     notes: Optional[str] = None
     photo_url: Optional[str] = None
     plan_type: str = "Monthly" # Monthly, Quarterly, Half-Yearly, Yearly, Custom
+    age: Optional[int] = None
+    weight: Optional[float] = None
+    trainer_assigned: Optional[str] = "General"
+    payment_mode: Optional[str] = "Cash"
+    category: Optional[str] = "New"
 
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -66,3 +71,11 @@ class MessageCreate(BaseModel):
 class MessageInDB(MessageCreate):
     id: str = Field(alias="_id")
     sent_at: datetime = Field(default_factory=datetime.utcnow)
+
+class GymSettings(BaseModel):
+    gym_name: str = "MBUDDY GYM"
+    address: Optional[str] = "Premium Health Club"
+    phone: Optional[str] = None
+    logo_url: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
