@@ -11,10 +11,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width } = Dimensions.get('window');
 
 export const MemberSummaryScreen = () => {
-  const { id } = useLocalSearchParams();
+  const { id, name, mid, cat } = useLocalSearchParams<{ id: string, name?: string, mid?: string, cat?: string }>();
   const router = useRouter();
-  const [member, setMember] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  
+  // Initialize with params if available to show data instantly
+  const [member, setMember] = useState<any>(name ? {
+    full_name: name,
+    member_id: mid,
+    category: cat,
+    _id: id
+  } : null);
+  
+  const [loading, setLoading] = useState(!name); // Don't show full screen loader if we have basic info
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
 
   useEffect(() => {
@@ -40,11 +48,15 @@ export const MemberSummaryScreen = () => {
     fetchMember();
   }, [id]);
 
-  if (loading) return <ActivityIndicator size="large" color={colors.primary} style={{ flex: 1 }} />;
+  if (loading) return (
+    <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
   if (!member) return <View style={styles.container}><Text style={styles.text}>Member not found</Text></View>;
 
-  const expiryDate = new Date(member.next_due_date);
-  const daysRemaining = Math.ceil((expiryDate.getTime() - new Date().getTime()) / (1000 * 3600 * 24));
+  const expiryDate = member?.next_due_date ? new Date(member.next_due_date) : null;
+  const daysRemaining = expiryDate ? Math.ceil((expiryDate.getTime() - new Date().getTime()) / (1000 * 3600 * 24)) : 0;
   const isExpired = daysRemaining < 0;
 
   const handleDelete = () => {
@@ -133,9 +145,9 @@ export const MemberSummaryScreen = () => {
 
       <Text style={styles.sectionTitle}>Personal Details</Text>
       <GlassCard style={styles.detailsCard}>
-        <DetailItem icon="phone" label="Phone" value={member.phone} />
-        <DetailItem icon="map-marker" label="Address" value={member.address} />
-        <DetailItem icon="calendar" label="Joining Date" value={new Date(member.joining_date).toLocaleDateString()} />
+        <DetailItem icon="phone" label="Phone" value={member.phone || 'Loading...'} />
+        <DetailItem icon="map-marker" label="Address" value={member.address || 'Loading...'} />
+        <DetailItem icon="calendar" label="Joining Date" value={member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'Loading...'} />
         <DetailItem icon="user" label="Trainer" value={member.trainer_assigned || 'General'} />
         <View style={styles.row}>
           <DetailItem icon="birthday-cake" label="Age" value={member.age || 'N/A'} half />

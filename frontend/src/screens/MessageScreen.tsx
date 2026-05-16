@@ -43,7 +43,14 @@ export const MessageScreen = () => {
     setIsLoading(true);
     try {
       const formattedPhone = phone.replace(/[^0-9]/g, '');
-      const finalPhone = formattedPhone.length === 10 ? '91' + formattedPhone : formattedPhone;
+      
+      if (formattedPhone.length !== 10) {
+        showCustomAlert('Invalid Phone', 'Please enter a valid 10-digit mobile number', 'error');
+        setIsLoading(false);
+        return;
+      }
+
+      const finalPhone = formattedPhone; // No longer adding '91' prefix
       
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount)) {
@@ -86,7 +93,7 @@ export const MessageScreen = () => {
             `━━━━━━━━━━━━━━━━━━━━\n\n` +
             `*Let's push your limits again!* 🚀`
           : `*MBUDDY GYM - WELCOME KIT* 🧾\n\n` +
-            `Hello *${name}*, welcome to the elite fitness club! 💪\n\n` +
+            `Hello *${name}*, welcome to MBUDDY GYM! 💪\n\n` +
             `*MEMBERSHIP DETAILS:*\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
             `📱 *Phone:* ${finalPhone}\n` +
@@ -111,7 +118,8 @@ export const MessageScreen = () => {
         );
         
         setTimeout(() => {
-          const url = `whatsapp://send?phone=${finalPhone}&text=${encodeURIComponent(welcomeMsg)}`;
+          const whatsappPhone = finalPhone.length === 10 ? '91' + finalPhone : finalPhone;
+          const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(welcomeMsg)}`;
           Linking.openURL(url).catch(() => console.log('WhatsApp not found'));
           clearForm();
         }, 1500);
@@ -194,7 +202,7 @@ export const MessageScreen = () => {
 
           <ModernInput label="Full Name *" value={name} onChangeText={setName} placeholder="e.g. John Doe" icon={<FontAwesome name="user-o" size={16} color={colors.textSecondary} />} />
           
-          <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
+          <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
 
           <TouchableOpacity onPress={() => setShowDatePicker(true)}>
             <ModernInput 

@@ -46,7 +46,8 @@ export const RemindersScreen = () => {
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
       `*Don't break the momentum!* Secure your spot and continue your transformation journey today. 🚀\n\n` +
       `See you at the gym! 🏋️‍♂️`;
-    const url = `whatsapp://send?phone=${member.phone}&text=${encodeURIComponent(message)}`;
+    const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
+    const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(message)}`;
     
     try {
       await api.post('/messages/log', {
@@ -114,17 +115,22 @@ export const RemindersScreen = () => {
             
             const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
             const msg = `Hi ${member.full_name} 💪\n\nThank you for renewing your membership at MBUDDY GYM! 🎉\n\nPayment Received: ₹${finalAmount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
-            const url = `whatsapp://send?phone=${member.phone}&text=${encodeURIComponent(msg)}`;
+            const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
+            const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(msg)}`;
             
             setAlertConfig({
                 visible: true, 
                 title: "Success", 
-                message: "Renewed successfully!", 
+                message: "Membership renewed successfully!", 
                 type: "success",
-                onClose: () => {
+                confirmText: "Send Receipt",
+                onConfirm: () => {
                   setAlertConfig({ visible: false });
-                  Linking.openURL(url).catch(() => {});
-                }
+                  setTimeout(() => {
+                    Linking.openURL(url).catch(() => console.log('WhatsApp error'));
+                  }, 100);
+                },
+                onClose: () => setAlertConfig({ visible: false })
             });
           } catch (error) {
             setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });

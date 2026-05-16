@@ -108,14 +108,22 @@ export const MembersScreen = () => {
               `📅 *New Expiry:* ${nextDue}\n` +
               `━━━━━━━━━━━━━━━━━━━━\n\n` +
               `*Let's push your limits again!* 🚀`;
-            const url = `whatsapp://send?phone=${member.phone}&text=${encodeURIComponent(msg)}`;
+            const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
+            const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(msg)}`;
             
             setAlertConfig({
-                visible: true, title: "Success", message: "Renewed successfully!", type: "success",
-                onClose: () => {
+                visible: true, 
+                title: "Success", 
+                message: "Membership has been renewed successfully!", 
+                type: "success",
+                confirmText: "Send Receipt",
+                onConfirm: () => {
                   setAlertConfig({ visible: false });
-                  Linking.openURL(url).catch(() => {});
-                }
+                  setTimeout(() => {
+                    Linking.openURL(url).catch(() => console.log('WhatsApp error'));
+                  }, 100);
+                },
+                onClose: () => setAlertConfig({ visible: false })
             });
           } catch (error) {
             setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
@@ -165,7 +173,14 @@ export const MembersScreen = () => {
     return (
       <TouchableOpacity 
         activeOpacity={0.7}
-        onPress={() => router.push(`/members/${memberId}` as any)}
+        onPress={() => router.push({
+          pathname: `/members/${memberId}` as any,
+          params: { 
+            name: item.full_name, 
+            mid: item.member_id, 
+            cat: item.category || 'New'
+          }
+        })}
       >
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
@@ -201,7 +216,10 @@ export const MembersScreen = () => {
               <FontAwesome name="phone" size={14} color={colors.primary} />
               <Text style={styles.actionText}>Call</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`whatsapp://send?phone=${item.phone}`)}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => {
+              const whatsappPhone = item.phone.length === 10 ? '91' + item.phone : item.phone;
+              Linking.openURL(`whatsapp://send?phone=${whatsappPhone}`);
+            }}>
               <FontAwesome name="whatsapp" size={14} color={colors.success} />
               <Text style={styles.actionText}>WhatsApp</Text>
             </TouchableOpacity>
