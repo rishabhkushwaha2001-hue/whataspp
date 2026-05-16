@@ -167,15 +167,18 @@ async def reset_database():
 @router.get("/{member_id}", response_model=Any) # Changed to Any because we are attaching extra non-schema fields
 async def get_member_summary(member_id: str) -> Any:
     db = get_database()
-    member = None
+    # Optimize lookup using $or query
+    query = {"$or": [{"member_id": member_id}, {"phone": member_id}]}
     if len(member_id) == 24:
         try:
-            member = await db["members"].find_one({"_id": ObjectId(member_id)})
+            query["$or"].append({"_id": ObjectId(member_id)})
         except: pass
+    
+    member = await db["members"].find_one(query)
     if not member:
-        member = await db["members"].find_one({"member_id": member_id})
-    if not member:
+        # Fallback for plain string ID if ObjectId failed but it's not member_id/phone
         member = await db["members"].find_one({"_id": member_id})
+
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
         
