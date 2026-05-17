@@ -18,11 +18,7 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/8c31adb0-9041-4a70-8fda-531f1582b72e",
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
-    },
+
     "ios": {
       "supportsTablet": true
     },
