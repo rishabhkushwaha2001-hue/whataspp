@@ -212,7 +212,10 @@ export const MembersScreen = () => {
           </View>
 
           <View style={styles.cardActions}>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${item.phone}`)}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => {
+              const callPhone = item.phone.length > 10 && item.phone.startsWith('91') ? item.phone.substring(2) : item.phone;
+              Linking.openURL(`tel:${callPhone}`);
+            }}>
               <FontAwesome name="phone" size={14} color={colors.primary} />
               <Text style={styles.actionText}>Call</Text>
             </TouchableOpacity>
