@@ -8,4 +8,4 @@ httpx
 python-dateutil
 gunicorn
 python-multipart
-openpyxl
+

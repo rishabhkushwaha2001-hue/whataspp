@@ -153,14 +153,14 @@ export const SettingsScreen = () => {
           <View style={styles.divider} />
 
           <Text style={styles.sectionTitle}>Backup & Restore</Text>
-          <Text style={styles.sectionSub}>Export to Excel (.xlsx) or restore entire gym database</Text>
+          <Text style={styles.sectionSub}>Export to Excel (CSV) or restore entire gym database</Text>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity 
               style={[styles.actionButton, { backgroundColor: `${colors.accent}15`, borderColor: `${colors.accent}30` }]} 
               onPress={handleExport}
             >
-              <Text style={[styles.actionButtonText, { color: colors.accent }]}>Export Excel (.xlsx)</Text>
+              <Text style={[styles.actionButtonText, { color: colors.accent }]}>Export Excel (CSV)</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
