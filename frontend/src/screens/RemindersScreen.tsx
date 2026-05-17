@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
@@ -9,21 +9,46 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export const RemindersScreen = () => {
   const [members, setMembers] = useState<any[]>([]);
+  const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const router = useRouter();
 
+  const applyFilters = useCallback((data: any[], searchText: string) => {
+    let filtered = data;
+    if (searchText) {
+      filtered = filtered.filter(m => 
+        m.full_name.toLowerCase().includes(searchText.toLowerCase()) || 
+        m.phone.includes(searchText) ||
+        m.member_id?.toLowerCase().includes(searchText.toLowerCase())
+      );
+    }
+    setFilteredMembers(filtered);
+  }, []);
+
   const fetchDueMembers = useCallback(async () => {
     setRefreshing(true);
     try {
-      const res = await api.get('/members/status/due?days_ahead=30');
+      const res = await api.get('/members/status/due?days_ahead=5');
       setMembers(res.data);
+      
+      // Apply filters locally on fresh data
+      let filtered = res.data;
+      if (search) {
+        filtered = res.data.filter((m: any) => 
+          m.full_name.toLowerCase().includes(search.toLowerCase()) || 
+          m.phone.includes(search) ||
+          m.member_id?.toLowerCase().includes(search.toLowerCase())
+        );
+      }
+      setFilteredMembers(filtered);
     } catch (error) {
       console.warn('Reminders fetch failed');
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [search]);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,6 +60,11 @@ export const RemindersScreen = () => {
       return () => clearInterval(interval);
     }, [fetchDueMembers])
   );
+
+  const handleSearch = (text: string) => {
+    setSearch(text);
+    applyFilters(members, text);
+  };
 
   const sendReminder = async (member: any) => {
     const dueDate = new Date(member.next_due_date).toLocaleDateString();
@@ -185,14 +215,24 @@ export const RemindersScreen = () => {
         )}
       </CustomAlert>
       <FlatList
-        data={members}
+        data={filteredMembers}
         keyExtractor={(item) => item.id || item._id}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
         ListHeaderComponent={() => (
           <View style={styles.header}>
             <Text style={styles.title}>Due Reminders</Text>
-            <Text style={styles.subtitle}>1-click reminders for upcoming renewals</Text>
+            <Text style={styles.subtitle}>1-click reminders for upcoming renewals (5 days left)</Text>
+            <View style={styles.searchBar}>
+              <FontAwesome name="search" size={16} color={colors.textMuted} style={{ marginRight: 10 }} />
+              <TextInput
+                placeholder="Search name, phone or ID..."
+                placeholderTextColor={colors.textMuted}
+                style={styles.searchInput}
+                value={search}
+                onChangeText={handleSearch}
+              />
+            </View>
           </View>
         )}
         renderItem={({ item }) => (
@@ -253,6 +293,8 @@ const styles = StyleSheet.create({
   header: { marginBottom: spacing.xl },
   title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, paddingHorizontal: spacing.m, height: 44, borderWidth: 1, borderColor: colors.border, marginTop: spacing.m },
+  searchInput: { flex: 1, color: colors.text, fontSize: 14 },
   memberCard: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.m, padding: spacing.m },
   infoContainer: { flex: 1 },
   mainInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },

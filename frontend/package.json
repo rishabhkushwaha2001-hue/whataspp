@@ -20,6 +20,8 @@
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",
     "expo-status-bar": "~3.0.9",
+    "expo-document-picker": "~13.0.1",
+    "expo-updates": "~0.26.12",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-reanimated": "~4.1.1",

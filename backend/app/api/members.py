@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, UploadFile, File
 from bson import ObjectId
 from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Any, List, Optional
@@ -421,15 +421,133 @@ async def delete_member(member_id: str) -> Any:
     return {"message": "Member and all related data deleted successfully"}
 
 @router.get("/export/csv")
-
 async def export_members_csv() -> Any:
     db = get_database()
     cursor = db["members"].find({})
     members = await cursor.to_list(length=1000)
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees"])
+    
+    from openpyxl import Workbook
+    import io
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Gym Members"
+    
+    # Headers
+    headers = ["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees"]
+    ws.append(headers)
+    
     for m in members:
-        writer.writerow([m.get("full_name"), m.get("phone"), m.get("joining_date"), m.get("next_due_date"), m.get("status"), m.get("monthly_fees")])
-    output.seek(0)
-    return StreamingResponse(io.BytesIO(output.getvalue().encode()), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=gym_members.csv"})
+        joining_date_str = m.get("joining_date").strftime("%Y-%m-%d") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date"))
+        next_due_date_str = m.get("next_due_date").strftime("%Y-%m-%d") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date"))
+        ws.append([
+            m.get("full_name"),
+            m.get("phone"),
+            joining_date_str,
+            next_due_date_str,
+            m.get("status"),
+            m.get("monthly_fees")
+        ])
+        
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+    
+    return StreamingResponse(
+        file_stream, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+        headers={"Content-Disposition": "attachment; filename=gym_members.xlsx"}
+    )
+
+@router.post("/import/csv")
+async def import_members_csv(file: UploadFile = File(...)):
+    db = get_database()
+    contents = await file.read()
+    
+    import io
+    from dateutil.parser import parse as parse_date
+    
+    imported_count = 0
+    updated_count = 0
+    rows = []
+    
+    filename = file.filename.lower()
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(contents))
+        ws = wb.active
+        iter_rows = iter(ws.iter_rows(values_only=True))
+        try:
+            next(iter_rows)  # Skip header
+        except StopIteration:
+            raise HTTPException(status_code=400, detail="Empty Excel file")
+            
+        for row in iter_rows:
+            if not row or len(row) < 5:
+                continue
+            rows.append(row)
+    else:
+        import csv
+        try:
+            decoded = contents.decode("utf-8")
+        except Exception:
+            decoded = contents.decode("latin-1")
+            
+        reader = csv.reader(io.StringIO(decoded))
+        try:
+            next(reader)  # Skip header
+        except StopIteration:
+            raise HTTPException(status_code=400, detail="Empty CSV file")
+            
+        for row in reader:
+            if not row or len(row) < 5:
+                continue
+            rows.append(row)
+            
+    for row in rows:
+        full_name = str(row[0]).strip() if row[0] is not None else ""
+        phone = ''.join(c for c in str(row[1]) if c.isdigit()) if row[1] is not None else ""
+        if not full_name or not phone:
+            continue
+            
+        joining_date_val = parse_date(str(row[2])) if len(row) > 2 and row[2] else datetime.now(timezone.utc)
+        next_due_date_val = parse_date(str(row[3])) if len(row) > 3 and row[3] else datetime.now(timezone.utc)
+        status_val = str(row[4]).strip().lower() if len(row) > 4 and row[4] else "active"
+        monthly_fees_val = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
+        
+        # Check duplicate
+        existing = await db["members"].find_one({"phone": phone})
+        if existing:
+            await db["members"].update_one(
+                {"_id": existing["_id"]},
+                {
+                    "$set": {
+                        "full_name": full_name,
+                        "joining_date": joining_date_val,
+                        "next_due_date": next_due_date_val,
+                        "status": status_val,
+                        "monthly_fees": monthly_fees_val
+                    }
+                }
+            )
+            updated_count += 1
+        else:
+            member_id = await generate_member_id(db)
+            member_dict = {
+                "full_name": full_name,
+                "phone": phone,
+                "address": "Imported",
+                "joining_date": joining_date_val,
+                "next_due_date": next_due_date_val,
+                "status": status_val,
+                "monthly_fees": monthly_fees_val,
+                "plan_duration_months": 1,
+                "gender": "Male",
+                "member_id": member_id,
+                "category": "New",
+                "created_at": joining_date_val
+            }
+            await db["members"].insert_one(member_dict)
+            imported_count += 1
+            
+    return {"message": f"Successfully imported {imported_count} members, updated {updated_count} existing members."}
