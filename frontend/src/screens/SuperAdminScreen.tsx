@@ -394,7 +394,7 @@ export const SuperAdminScreen = () => {
                 </View>
                 <View style={styles.securityRow}>
                   <Text style={styles.securityLabel}>📂 Isolated DB: </Text>
-                  <Text style={[styles.securityVal, { color: colors.primary }]}>gym_{item.gym_id.toLowerCase()}</Text>
+                  <Text style={[styles.securityVal, { color: colors.primary }]}>gym_{item.gym_id}</Text>
                 </View>
               </View>
 

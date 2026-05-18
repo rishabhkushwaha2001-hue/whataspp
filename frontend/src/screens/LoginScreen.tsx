@@ -80,6 +80,9 @@ export const LoginScreen = () => {
       });
       
       if (res.data.is_admin === true) {
+        // ✅ Clear ALL previous session data first
+        await AsyncStorage.clear();
+        
         // Save Super Admin session
         await AsyncStorage.setItem('gymId', 'super_admin');
         await AsyncStorage.setItem('gymName', 'Super Admin Control Panel');
@@ -98,6 +101,9 @@ export const LoginScreen = () => {
           }
         });
       } else {
+        // ✅ Clear ALL previous session data first
+        await AsyncStorage.clear();
+
         // Save Gym Owner session
         await AsyncStorage.setItem('gymId', res.data.gym_id);
         await AsyncStorage.setItem('gymName', res.data.gym_name);

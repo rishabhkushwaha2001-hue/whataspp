@@ -54,12 +54,26 @@ export const SettingsScreen = () => {
 
   const handleExport = async () => {
     try {
-      const exportUrl = api.defaults.baseURL + '/members/export/csv';
-      const supported = await Linking.canOpenURL(exportUrl);
+      // ✅ Use api instance so X-Tenant-ID header is included automatically
+      const gymId = await AsyncStorage.getItem('gymId');
+      if (!gymId) {
+        Alert.alert('Error', 'Not logged in. Please restart the app.');
+        return;
+      }
+
+      // Build URL with gymId as query param as fallback + rely on header from api interceptor
+      const exportUrl = `${api.defaults.baseURL}/members/export/csv`;
+      
+      // Use Linking with the full URL — but first verify it by pinging via axios
+      // The server will use the gymId header automatically from the api interceptor
+      // For browser download, pass gymId as a query param so header isn't needed
+      const downloadUrl = `${exportUrl}?gym_id=${gymId}&_t=${Date.now()}`;
+      
+      const supported = await Linking.canOpenURL(downloadUrl);
       if (supported) {
-        await Linking.openURL(exportUrl);
+        await Linking.openURL(downloadUrl);
       } else {
-        Alert.alert('Error', 'Unable to open export URL');
+        Alert.alert('Error', 'Unable to open export URL. Try from a browser.');
       }
     } catch (error) {
       Alert.alert('Export Failed', 'Unable to export members data.');

@@ -191,7 +191,16 @@ export const RemindersScreen = () => {
       showCancel: true,
       confirmText: "Continue",
       isRenewalPicker: true,
-      onConfirm: () => confirmRenewal(renewalDuration)
+      renewalDuration: initialDuration,
+      onConfirm: () => confirmRenewal(renewalDuration),
+      onDurationSelect: (dur: string) => {
+        setRenewalDuration(dur);
+        // Update onConfirm reference with latest dur so picker button works
+        setAlertConfig((prev: any) => ({
+          ...prev,
+          onConfirm: () => confirmRenewal(dur)
+        }));
+      }
     });
   };
 
@@ -209,8 +218,11 @@ export const RemindersScreen = () => {
                 <TouchableOpacity 
                   key={dur}
                   onPress={() => {
-                    setRenewalDuration(dur);
-                    setAlertConfig({ ...alertConfig, onConfirm: () => confirmRenewal(dur) });
+                    if (alertConfig.onDurationSelect) {
+                      alertConfig.onDurationSelect(dur);
+                    } else {
+                      setRenewalDuration(dur);
+                    }
                   }}
                   style={{
                     backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.05)',

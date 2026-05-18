@@ -164,6 +164,114 @@ async def reset_database():
     await db["attendance"].delete_many({})
     return {"message": "Database reset successfully"}
 
+# ✅ IMPORTANT: /export/csv and /import/csv MUST be defined BEFORE /{member_id}
+# Otherwise FastAPI will match "export" as a member_id (wildcard route bug)
+@router.get("/export/csv")
+async def export_members_csv(gym_id: str = None) -> Any:
+    from database import client as db_client, get_database as _get_db
+    # Support gym_id as query param (for browser direct links where headers can't be set)
+    if gym_id and gym_id != 'super_admin':
+        db = db_client[f"gym_{gym_id}"]
+    else:
+        db = _get_db()  # Will use tenant from middleware context
+    cursor = db["members"].find({})
+    members = await cursor.to_list(length=1000)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees", "Plan (Months)", "Category"])
+    for m in members:
+        joining_date_str = m.get("joining_date").strftime("%Y-%m-%d") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date", ""))
+        next_due_date_str = m.get("next_due_date").strftime("%Y-%m-%d") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date", ""))
+        writer.writerow([
+            m.get("full_name", ""),
+            m.get("phone", ""),
+            joining_date_str,
+            next_due_date_str,
+            m.get("status", ""),
+            m.get("monthly_fees", 0),
+            m.get("plan_duration_months", 1),
+            m.get("category", "New")
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=gym_members.csv"}
+    )
+
+@router.post("/import/csv")
+async def import_members_csv(file: UploadFile = File(...)):
+    db = get_database()
+    contents = await file.read()
+
+    import io as _io
+    import csv as _csv
+    from dateutil.parser import parse as parse_date
+
+    try:
+        decoded = contents.decode("utf-8")
+    except Exception:
+        decoded = contents.decode("latin-1")
+
+    reader = _csv.reader(_io.StringIO(decoded))
+    try:
+        headers = next(reader)
+    except StopIteration:
+        raise HTTPException(status_code=400, detail="Empty CSV file")
+
+    imported_count = 0
+    updated_count = 0
+
+    for row in reader:
+        if not row or len(row) < 5:
+            continue
+
+        full_name = str(row[0]).strip()
+        phone = ''.join(c for c in str(row[1]) if c.isdigit())
+        if not full_name or not phone:
+            continue
+
+        joining_date_val = parse_date(str(row[2])) if len(row) > 2 and row[2] else datetime.now(timezone.utc)
+        next_due_date_val = parse_date(str(row[3])) if len(row) > 3 and row[3] else datetime.now(timezone.utc)
+        status_val = str(row[4]).strip().lower() if len(row) > 4 and row[4] else "active"
+        monthly_fees_val = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
+
+        existing = await db["members"].find_one({"phone": phone})
+        if existing:
+            await db["members"].update_one(
+                {"_id": existing["_id"]},
+                {
+                    "$set": {
+                        "full_name": full_name,
+                        "joining_date": joining_date_val,
+                        "next_due_date": next_due_date_val,
+                        "status": status_val,
+                        "monthly_fees": monthly_fees_val
+                    }
+                }
+            )
+            updated_count += 1
+        else:
+            member_id_str = await generate_member_id(db)
+            member_dict = {
+                "full_name": full_name,
+                "phone": phone,
+                "address": "Imported",
+                "joining_date": joining_date_val,
+                "next_due_date": next_due_date_val,
+                "status": status_val,
+                "monthly_fees": monthly_fees_val,
+                "plan_duration_months": 1,
+                "gender": "Male",
+                "member_id": member_id_str,
+                "category": "New",
+                "created_at": joining_date_val
+            }
+            await db["members"].insert_one(member_dict)
+            imported_count += 1
+
+    return {"message": f"Successfully imported {imported_count} members, updated {updated_count} existing members."}
+
 @router.get("/{member_id}", response_model=Any) # Changed to Any because we are attaching extra non-schema fields
 async def get_member_summary(member_id: str) -> Any:
     db = get_database()
@@ -420,91 +528,4 @@ async def delete_member(member_id: str) -> Any:
     
     return {"message": "Member and all related data deleted successfully"}
 
-@router.get("/export/csv")
-async def export_members_csv() -> Any:
-    db = get_database()
-    cursor = db["members"].find({})
-    members = await cursor.to_list(length=1000)
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees"])
-    for m in members:
-        joining_date_str = m.get("joining_date").strftime("%Y-%m-%d") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date"))
-        next_due_date_str = m.get("next_due_date").strftime("%Y-%m-%d") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date"))
-        writer.writerow([m.get("full_name"), m.get("phone"), joining_date_str, next_due_date_str, m.get("status"), m.get("monthly_fees")])
-    output.seek(0)
-    return StreamingResponse(io.BytesIO(output.getvalue().encode()), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=gym_members.csv"})
-
-@router.post("/import/csv")
-async def import_members_csv(file: UploadFile = File(...)):
-    db = get_database()
-    contents = await file.read()
-    
-    import io
-    import csv
-    from dateutil.parser import parse as parse_date
-    
-    try:
-        decoded = contents.decode("utf-8")
-    except Exception:
-        decoded = contents.decode("latin-1")
-        
-    reader = csv.reader(io.StringIO(decoded))
-    try:
-        headers = next(reader)
-    except StopIteration:
-        raise HTTPException(status_code=400, detail="Empty CSV file")
-        
-    imported_count = 0
-    updated_count = 0
-    
-    for row in reader:
-        if not row or len(row) < 5:
-            continue
-            
-        full_name = str(row[0]).strip()
-        phone = ''.join(c for c in str(row[1]) if c.isdigit())
-        if not full_name or not phone:
-            continue
-            
-        joining_date_val = parse_date(str(row[2])) if len(row) > 2 and row[2] else datetime.now(timezone.utc)
-        next_due_date_val = parse_date(str(row[3])) if len(row) > 3 and row[3] else datetime.now(timezone.utc)
-        status_val = str(row[4]).strip().lower() if len(row) > 4 and row[4] else "active"
-        monthly_fees_val = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
-        
-        # Check duplicate
-        existing = await db["members"].find_one({"phone": phone})
-        if existing:
-            await db["members"].update_one(
-                {"_id": existing["_id"]},
-                {
-                    "$set": {
-                        "full_name": full_name,
-                        "joining_date": joining_date_val,
-                        "next_due_date": next_due_date_val,
-                        "status": status_val,
-                        "monthly_fees": monthly_fees_val
-                    }
-                }
-            )
-            updated_count += 1
-        else:
-            member_id = await generate_member_id(db)
-            member_dict = {
-                "full_name": full_name,
-                "phone": phone,
-                "address": "Imported",
-                "joining_date": joining_date_val,
-                "next_due_date": next_due_date_val,
-                "status": status_val,
-                "monthly_fees": monthly_fees_val,
-                "plan_duration_months": 1,
-                "gender": "Male",
-                "member_id": member_id,
-                "category": "New",
-                "created_at": joining_date_val
-            }
-            await db["members"].insert_one(member_dict)
-            imported_count += 1
-            
-    return {"message": f"Successfully imported {imported_count} members, updated {updated_count} existing members."}
+# (export/csv and import/csv routes moved above /{member_id} — see above)

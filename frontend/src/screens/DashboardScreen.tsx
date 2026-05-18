@@ -120,7 +120,7 @@ export const DashboardScreen = () => {
       onConfirm: async () => {
         setAlertConfig({ visible: false });
         try {
-          await api.post('members/admin/reset-database');
+          await api.post('/members/admin/reset-database');
           setTimeout(() => {
             setAlertConfig({ visible: true, title: "Success", message: "Database has been cleared.", type: "success", showCancel: false, confirmText: "OK", onConfirm: undefined });
           }, 500);

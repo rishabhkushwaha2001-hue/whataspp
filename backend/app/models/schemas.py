@@ -49,9 +49,11 @@ class AttendanceInDB(AttendanceBase):
 
 class MemberInDB(MemberCreate):
     id: str = Field(alias="_id")
+    member_id: Optional[str] = None  # Server-generated ID like GYM-1001
     next_due_date: datetime
     status: str
     remaining_days: Optional[int] = None
+    created_at: Optional[datetime] = None
 
 class DashboardStats(BaseModel):
     total_members: int
