@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Linking, Switch } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { GradientButton } from '../components/GradientButton';
@@ -25,10 +26,25 @@ export const MessageScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isManual, setIsManual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [gymName, setGymName] = useState('MBUDDY GYM');
 
   const [alertConfig, setAlertConfig] = useState<{visible: boolean, title: string, message: string, type: 'success' | 'error'}>({
     visible: false, title: '', message: '', type: 'success'
   });
+
+  useEffect(() => {
+    const loadGymName = async () => {
+      try {
+        const storedName = await AsyncStorage.getItem('gymName');
+        if (storedName) {
+          setGymName(storedName);
+        }
+      } catch (e) {
+        console.log('Failed to load gymName', e);
+      }
+    };
+    loadGymName();
+  }, []);
 
   const showCustomAlert = (title: string, message: string, type: 'success' | 'error' = 'error') => {
     setAlertConfig({ visible: true, title, message, type });
@@ -83,7 +99,7 @@ export const MessageScreen = () => {
         const expiryDate = new Date(member.next_due_date).toLocaleDateString();
         
         const welcomeMsg = isRenewal 
-          ? `*MBUDDY GYM - MEMBERSHIP RENEWED* 🔄\n\n` +
+          ? `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
             `Hello *${name}*, thank you for continuing your journey with us! 💪\n\n` +
             `*RENEWAL DETAILS:*\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -92,8 +108,8 @@ export const MessageScreen = () => {
             `📅 *New Expiry:* ${expiryDate}\n` +
             `━━━━━━━━━━━━━━━━━━━━\n\n` +
             `*Let's push your limits again!* 🚀`
-          : `*MBUDDY GYM - WELCOME KIT* 🧾\n\n` +
-            `Hello *${name}*, welcome to MBUDDY GYM! 💪\n\n` +
+          : `*${gymName.toUpperCase()} - WELCOME KIT* 🧾\n\n` +
+            `Hello *${name}*, welcome to ${gymName}! 💪\n\n` +
             `*MEMBERSHIP DETAILS:*\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
             `📱 *Phone:* ${finalPhone}\n` +

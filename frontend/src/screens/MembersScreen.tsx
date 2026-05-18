@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Linking, Alert, ScrollView } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
@@ -16,6 +17,7 @@ export const MembersScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [renewalDuration, setRenewalDuration] = useState('1');
+  const [gymName, setGymName] = useState('MBUDDY GYM');
 
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);
@@ -33,6 +35,18 @@ export const MembersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchMembers();
+      
+      const loadGymName = async () => {
+        try {
+          const storedName = await AsyncStorage.getItem('gymName');
+          if (storedName) {
+            setGymName(storedName);
+          }
+        } catch (e) {
+          console.log('Failed to load gymName', e);
+        }
+      };
+      loadGymName();
     }, [fetchMembers])
   );
 
@@ -99,7 +113,7 @@ export const MembersScreen = () => {
             
             const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
             const msg = 
-              `*MBUDDY GYM - MEMBERSHIP RENEWED* 🔄\n\n` +
+              `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
               `Hello *${member.full_name}*, thank you for continuing your journey with us! 💪\n\n` +
               `*RENEWAL DETAILS:*\n` +
               `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -255,9 +269,9 @@ export const MembersScreen = () => {
         onConfirm={alertConfig.onConfirm}
       >
         {alertConfig.isRenewalPicker && (
-          <View style={{ width: '100%', marginBottom: 20 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8, fontWeight: '700' }}>CHOOSE DURATION</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View style={{ width: '100%', marginBottom: 15, marginTop: -10 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 10, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5 }}>CHOOSE DURATION</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
               {['1', '2', '3', '6', '12'].map(dur => (
                 <TouchableOpacity 
                   key={dur}
@@ -266,15 +280,17 @@ export const MembersScreen = () => {
                     setAlertConfig({ ...alertConfig, onConfirm: () => confirmRenewal(dur) });
                   }}
                   style={{
-                    backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.05)',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 10,
-                    minWidth: 45,
-                    alignItems: 'center'
+                    backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.06)',
+                    paddingVertical: 8,
+                    paddingHorizontal: 10,
+                    borderRadius: 8,
+                    minWidth: 44,
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.1)'
                   }}
                 >
-                  <Text style={{ color: renewalDuration === dur ? '#fff' : 'rgba(255,255,255,0.7)', fontWeight: '700' }}>{dur}M</Text>
+                  <Text style={{ color: renewalDuration === dur ? '#fff' : 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '800' }}>{dur}M</Text>
                 </TouchableOpacity>
               ))}
             </View>

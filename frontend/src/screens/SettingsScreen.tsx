@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, borderRadius } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
@@ -9,6 +11,7 @@ import { api } from '../services/api';
 import * as DocumentPicker from 'expo-document-picker';
 
 export const SettingsScreen = () => {
+  const router = useRouter();
   const [gymName, setGymName] = useState('MBUDDY GYM');
   const [address, setAddress] = useState('Premium Health Club');
   const [phone, setPhone] = useState('');
@@ -170,6 +173,32 @@ export const SettingsScreen = () => {
               <Text style={[styles.actionButtonText, { color: colors.primary }]}>Restore / Import</Text>
             </TouchableOpacity>
           </View>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.25)', borderStyle: 'solid', height: 46 }]} 
+            onPress={() => {
+              Alert.alert(
+                'Deactivate Gym Session',
+                'Are you sure you want to log out and disconnect this gym database from this device?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Logout & Disconnect', 
+                    style: 'destructive',
+                    onPress: async () => {
+                      await AsyncStorage.clear();
+                      router.replace('/login');
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Text style={[styles.actionButtonText, { color: colors.error }]}>Disconnect Gym Session 🔌</Text>
+          </TouchableOpacity>
+
         </GlassCard>
       </ScrollView>
     </View>

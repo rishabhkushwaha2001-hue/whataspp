@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
@@ -13,6 +14,7 @@ export const RemindersScreen = () => {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [gymName, setGymName] = useState('MBUDDY GYM');
   const router = useRouter();
 
   const applyFilters = useCallback((data: any[], searchText: string) => {
@@ -54,6 +56,18 @@ export const RemindersScreen = () => {
     useCallback(() => {
       fetchDueMembers();
 
+      const loadGymName = async () => {
+        try {
+          const storedName = await AsyncStorage.getItem('gymName');
+          if (storedName) {
+            setGymName(storedName);
+          }
+        } catch (e) {
+          console.log('Failed to load gymName', e);
+        }
+      };
+      loadGymName();
+
       // Auto-refresh every 60 seconds while focused
       const interval = setInterval(fetchDueMembers, 60000);
 
@@ -69,7 +83,7 @@ export const RemindersScreen = () => {
   const sendReminder = async (member: any) => {
     const dueDate = new Date(member.next_due_date).toLocaleDateString();
     const message = 
-      `*MBUDDY GYM - RENEWAL REMINDER* 🔔\n\n` +
+      `*${gymName.toUpperCase()} - RENEWAL REMINDER* 🔔\n\n` +
       `Hello *${member.full_name}* 💪,\n\n` +
       `We hope you're crushing your fitness goals! This is a friendly reminder that your membership is due for renewal.\n\n` +
       `*DUE DATE:* ${dueDate} 📅\n` +
@@ -144,7 +158,7 @@ export const RemindersScreen = () => {
             fetchDueMembers();
             
             const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-            const msg = `Hi ${member.full_name} 💪\n\nThank you for renewing your membership at MBUDDY GYM! 🎉\n\nPayment Received: ₹${finalAmount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
+            const msg = `Hi ${member.full_name} 💪\n\nThank you for renewing your membership at ${gymName}! 🎉\n\nPayment Received: ₹${finalAmount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
             const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
             const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(msg)}`;
             
