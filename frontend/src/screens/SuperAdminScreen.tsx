@@ -7,6 +7,7 @@ import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 
 export const SuperAdminScreen = () => {
   const [gyms, setGyms] = useState<any[]>([]);
@@ -133,8 +134,6 @@ export const SuperAdminScreen = () => {
 
       // Ask to send the activation details on WhatsApp
       const actMsg = res.data.notifications.activation;
-      const whatsappPhone = phone.trim().length === 10 ? '91' + phone.trim() : phone.trim();
-      const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(actMsg)}`;
 
       setAlertConfig({
         visible: true,
@@ -144,11 +143,9 @@ export const SuperAdminScreen = () => {
         confirmText: 'Send WhatsApp',
         onConfirm: async () => {
           setAlertConfig({ visible: false });
-          const supported = await Linking.canOpenURL(url);
-          if (supported) {
-            await Linking.openURL(url);
-          } else {
-            Alert.alert('Error', 'WhatsApp is not installed on this device.');
+          const success = await sendWhatsAppMessage(phone, actMsg);
+          if (!success) {
+            Alert.alert('Error', 'WhatsApp could not be launched on this device.');
           }
         }
       });
@@ -189,8 +186,6 @@ export const SuperAdminScreen = () => {
 
       // Prompt to send renewal receipt
       const receiptMsg = res.data.notification;
-      const whatsappPhone = selectedGym.phone.length === 10 ? '91' + selectedGym.phone : selectedGym.phone;
-      const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(receiptMsg)}`;
 
       setAlertConfig({
         visible: true,
@@ -200,10 +195,7 @@ export const SuperAdminScreen = () => {
         confirmText: 'WhatsApp Notification',
         onConfirm: async () => {
           setAlertConfig({ visible: false });
-          const supported = await Linking.canOpenURL(url);
-          if (supported) {
-            await Linking.openURL(url);
-          }
+          await sendWhatsAppMessage(selectedGym.phone, receiptMsg);
         }
       });
     } catch (error) {
@@ -242,13 +234,8 @@ export const SuperAdminScreen = () => {
       setWhatsappModal(false);
       setCustomMsg('');
 
-      const whatsappPhone = selectedGym.phone.length === 10 ? '91' + selectedGym.phone : selectedGym.phone;
-      const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(res.data.message_body)}`;
-      
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
+      const success = await sendWhatsAppMessage(selectedGym.phone, res.data.message_body);
+      if (!success) {
         Alert.alert('Log Success', 'WhatsApp log recorded but could not launch WhatsApp on this device.');
       }
     } catch (error) {
@@ -618,15 +605,9 @@ export const SuperAdminScreen = () => {
                     <TouchableOpacity 
                       style={[styles.smallBtn, { backgroundColor: item.sent ? 'rgba(16,185,129,0.15)' : colors.primary }]}
                       onPress={async () => {
-                        const whatsappPhone = item.phone.length === 10 ? '91' + item.phone : item.phone;
-                        const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(item.message)}`;
-                        
                         try {
                           await api.post(`/super-admin/whatsapp-logs/${item._id}/sent`);
-                          const supported = await Linking.canOpenURL(url);
-                          if (supported) {
-                            await Linking.openURL(url);
-                          }
+                          await sendWhatsAppMessage(item.phone, item.message);
                           // Refresh logs
                           const freshRes = await api.get('/super-admin/whatsapp-logs');
                           setWhatsappLogs(freshRes.data);

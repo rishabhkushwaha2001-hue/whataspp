@@ -7,6 +7,7 @@ import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 
 export const RemindersScreen = () => {
   const [members, setMembers] = useState<any[]>([]);
@@ -90,8 +91,6 @@ export const RemindersScreen = () => {
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
       `*Don't break the momentum!* Secure your spot and continue your transformation journey today. 🚀\n\n` +
       `See you at the gym! 🏋️‍♂️`;
-    const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
-    const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(message)}`;
     
     try {
       await api.post('/messages/log', {
@@ -100,11 +99,9 @@ export const RemindersScreen = () => {
         status: 'sent'
       });
       
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        setAlertConfig({ visible: true, title: 'WhatsApp Error', message: 'WhatsApp app not found on this device. Please install it first.', type: 'error' });
+      const success = await sendWhatsAppMessage(member.phone, message);
+      if (!success) {
+        setAlertConfig({ visible: true, title: 'WhatsApp Error', message: 'WhatsApp app could not be opened on this device. Please install it first.', type: 'error' });
       }
     } catch (error: any) {
       console.error('Log or Link failed', error);
@@ -116,12 +113,13 @@ export const RemindersScreen = () => {
         showCancel: true,
         cancelText: 'Cancel',
         confirmText: 'Try Anyway',
-        onConfirm: () => {
+        onConfirm: async () => {
           setAlertConfig({ visible: false });
-          setTimeout(() => {
-            Linking.openURL(url).catch(() => {
+          setTimeout(async () => {
+            const success = await sendWhatsAppMessage(member.phone, message);
+            if (!success) {
               setAlertConfig({ visible: true, title: 'Error', message: 'Invalid WhatsApp Number or Link', type: 'error' });
-            });
+            }
           }, 500);
         }
       });
@@ -159,8 +157,6 @@ export const RemindersScreen = () => {
             
             const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
             const msg = `Hi ${member.full_name} 💪\n\nThank you for renewing your membership at ${gymName}! 🎉\n\nPayment Received: ₹${finalAmount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
-            const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
-            const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(msg)}`;
             
             setAlertConfig({
                 visible: true, 
@@ -170,8 +166,8 @@ export const RemindersScreen = () => {
                 confirmText: "Send Receipt",
                 onConfirm: () => {
                   setAlertConfig({ visible: false });
-                  setTimeout(() => {
-                    Linking.openURL(url).catch(() => console.log('WhatsApp error'));
+                  setTimeout(async () => {
+                    await sendWhatsAppMessage(member.phone, msg);
                   }, 100);
                 },
                 onClose: () => setAlertConfig({ visible: false })

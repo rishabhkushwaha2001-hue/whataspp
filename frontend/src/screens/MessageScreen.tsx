@@ -9,6 +9,7 @@ import { DatePickerModal } from '../components/DatePickerModal';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 
 export const MessageScreen = () => {
   const [name, setName] = useState('');
@@ -133,10 +134,8 @@ export const MessageScreen = () => {
           'success'
         );
         
-        setTimeout(() => {
-          const whatsappPhone = finalPhone.length === 10 ? '91' + finalPhone : finalPhone;
-          const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(welcomeMsg)}`;
-          Linking.openURL(url).catch(() => console.log('WhatsApp not found'));
+        setTimeout(async () => {
+          await sendWhatsAppMessage(finalPhone, welcomeMsg);
           clearForm();
         }, 1500);
 

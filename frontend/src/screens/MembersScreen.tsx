@@ -7,6 +7,7 @@ import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 
 export const MembersScreen = () => {
   const router = useRouter();
@@ -122,8 +123,6 @@ export const MembersScreen = () => {
               `📅 *New Expiry:* ${nextDue}\n` +
               `━━━━━━━━━━━━━━━━━━━━\n\n` +
               `*Let's push your limits again!* 🚀`;
-            const whatsappPhone = member.phone.length === 10 ? '91' + member.phone : member.phone;
-            const url = `whatsapp://send?phone=${whatsappPhone}&text=${encodeURIComponent(msg)}`;
             
             setAlertConfig({
                 visible: true, 
@@ -133,8 +132,8 @@ export const MembersScreen = () => {
                 confirmText: "Send Receipt",
                 onConfirm: () => {
                   setAlertConfig({ visible: false });
-                  setTimeout(() => {
-                    Linking.openURL(url).catch(() => console.log('WhatsApp error'));
+                  setTimeout(async () => {
+                    await sendWhatsAppMessage(member.phone, msg);
                   }, 100);
                 },
                 onClose: () => setAlertConfig({ visible: false })
@@ -233,9 +232,8 @@ export const MembersScreen = () => {
               <FontAwesome name="phone" size={14} color={colors.primary} />
               <Text style={styles.actionText}>Call</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => {
-              const whatsappPhone = item.phone.length === 10 ? '91' + item.phone : item.phone;
-              Linking.openURL(`whatsapp://send?phone=${whatsappPhone}`);
+            <TouchableOpacity style={styles.actionBtn} onPress={async () => {
+              await sendWhatsAppMessage(item.phone);
             }}>
               <FontAwesome name="whatsapp" size={14} color={colors.success} />
               <Text style={styles.actionText}>WhatsApp</Text>
