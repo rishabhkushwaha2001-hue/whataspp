@@ -75,8 +75,8 @@ class MessageInDB(MessageCreate):
     sent_at: datetime = Field(default_factory=datetime.utcnow)
 
 class GymSettings(BaseModel):
-    gym_name: str = "MBUDDY GYM"
-    address: Optional[str] = "Premium Health Club"
+    gym_name: str = "Gym Name"
+    address: Optional[str] = "Gym Address"
     phone: Optional[str] = None
     logo_url: Optional[str] = None
     email: Optional[str] = None

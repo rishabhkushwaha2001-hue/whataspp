@@ -26,7 +26,7 @@ export const MessageScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isManual, setIsManual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [gymName, setGymName] = useState('MBUDDY GYM');
+  const [gymName, setGymName] = useState('Gym');
 
   const [alertConfig, setAlertConfig] = useState<{visible: boolean, title: string, message: string, type: 'success' | 'error'}>({
     visible: false, title: '', message: '', type: 'success'

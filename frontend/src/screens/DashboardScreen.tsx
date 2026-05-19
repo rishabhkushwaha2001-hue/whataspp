@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Linking, Alert } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
@@ -108,6 +109,25 @@ export const DashboardScreen = () => {
   };
 
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [cachedGymName, setCachedGymName] = useState<string>('Gym Dashboard');
+  const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
+
+  // Load cached gym info instantly on mount to avoid hardcoded 'MBUDDY GYM' blink
+  useFocusEffect(
+    useCallback(() => {
+      const loadCachedInfo = async () => {
+        try {
+          const name = await AsyncStorage.getItem('gymName');
+          const address = await AsyncStorage.getItem('gymAddress'); // optional fallback
+          if (name) setCachedGymName(name);
+          if (address) setCachedAddress(address);
+        } catch (e) {
+          console.log('Failed to read storage cache on dashboard');
+        }
+      };
+      loadCachedInfo();
+    }, [])
+  );
 
   const handleReset = () => {
     setAlertConfig({
@@ -153,8 +173,8 @@ export const DashboardScreen = () => {
       />
       <View style={styles.header}>
         <TouchableOpacity onLongPress={handleReset} delayLongPress={2000}>
-          <Text style={styles.greeting}>{gymSettings?.gym_name || 'MBUDDY GYM'}</Text>
-          <Text style={styles.subtitle}>{gymSettings?.address || 'Premium CRM Analytics'}</Text>
+          <Text style={styles.greeting}>{gymSettings?.gym_name || cachedGymName}</Text>
+          <Text style={styles.subtitle}>{gymSettings?.address || cachedAddress}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.profileBtn}>
           <LinearGradient colors={[colors.primary, colors.secondary]} style={styles.avatar}>

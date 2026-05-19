@@ -17,7 +17,7 @@ export const MembersScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [renewalDuration, setRenewalDuration] = useState('1');
-  const [gymName, setGymName] = useState('MBUDDY GYM');
+  const [gymName, setGymName] = useState('Gym');
 
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);

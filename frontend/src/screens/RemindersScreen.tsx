@@ -14,7 +14,7 @@ export const RemindersScreen = () => {
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
-  const [gymName, setGymName] = useState('MBUDDY GYM');
+  const [gymName, setGymName] = useState('Gym');
   const router = useRouter();
 
   const applyFilters = useCallback((data: any[], searchText: string) => {

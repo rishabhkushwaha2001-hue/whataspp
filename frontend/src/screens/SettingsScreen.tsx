@@ -12,8 +12,8 @@ import * as DocumentPicker from 'expo-document-picker';
 
 export const SettingsScreen = () => {
   const router = useRouter();
-  const [gymName, setGymName] = useState('MBUDDY GYM');
-  const [address, setAddress] = useState('Premium Health Club');
+  const [gymName, setGymName] = useState('Gym');
+  const [address, setAddress] = useState('Gym Center');
   const [phone, setPhone] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);

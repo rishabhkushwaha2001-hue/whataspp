@@ -21,7 +21,6 @@
     "updates": {
       "url": "https://u.expo.dev/8c31adb0-9041-4a70-8fda-531f1582b72e"
     },
-
     "ios": {
       "supportsTablet": true
     },
@@ -42,8 +41,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5b1b705d-43a1-491e-979e-ef66eae0dde5"
+        "projectId": "8b080331-6de2-493f-b127-966283f16220"
       }
-    }
+    },
+    "owner": "kushmayank2001"
   }
 }
