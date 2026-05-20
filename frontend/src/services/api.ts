@@ -1,6 +1,7 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 
 // ✅ RENDER PRODUCTION URL (Active)
 const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
@@ -38,10 +39,45 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.code === 'ECONNABORTED') {
       console.warn('API Timeout - Server might be sleeping');
     }
+    
+    // Auto logout if account is suspended, deleted, or unauthorized (401 or 403 status)
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      const configUrl = error.config?.url || '';
+      const isAuthRoute = configUrl.includes('/auth/verify-phone') || 
+                          configUrl.includes('/auth/activate') || 
+                          configUrl.includes('/super-admin/login');
+                          
+      if (!isAuthRoute) {
+        const errorMsg = error.response.data?.detail || 'Your session has expired or your account has been suspended.';
+        
+        try {
+          // Clear session data
+          await AsyncStorage.clear();
+          
+          // Show alert and redirect on OK click
+          Alert.alert(
+            'Session Terminated',
+            errorMsg,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  router.replace('/login');
+                }
+              }
+            ],
+            { cancelable: false }
+          );
+        } catch (e) {
+          console.error('Failed to log out user automatically', e);
+        }
+      }
+    }
+    
     return Promise.reject(error);
   }
 );

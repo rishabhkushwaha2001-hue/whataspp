@@ -50,33 +50,22 @@ export const DashboardScreen = () => {
   const fetchDashboardData = useCallback(async (currentPeriod = period) => {
     setRefreshing(true);
     try {
-      const statsRes = await api.get(`/members/stats/dashboard?period=${currentPeriod}`);
-      setStats(statsRes.data);
+      const [statsRes, attendanceRes, historyRes, settingsRes] = await Promise.all([
+        api.get(`/members/stats/dashboard?period=${currentPeriod}`).catch(e => { console.warn('Stats fetch failed', e); return null; }),
+        api.get('/members/attendance/today').catch(e => { console.warn('Attendance fetch failed', e); return null; }),
+        api.get('/messages/history?limit=4').catch(e => { console.warn('History fetch failed', e); return null; }),
+        api.get('/settings/').catch(e => { console.warn('Settings fetch failed', e); return null; })
+      ]);
+      
+      if (statsRes) setStats(statsRes.data);
+      if (attendanceRes) setAttendance(attendanceRes.data);
+      if (historyRes) setRecentMessages(historyRes.data);
+      if (settingsRes) setGymSettings(settingsRes.data);
     } catch (error) {
-      console.warn('Dashboard stats fetch failed', error);
+      console.warn('Dashboard parallel fetch error', error);
+    } finally {
+      setRefreshing(false);
     }
-
-    try {
-      const attendanceRes = await api.get('/members/attendance/today');
-      setAttendance(attendanceRes.data);
-    } catch (error) {
-      console.warn('Attendance fetch failed');
-    }
-
-    try {
-      const historyRes = await api.get('/messages/history?limit=4');
-      setRecentMessages(historyRes.data);
-    } catch (error) {
-      console.warn('History fetch failed', error);
-    }
-
-    try {
-      const settingsRes = await api.get('/settings/');
-      setGymSettings(settingsRes.data);
-    } catch (error) {
-      console.warn('Settings fetch failed');
-    }
-    setRefreshing(false);
   }, [period]);
 
   useFocusEffect(
