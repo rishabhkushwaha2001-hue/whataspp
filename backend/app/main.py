@@ -10,7 +10,9 @@ from api.messages import router as messages_router
 from api.settings import router as settings_router
 from api.super_admin import router as super_admin_router
 from api.auth import router as auth_router
-from database import client, tenant_db_var
+from database import client, tenant_db_var, super_admin_db
+from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
 
 app = FastAPI(title="WhatsApp Gym Management")
 
@@ -26,6 +28,37 @@ app.add_middleware(
 @app.middleware("http")
 async def tenant_middleware(request, call_next):
     x_tenant_id = request.headers.get("x-tenant-id") or request.headers.get("X-Tenant-ID")
+    
+    # If a tenant header is provided and it is not the super admin, verify the status of this tenant
+    if x_tenant_id and x_tenant_id != "super_admin":
+        try:
+            gym = await super_admin_db["gyms"].find_one({"gym_id": x_tenant_id})
+            if not gym:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Your gym account has been deleted. Please contact Super Admin."}
+                )
+            
+            if gym.get("status") in ["inactive", "suspended"]:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Your gym account is currently {gym.get('status')}. Please contact Super Admin."}
+                )
+                
+            # Check Plan Expiry
+            now = datetime.now(timezone.utc)
+            expiry = gym.get("plan_expiry")
+            if expiry:
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if expiry < now:
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Your subscription plan has expired! Please contact Super Admin for renewal."}
+                    )
+        except Exception as e:
+            print(f"Error in tenant verification middleware: {e}")
+
     token = None
     if x_tenant_id:
         tenant_db = client[f"gym_{x_tenant_id}"]

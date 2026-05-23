@@ -127,7 +127,7 @@ export const SettingsScreen = () => {
         <GlassCard style={styles.card}>
           <ModernInput
             label="Gym Name"
-            placeholder="e.g. MBUDDY GYM"
+            placeholder="e.g. Gym"
             value={gymName}
             onChangeText={setGymName}
           />

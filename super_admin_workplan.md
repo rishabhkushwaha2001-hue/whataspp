@@ -87,7 +87,7 @@ Stores global records, gym mappings, billing schedules, and global notification 
   "activation_code": "KGM-ACT-9Z2X",
   "owner_name": "Rishabh Kushwaha",
   "phone": "8081161524",
-  "gym_name": "MBUDDY GYM",
+  "gym_name": "Gym",
   "address": "Premium Health Club, Lucknow",
   "plan_duration_months": 12,
   "plan_price": 12000.00,
@@ -102,7 +102,7 @@ Stores global records, gym mappings, billing schedules, and global notification 
 {
   "_id": "ObjectId",
   "phone": "8081161524",
-  "message": "*MBUDDY - REGISTRATION SUCCESSFUL*...",
+  "message": "*GYM - REGISTRATION SUCCESSFUL*...",
   "type": "registration_success", // registration_success, activation_details, custom_manual
   "logged_at": "ISODate('2026-05-17T19:30:00Z')",
   "sent": true // marked true once forwarded via WhatsApp
@@ -131,10 +131,10 @@ Each gym partner has a dedicated database, fully isolated from other gyms.
 
 *   **POST `/verify-phone`**
     *   *Payload:* `{"phone": "8081161524"}`
-    *   *Response (200):* `{"status": "success", "gym_name": "MBUDDY GYM", "owner_name": "Rishabh Kushwaha"}`
+    *   *Response (200):* `{"status": "success", "gym_name": "Gym", "owner_name": "Rishabh Kushwaha"}`
 *   **POST `/activate`**
     *   *Payload:* `{"phone": "8081161524", "activation_code": "KGM-ACT-9Z2X"}`
-    *   *Response (200):* `{"status": "success", "gym_id": "KGM_201", "gym_name": "MBUDDY GYM"}`
+    *   *Response (200):* `{"status": "success", "gym_id": "KGM_201", "gym_name": "Gym"}`
 
 ### B. Super Admin Control Panel (`/api/v1/super-admin`)
 
@@ -181,7 +181,7 @@ All notifications are generated on the server and logged in `whatsapp_logs`. Sup
 
 ### 1. Registration Success Template
 ```text
-*MBUDDY - REGISTRATION SUCCESSFUL* 🎉
+*GYM - REGISTRATION SUCCESSFUL* 🎉
 
 Dear *[Owner Name]*,
 
@@ -190,7 +190,7 @@ Your mobile number *[Phone]* has been registered successfully as the Gym Owner o
 
 ### 2. Activation Details Template
 ```text
-*MBUDDY - ACTIVATION DETAILS* 🔑
+*GYM - ACTIVATION DETAILS* 🔑
 
 Hi *[Owner Name]* 💪,
 Your separate database has been created successfully!
@@ -210,7 +210,7 @@ Welcome to the premium club management experience! 🏋️‍♂️
 
 ### 3. Subscription Renewal Template
 ```text
-*MBUDDY - SUBSCRIPTION RENEWED* ✅
+*GYM - SUBSCRIPTION RENEWED* ✅
 
 Hi *[Owner Name]* 🎉,
 Your subscription for *[Gym Name]* has been successfully renewed!

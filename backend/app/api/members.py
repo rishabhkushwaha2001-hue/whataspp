@@ -428,7 +428,7 @@ async def get_receipt(member_id: str) -> HTMLResponse:
         
     # Fetch gym settings
     settings = await db["settings"].find_one({"type": "gym_profile"}) or {}
-    gym_name = settings.get("gym_name", "MBUDDY GYM")
+    gym_name = settings.get("gym_name", "Gym")
     gym_address = settings.get("address", "Premium Health Club")
     
     # Get last payment

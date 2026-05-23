@@ -101,7 +101,7 @@ export const DashboardScreen = () => {
   const [cachedGymName, setCachedGymName] = useState<string>('Gym Dashboard');
   const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
 
-  // Load cached gym info instantly on mount to avoid hardcoded 'MBUDDY GYM' blink
+  // Load cached gym info instantly on mount to avoid hardcoded 'Gym' blink
   useFocusEffect(
     useCallback(() => {
       const loadCachedInfo = async () => {
