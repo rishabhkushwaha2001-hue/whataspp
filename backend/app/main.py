@@ -1,5 +1,7 @@
 import sys
 import os
+import asyncio
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # Ensure the 'app' directory is in the python path
@@ -29,8 +31,11 @@ app.add_middleware(
 async def tenant_middleware(request, call_next):
     x_tenant_id = request.headers.get("x-tenant-id") or request.headers.get("X-Tenant-ID")
     
+    # Skip tenant validation for auth routes to allow login even with stale tenant IDs
+    is_auth_route = request.url.path.startswith("/api/v1/auth")
+    
     # If a tenant header is provided and it is not the super admin, verify the status of this tenant
-    if x_tenant_id and x_tenant_id != "super_admin":
+    if x_tenant_id and x_tenant_id != "super_admin" and not is_auth_route:
         try:
             gym = await super_admin_db["gyms"].find_one({"gym_id": x_tenant_id})
             if not gym:
@@ -79,6 +84,21 @@ async def startup_db_client():
         print("Connected successfully to MongoDB")
     except Exception as e:
         print(f"Could not connect to MongoDB: {e}")
+        
+    # Start the keep-alive background task
+    asyncio.create_task(keep_alive_task())
+
+async def keep_alive_task():
+    url = "https://whataspp-0u22.onrender.com/"
+    while True:
+        try:
+            async with httpx.AsyncClient() as http_client:
+                await http_client.get(url)
+                print(f"Keep-alive ping sent to {url} to prevent Render from sleeping")
+        except Exception as e:
+            print(f"Keep-alive ping failed: {e}")
+        # Wait for 14 minutes (840 seconds)
+        await asyncio.sleep(840)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
