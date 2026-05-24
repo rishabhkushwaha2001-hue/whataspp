@@ -12,6 +12,13 @@ from database import get_database
 router = APIRouter()
 
 async def generate_member_id(db) -> str:
+    last_member = await db["members"].find_one(sort=[("_id", -1)])
+    if last_member and "member_id" in last_member and last_member["member_id"].startswith("GYM-"):
+        try:
+            last_id = int(last_member["member_id"].split("-")[1])
+            return f"GYM-{last_id + 1}"
+        except:
+            pass
     count = await db["members"].count_documents({})
     return f"GYM-{1000 + count + 1}"
 

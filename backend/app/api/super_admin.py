@@ -40,6 +40,13 @@ def generate_activation_code() -> str:
 
 # Helper to generate unique Gym ID
 async def generate_gym_id() -> str:
+    last_gym = await super_admin_db["gyms"].find_one(sort=[("_id", -1)])
+    if last_gym and "gym_id" in last_gym and last_gym["gym_id"].startswith("KGM_"):
+        try:
+            last_id = int(last_gym["gym_id"].split("_")[1])
+            return f"KGM_{last_id + 1}"
+        except:
+            pass
     count = await super_admin_db["gyms"].count_documents({})
     return f"KGM_{200 + count + 1}"
 
