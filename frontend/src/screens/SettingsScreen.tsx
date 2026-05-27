@@ -43,6 +43,9 @@ export const SettingsScreen = () => {
         phone: phone,
         logo_url: logoUrl,
       });
+      // BUG FIX: Update AsyncStorage cache so Dashboard reflects new name instantly
+      await AsyncStorage.setItem('gymName', gymName);
+      await AsyncStorage.setItem('gymAddress', address);
       Alert.alert('Success', 'Gym Profile updated successfully!');
     } catch (error) {
       console.error('Error updating settings:', error);

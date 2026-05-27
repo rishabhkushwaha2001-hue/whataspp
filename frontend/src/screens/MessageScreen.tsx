@@ -161,6 +161,11 @@ export const MessageScreen = () => {
   const clearForm = () => {
     setName(''); setPhone(''); setAmount(''); setAge(''); setWeight('');
     setAddress(''); setNotes(''); setTrainer('General');
+    setDuration('1');         // Reset plan duration to 1 month
+    setGender('Male');        // Reset gender
+    setPaymentMode('Cash');   // Reset payment mode
+    setIsManual(false);       // Reset manual toggle
+    setJoiningDate(new Date().toISOString().split('T')[0]); // Reset to today
   };
 
   const Selector = ({ options, selected, onSelect, label }: any) => (

@@ -121,25 +121,41 @@ export const DashboardScreen = () => {
   const handleReset = () => {
     setAlertConfig({
       visible: true,
-      title: "⚠️ Reset Database",
-      message: "Are you sure you want to DELETE ALL members, payments, and attendance records? This cannot be undone.",
-      type: "warning",
+      title: "⚠️ Danger Zone",
+      message: "Are you sure you want to DELETE ALL members, payments, and attendance records? This cannot be undone.\n\nType this action carefully — this will PERMANENTLY WIPE your entire gym database.",
+      type: "error",
       showCancel: true,
-      confirmText: "YES, DELETE ALL",
+      cancelText: "Cancel (Safe)",
+      confirmText: "YES, WIPE ALL DATA",
       onConfirm: async () => {
         setAlertConfig({ visible: false });
-        try {
-          await api.post('/members/admin/reset-database');
-          setTimeout(() => {
-            setAlertConfig({ visible: true, title: "Success", message: "Database has been cleared.", type: "success", showCancel: false, confirmText: "OK", onConfirm: undefined });
-          }, 500);
-          fetchDashboardData();
-        } catch (error: any) {
-          const errMsg = error.response?.data?.detail || error.message;
-          setTimeout(() => {
-            setAlertConfig({ visible: true, title: "Error", message: `Failed to reset database: ${errMsg}`, type: "error", showCancel: false, confirmText: "OK", onConfirm: undefined });
-          }, 500);
-        }
+        // Second confirmation to prevent accidental wipe
+        setTimeout(() => {
+          setAlertConfig({
+            visible: true,
+            title: "⚠️ FINAL WARNING",
+            message: "Last chance! This will delete ALL your members and payment history permanently. Are you 100% sure?",
+            type: "error",
+            showCancel: true,
+            cancelText: "NO, Go Back",
+            confirmText: "DELETE EVERYTHING",
+            onConfirm: async () => {
+              setAlertConfig({ visible: false });
+              try {
+                await api.post('/members/admin/reset-database');
+                setTimeout(() => {
+                  setAlertConfig({ visible: true, title: "Cleared", message: "Database has been cleared.", type: "success", showCancel: false, confirmText: "OK", onConfirm: undefined });
+                }, 500);
+                fetchDashboardData();
+              } catch (error: any) {
+                const errMsg = error.response?.data?.detail || error.message;
+                setTimeout(() => {
+                  setAlertConfig({ visible: true, title: "Error", message: `Failed to reset database: ${errMsg}`, type: "error", showCancel: false, confirmText: "OK", onConfirm: undefined });
+                }, 500);
+              }
+            }
+          });
+        }, 300);
       }
     });
   };
@@ -161,7 +177,7 @@ export const DashboardScreen = () => {
         onConfirm={alertConfig.onConfirm}
       />
       <View style={styles.header}>
-        <TouchableOpacity onLongPress={handleReset} delayLongPress={2000}>
+        <TouchableOpacity onLongPress={handleReset} delayLongPress={5000}>
           <Text style={styles.greeting}>{gymSettings?.gym_name || cachedGymName}</Text>
           <Text style={styles.subtitle}>{gymSettings?.address || cachedAddress}</Text>
         </TouchableOpacity>

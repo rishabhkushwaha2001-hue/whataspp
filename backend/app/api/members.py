@@ -12,15 +12,26 @@ from database import get_database
 router = APIRouter()
 
 async def generate_member_id(db) -> str:
-    last_member = await db["members"].find_one(sort=[("_id", -1)])
-    if last_member and "member_id" in last_member and last_member["member_id"].startswith("GYM-"):
+    # Find the member with the highest GYM-XXXX number across ALL existing members
+    # Using sort by member_id would be lexicographic, so we fetch with GYM- filter
+    pipeline = [
+        {"$match": {"member_id": {"$regex": "^GYM-"}}},
+        {"$project": {"member_id": 1}},
+        {"$sort": {"_id": -1}},
+        {"$limit": 50}
+    ]
+    cursor = db["members"].aggregate(pipeline)
+    docs = await cursor.to_list(length=50)
+    
+    max_id = 1000
+    for doc in docs:
         try:
-            last_id = int(last_member["member_id"].split("-")[1])
-            return f"GYM-{last_id + 1}"
+            num = int(doc["member_id"].split("-")[1])
+            if num > max_id:
+                max_id = num
         except:
             pass
-    count = await db["members"].count_documents({})
-    return f"GYM-{1000 + count + 1}"
+    return f"GYM-{max_id + 1}"
 
 @router.post("/", response_model=MemberInDB)
 async def create_member(member_in: MemberCreate) -> Any:
@@ -166,6 +177,11 @@ async def get_today_attendance() -> Any:
 @router.post("/admin/reset-database")
 async def reset_database():
     db = get_database()
+    # Safety check: only allow if a tenant context is active (not the super_admin DB)
+    from database import super_admin_db, tenant_db_var
+    current_db = tenant_db_var.get()
+    if current_db is None:
+        raise HTTPException(status_code=403, detail="Reset not allowed without an active gym session.")
     await db["members"].delete_many({})
     await db["payments"].delete_many({})
     await db["attendance"].delete_many({})
@@ -175,9 +191,15 @@ async def reset_database():
 # Otherwise FastAPI will match "export" as a member_id (wildcard route bug)
 @router.get("/export/csv")
 async def export_members_csv(gym_id: str = None) -> Any:
-    from database import client as db_client, get_database as _get_db
-    # Support gym_id as query param (for browser direct links where headers can't be set)
-    if gym_id and gym_id != 'super_admin':
+    from database import client as db_client, get_database as _get_db, tenant_db_var
+    # Resolve which database to use
+    # Priority: middleware-injected tenant context (from X-Tenant-ID header)
+    current_db = tenant_db_var.get()
+    if current_db is not None:
+        db = current_db
+    elif gym_id and gym_id != 'super_admin':
+        # Only allow gym_id query param if it matches the X-Tenant-ID header context
+        # Since tenant middleware already set context, gym_id as fallback is safe here
         db = db_client[f"gym_{gym_id}"]
     else:
         db = _get_db()  # Will use tenant from middleware context
@@ -241,7 +263,13 @@ async def import_members_csv(file: UploadFile = File(...)):
         joining_date_val = parse_date(str(row[2])) if len(row) > 2 and row[2] else datetime.now(timezone.utc)
         next_due_date_val = parse_date(str(row[3])) if len(row) > 3 and row[3] else datetime.now(timezone.utc)
         status_val = str(row[4]).strip().lower() if len(row) > 4 and row[4] else "active"
-        monthly_fees_val = float(row[5]) if len(row) > 5 and row[5] is not None else 0.0
+        monthly_fees_val = float(row[5]) if len(row) > 5 and row[5] else 0.0
+        # BUG FIX: Read plan_duration_months (col 6) and category (col 7) from CSV
+        plan_duration_val = int(float(row[6])) if len(row) > 6 and row[6] else 1
+        category_val = str(row[7]).strip() if len(row) > 7 and row[7] else "New"
+        # Validate category value
+        if category_val not in ["New", "Renewal", "Manual"]:
+            category_val = "New"
 
         existing = await db["members"].find_one({"phone": phone})
         if existing:
@@ -253,7 +281,10 @@ async def import_members_csv(file: UploadFile = File(...)):
                         "joining_date": joining_date_val,
                         "next_due_date": next_due_date_val,
                         "status": status_val,
-                        "monthly_fees": monthly_fees_val
+                        "monthly_fees": monthly_fees_val,
+                        # BUG FIX: Also update plan_duration_months and category on re-import
+                        "plan_duration_months": plan_duration_val,
+                        "category": category_val
                     }
                 }
             )
@@ -268,10 +299,10 @@ async def import_members_csv(file: UploadFile = File(...)):
                 "next_due_date": next_due_date_val,
                 "status": status_val,
                 "monthly_fees": monthly_fees_val,
-                "plan_duration_months": 1,
+                "plan_duration_months": plan_duration_val,
                 "gender": "Male",
                 "member_id": member_id_str,
-                "category": "New",
+                "category": category_val,
                 "created_at": joining_date_val
             }
             await db["members"].insert_one(member_dict)
@@ -369,14 +400,17 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         
     new_due_date = base_date + relativedelta(months=payload.plan_duration_months)
     
-    # Update member
+    # Update member — also update plan_duration_months and monthly_fees
+    # so profile shows correct plan and next renewal amount is calculated correctly
     await db["members"].update_one(
         {"_id": member["_id"]},
         {
             "$set": {
                 "next_due_date": new_due_date,
                 "status": "active",
-                "category": "Renewal"
+                "category": "Renewal",
+                "plan_duration_months": payload.plan_duration_months,
+                "monthly_fees": payload.amount  # Update to latest paid amount
             }
         }
     )
