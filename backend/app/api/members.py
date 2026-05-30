@@ -209,8 +209,8 @@ async def export_members_csv(gym_id: str = None) -> Any:
     writer = csv.writer(output)
     writer.writerow(["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees", "Plan (Months)", "Category"])
     for m in members:
-        joining_date_str = m.get("joining_date").strftime("%Y-%m-%d") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date", ""))
-        next_due_date_str = m.get("next_due_date").strftime("%Y-%m-%d") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date", ""))
+        joining_date_str = m.get("joining_date").strftime("%d-%m-%Y") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date", ""))
+        next_due_date_str = m.get("next_due_date").strftime("%d-%m-%Y") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date", ""))
         writer.writerow([
             m.get("full_name", ""),
             m.get("phone", ""),
