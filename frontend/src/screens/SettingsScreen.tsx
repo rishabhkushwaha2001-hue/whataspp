@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, borderRadius } from '../theme/theme';
+import { useTheme, spacing, borderRadius } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { ModernInput } from '../components/ModernInput';
 import { GradientButton } from '../components/GradientButton';
 import { api } from '../services/api';
 import * as DocumentPicker from 'expo-document-picker';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export const SettingsScreen = () => {
   const router = useRouter();
+  const { theme, colors, toggleTheme } = useTheme();
+  const styles = getStyles(colors);
   const [gymName, setGymName] = useState('Gym');
   const [address, setAddress] = useState('Gym Center');
   const [phone, setPhone] = useState('');
@@ -31,6 +34,44 @@ export const SettingsScreen = () => {
       setLogoUrl(response.data.logo_url || '');
     } catch (error) {
       console.error('Error fetching settings:', error);
+    }
+  };
+
+  const handleLogoSelect = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (asset.size && asset.size > 2 * 1024 * 1024) {
+        Alert.alert('Image Too Large', 'Please select a logo image smaller than 2MB.');
+        return;
+      }
+
+      setIsLoading(true);
+      
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        setLogoUrl(base64data);
+        setIsLoading(false);
+      };
+      reader.onerror = () => {
+        Alert.alert('Error', 'Failed to read image file');
+        setIsLoading(false);
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error('Logo selection failed:', error);
+      Alert.alert('Error', 'Failed to select image');
+      setIsLoading(false);
     }
   };
 
@@ -119,7 +160,7 @@ export const SettingsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[colors.background, '#1a103c']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={[colors.background, theme === 'dark' ? '#1a103c' : '#ede9fe']} style={StyleSheet.absoluteFill} />
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
@@ -128,6 +169,31 @@ export const SettingsScreen = () => {
         </View>
 
         <GlassCard style={styles.card}>
+          {/* Logo Preview & Upload */}
+          <View style={styles.logoPreviewContainer}>
+            {logoUrl ? (
+              <Image source={{ uri: logoUrl }} style={styles.logoPreview} />
+            ) : (
+              <View style={styles.logoPlaceholder}>
+                <FontAwesome name="image" size={32} color={colors.textMuted} />
+              </View>
+            )}
+            <Text style={styles.logoPreviewLabel}>Gym Brand Logo</Text>
+            
+            <View style={styles.logoActionRow}>
+              <TouchableOpacity style={styles.uploadLogoBtn} onPress={handleLogoSelect}>
+                <FontAwesome name="upload" size={14} color="white" style={{ marginRight: 6 }} />
+                <Text style={styles.uploadLogoBtnText}>Upload Image</Text>
+              </TouchableOpacity>
+              {logoUrl ? (
+                <TouchableOpacity style={styles.removeLogoBtn} onPress={() => setLogoUrl('')}>
+                  <FontAwesome name="trash" size={14} color={colors.error} style={{ marginRight: 6 }} />
+                  <Text style={styles.removeLogoBtnText}>Remove</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
           <ModernInput
             label="Gym Name"
             placeholder="e.g. Gym"
@@ -151,13 +217,6 @@ export const SettingsScreen = () => {
             keyboardType="phone-pad"
           />
 
-          <ModernInput
-            label="Logo URL"
-            placeholder="https://example.com/logo.png"
-            value={logoUrl}
-            onChangeText={setLogoUrl}
-          />
-
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
               Note: This information will appear on all your receipts and WhatsApp messages.
@@ -169,6 +228,37 @@ export const SettingsScreen = () => {
             onPress={handleSave}
             isLoading={isLoading}
           />
+
+          <View style={styles.divider} />
+
+          <Text style={styles.sectionTitle}>App Appearance</Text>
+          <Text style={styles.sectionSub}>Switch between dark and light themes</Text>
+
+          <View style={styles.themeRow}>
+            <TouchableOpacity 
+              style={[
+                styles.themeButton, 
+                theme === 'dark' && styles.themeButtonActive,
+                { borderColor: theme === 'dark' ? colors.primary : colors.border }
+              ]} 
+              onPress={() => { if (theme !== 'dark') toggleTheme(); }}
+            >
+              <FontAwesome name="moon-o" size={16} color={theme === 'dark' ? colors.primary : colors.textMuted} />
+              <Text style={[styles.themeButtonText, { color: theme === 'dark' ? colors.primary : colors.textSecondary }]}>Dark Theme</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[
+                styles.themeButton, 
+                theme === 'light' && styles.themeButtonActive,
+                { borderColor: theme === 'light' ? colors.primary : colors.border }
+              ]} 
+              onPress={() => { if (theme !== 'light') toggleTheme(); }}
+            >
+              <FontAwesome name="sun-o" size={16} color={theme === 'light' ? colors.primary : colors.textMuted} />
+              <Text style={[styles.themeButtonText, { color: theme === 'light' ? colors.primary : colors.textSecondary }]}>Light Theme</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.divider} />
 
@@ -222,7 +312,7 @@ export const SettingsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -236,8 +326,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: colors.text,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 16,
@@ -248,13 +339,42 @@ const styles = StyleSheet.create({
   card: {
     padding: spacing.l,
   },
+  logoPreviewContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.l,
+    marginTop: spacing.s,
+  },
+  logoPreview: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  logoPlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  logoPreviewLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.s,
+  },
   infoBox: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.surfaceLight,
     padding: spacing.m,
     borderRadius: borderRadius.m,
     marginBottom: spacing.l,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: colors.border,
   },
   infoText: {
     color: colors.textSecondary,
@@ -264,7 +384,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.border,
     marginVertical: spacing.l,
   },
   sectionTitle: {
@@ -294,6 +414,65 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     fontSize: 14,
+    fontWeight: '700',
+  },
+  themeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.m,
+    marginTop: spacing.s,
+  },
+  themeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceLight,
+  },
+  themeButtonActive: {
+    backgroundColor: colors.primary + '15',
+  },
+  themeButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  logoActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: spacing.s,
+  },
+  uploadLogoBtn: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: borderRadius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadLogoBtnText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  removeLogoBtn: {
+    flexDirection: 'row',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.error,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: borderRadius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeLogoBtnText: {
+    color: colors.error,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

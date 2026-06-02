@@ -2,19 +2,24 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { RenewalModal } from '../components/RenewalModal';
 
 export const RemindersScreen = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [members, setMembers] = useState<any[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [renewingMember, setRenewingMember] = useState<any>(null);
+  const [showRenewModal, setShowRenewModal] = useState(false);
   const [gymName, setGymName] = useState('Gym');
   const router = useRouter();
 
@@ -87,7 +92,8 @@ export const RemindersScreen = () => {
       `*${gymName.toUpperCase()} - RENEWAL REMINDER* 🔔\n\n` +
       `Hello *${member.full_name}* 💪,\n\n` +
       `We hope you're crushing your fitness goals! This is a friendly reminder that your membership is due for renewal.\n\n` +
-      `*DUE DATE:* ${dueDate} 📅\n` +
+      `*PENDING FEES:* ₹${member.monthly_fees} 💰\n` +
+      `*DUE DATE:* ${dueDate} 🗓️\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
       `*Don't break the momentum!* Secure your spot and continue your transformation journey today. 🚀\n\n` +
       `See you at the gym! 🏋️‍♂️`;
@@ -126,78 +132,45 @@ export const RemindersScreen = () => {
     }
   };
 
-  const [renewalDuration, setRenewalDuration] = useState('1');
-
   const handleRenew = (member: any) => {
-    const initialDuration = member.plan_duration_months?.toString() || '1';
-    setRenewalDuration(initialDuration);
+    setRenewingMember(member);
+    setShowRenewModal(true);
+  };
 
-    const amountPerMonth = (member.monthly_fees || 0) / (member.plan_duration_months || 1);
-
-    const confirmRenewal = (selectedDur: string) => {
-      const finalAmount = amountPerMonth * parseInt(selectedDur);
+  const confirmRenewal = async (durationMonths: number, amount: number, paymentMode: string, nextDueDate?: string, joiningDate?: string) => {
+    setShowRenewModal(false);
+    if (!renewingMember) return;
+    try {
+      const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
+        plan_duration_months: durationMonths,
+        amount: amount,
+        payment_mode: paymentMode,
+        next_due_date: nextDueDate,
+        joining_date: joiningDate
+      });
+      
+      fetchDueMembers();
+      
+      const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
+      const msg = `Hi ${renewingMember.full_name} 💪\n\nThank you for renewing your membership at ${gymName}! 🎉\n\nPayment Received: ₹${amount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
       
       setAlertConfig({
-        visible: true,
-        title: "Renew Membership",
-        message: `Renew ${member.full_name} for ${selectedDur} month(s)?\n\nTotal Amount: ₹${finalAmount}`,
-        type: "info",
-        showCancel: true,
-        confirmText: "Yes, Renew",
-        onConfirm: async () => {
-          setAlertConfig({ visible: false });
-          try {
-            const res = await api.post(`/members/${member.id || member._id}/renew`, {
-              plan_duration_months: parseInt(selectedDur),
-              amount: finalAmount,
-              payment_mode: "Cash"
-            });
-            
-            fetchDueMembers();
-            
-            const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-            const msg = `Hi ${member.full_name} 💪\n\nThank you for renewing your membership at ${gymName}! 🎉\n\nPayment Received: ₹${finalAmount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
-            
-            setAlertConfig({
-                visible: true, 
-                title: "Success", 
-                message: "Membership renewed successfully!", 
-                type: "success",
-                confirmText: "Send Receipt",
-                onConfirm: () => {
-                  setAlertConfig({ visible: false });
-                  setTimeout(async () => {
-                    await sendWhatsAppMessage(member.phone, msg);
-                  }, 100);
-                },
-                onClose: () => setAlertConfig({ visible: false })
-            });
-          } catch (error) {
-            setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
-          }
-        }
+          visible: true, 
+          title: "Success", 
+          message: "Membership renewed successfully!", 
+          type: "success",
+          confirmText: "Send Receipt",
+          onConfirm: () => {
+            setAlertConfig({ visible: false });
+            setTimeout(async () => {
+              await sendWhatsAppMessage(renewingMember.phone, msg);
+            }, 100);
+          },
+          onClose: () => setAlertConfig({ visible: false })
       });
-    };
-
-    setAlertConfig({
-      visible: true,
-      title: "Select Duration",
-      message: `Bhai, kitne mahine ke liye renew karna hai?`,
-      type: "info",
-      showCancel: true,
-      confirmText: "Continue",
-      isRenewalPicker: true,
-      renewalDuration: initialDuration,
-      onConfirm: () => confirmRenewal(renewalDuration),
-      onDurationSelect: (dur: string) => {
-        setRenewalDuration(dur);
-        // Update onConfirm reference with latest dur so picker button works
-        setAlertConfig((prev: any) => ({
-          ...prev,
-          onConfirm: () => confirmRenewal(dur)
-        }));
-      }
-    });
+    } catch (error) {
+      setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
+    }
   };
 
   return (
@@ -205,37 +178,13 @@ export const RemindersScreen = () => {
       <CustomAlert 
         {...alertConfig} 
         onClose={() => setAlertConfig({ ...alertConfig, visible: false })}
-      >
-        {alertConfig.isRenewalPicker && (
-          <View style={{ width: '100%', marginBottom: 20 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 8, fontWeight: '700' }}>CHOOSE DURATION</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              {['1', '2', '3', '6', '12'].map(dur => (
-                <TouchableOpacity 
-                  key={dur}
-                  onPress={() => {
-                    if (alertConfig.onDurationSelect) {
-                      alertConfig.onDurationSelect(dur);
-                    } else {
-                      setRenewalDuration(dur);
-                    }
-                  }}
-                  style={{
-                    backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.05)',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 10,
-                    minWidth: 45,
-                    alignItems: 'center'
-                  }}
-                >
-                  <Text style={{ color: renewalDuration === dur ? '#fff' : 'rgba(255,255,255,0.7)', fontWeight: '700' }}>{dur}M</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-      </CustomAlert>
+      />
+      <RenewalModal
+        visible={showRenewModal}
+        member={renewingMember}
+        onClose={() => setShowRenewModal(false)}
+        onConfirm={confirmRenewal}
+      />
       <FlatList
         data={filteredMembers}
         keyExtractor={(item) => item.id || item._id}
@@ -309,7 +258,7 @@ export const RemindersScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.l, paddingTop: 60, paddingBottom: 100 },
   header: { marginBottom: spacing.xl },
@@ -326,7 +275,7 @@ const styles = StyleSheet.create({
   memberPhone: { fontSize: 13, color: colors.textSecondary, marginBottom: 4 },
   dueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   memberDue: { fontSize: 12, color: colors.textMuted },
-  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
   emptyContainer: { marginTop: 80, alignItems: 'center' },
   emptyIcon: { marginBottom: spacing.m, opacity: 0.5 },
   emptyText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },

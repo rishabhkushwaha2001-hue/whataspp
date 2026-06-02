@@ -2,14 +2,17 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Linking, Alert, ScrollView } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { RenewalModal } from '../components/RenewalModal';
 
 export const MembersScreen = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const router = useRouter();
   const [members, setMembers] = useState<any[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
@@ -17,7 +20,8 @@ export const MembersScreen = () => {
   const [activeTab, setActiveTab] = useState('All');
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
-  const [renewalDuration, setRenewalDuration] = useState('1');
+  const [renewingMember, setRenewingMember] = useState<any>(null);
+  const [showRenewModal, setShowRenewModal] = useState(false);
   const [gymName, setGymName] = useState('Gym');
 
   const fetchMembers = useCallback(async () => {
@@ -84,98 +88,52 @@ export const MembersScreen = () => {
   };
 
   const handleRenew = (member: any) => {
-    const initialDuration = member.plan_duration_months?.toString() || '1';
-    setRenewalDuration(initialDuration);
+    setRenewingMember(member);
+    setShowRenewModal(true);
+  };
 
-    const amountPerMonth = (member.monthly_fees || 0) / (member.plan_duration_months || 1);
-    const expiry = new Date(member.next_due_date);
-    const daysRemaining = Math.ceil((expiry.getTime() - new Date().getTime()) / (1000 * 3600 * 24));
-
-    const confirmRenewal = (selectedDur: string) => {
-      const finalAmount = amountPerMonth * parseInt(selectedDur);
+  const confirmRenewal = async (durationMonths: number, amount: number, paymentMode: string, nextDueDate?: string, joiningDate?: string) => {
+    setShowRenewModal(false);
+    if (!renewingMember) return;
+    try {
+      const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
+        plan_duration_months: durationMonths,
+        amount: amount,
+        payment_mode: paymentMode,
+        next_due_date: nextDueDate,
+        joining_date: joiningDate
+      });
+      
+      fetchMembers();
+      
+      const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
+      const msg = 
+        `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
+        `Hello *${renewingMember.full_name}*, thank you for continuing your journey with us! 💪\n\n` +
+        `*RENEWAL DETAILS:*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🗓️ *New Plan:* ${durationMonths} Month(s)\n` +
+        `💰 *Amount Paid:* ₹${amount}\n` +
+        `🗓️ *New Expiry:* ${nextDue}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `*Let's push your limits again!* 🚀`;
       
       setAlertConfig({
-        visible: true,
-        title: "Renew Membership",
-        message: `Renew ${member.full_name} for ${selectedDur} month(s)?\n\nTotal Amount: ₹${finalAmount}`,
-        type: "info",
-        showCancel: true,
-        confirmText: "Yes, Renew",
-        onConfirm: async () => {
-          setAlertConfig({ visible: false });
-          try {
-            const res = await api.post(`/members/${member.id || member._id}/renew`, {
-              plan_duration_months: parseInt(selectedDur),
-              amount: finalAmount,
-              payment_mode: "Cash"
-            });
-            
-            fetchMembers();
-            
-            const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-            const msg = 
-              `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
-              `Hello *${member.full_name}*, thank you for continuing your journey with us! 💪\n\n` +
-              `*RENEWAL DETAILS:*\n` +
-              `━━━━━━━━━━━━━━━━━━━━\n` +
-              `🗓️ *New Plan:* ${selectedDur} Month(s)\n` +
-              `💰 *Amount Paid:* ₹${finalAmount}\n` +
-              `📅 *New Expiry:* ${nextDue}\n` +
-              `━━━━━━━━━━━━━━━━━━━━\n\n` +
-              `*Let's push your limits again!* 🚀`;
-            
-            setAlertConfig({
-                visible: true, 
-                title: "Success", 
-                message: "Membership has been renewed successfully!", 
-                type: "success",
-                confirmText: "Send Receipt",
-                onConfirm: () => {
-                  setAlertConfig({ visible: false });
-                  setTimeout(async () => {
-                    await sendWhatsAppMessage(member.phone, msg);
-                  }, 100);
-                },
-                onClose: () => setAlertConfig({ visible: false })
-            });
-          } catch (error) {
-            setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
-          }
-        }
+          visible: true, 
+          title: "Success", 
+          message: "Membership has been renewed successfully!", 
+          type: "success",
+          confirmText: "Send Receipt",
+          onConfirm: () => {
+            setAlertConfig({ visible: false });
+            setTimeout(async () => {
+              await sendWhatsAppMessage(renewingMember.phone, msg);
+            }, 100);
+          },
+          onClose: () => setAlertConfig({ visible: false })
       });
-    };
-
-    const showRenewalPicker = () => {
-      setAlertConfig({
-        visible: true,
-        title: "Select Duration",
-        message: `Bhai, kitne mahine ke liye renew karna hai?`,
-        type: "info",
-        showCancel: true,
-        confirmText: "Continue",
-        isRenewalPicker: true,
-        renewalDuration,
-        setRenewalDuration,
-        onConfirm: () => confirmRenewal(renewalDuration)
-      });
-    };
-
-    if (daysRemaining > 10) {
-      setAlertConfig({
-        visible: true,
-        title: "Already Active!",
-        message: `Bhai, is user ka plan pehle se hi ${expiry.toLocaleDateString()} tak active hai (${daysRemaining} days left).\n\nKya aap sach mein renew karna chahte hain?`,
-        type: "warning",
-        showCancel: true,
-        cancelText: "Nahi (Cancel)",
-        confirmText: "Haan, continue",
-        onConfirm: () => {
-          setAlertConfig({ visible: false });
-          setTimeout(showRenewalPicker, 200);
-        }
-      });
-    } else {
-      showRenewalPicker();
+    } catch (error) {
+      setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
     }
   };
 
@@ -265,36 +223,13 @@ export const MembersScreen = () => {
         confirmText={alertConfig.confirmText}
         onClose={alertConfig.onClose || (() => setAlertConfig({ ...alertConfig, visible: false }))}
         onConfirm={alertConfig.onConfirm}
-      >
-        {alertConfig.isRenewalPicker && (
-          <View style={{ width: '100%', marginBottom: 15, marginTop: -10 }}>
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 10, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5 }}>CHOOSE DURATION</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
-              {['1', '2', '3', '6', '12'].map(dur => (
-                <TouchableOpacity 
-                  key={dur}
-                  onPress={() => {
-                    setRenewalDuration(dur);
-                    setAlertConfig({ ...alertConfig, onConfirm: () => confirmRenewal(dur) });
-                  }}
-                  style={{
-                    backgroundColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.06)',
-                    paddingVertical: 8,
-                    paddingHorizontal: 10,
-                    borderRadius: 8,
-                    minWidth: 44,
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: renewalDuration === dur ? colors.primary : 'rgba(255,255,255,0.1)'
-                  }}
-                >
-                  <Text style={{ color: renewalDuration === dur ? '#fff' : 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '800' }}>{dur}M</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-      </CustomAlert>
+      />
+      <RenewalModal
+        visible={showRenewModal}
+        member={renewingMember}
+        onClose={() => setShowRenewModal(false)}
+        onConfirm={confirmRenewal}
+      />
       <View style={styles.header}>
         <Text style={styles.title}>Members List</Text>
         <View style={styles.searchBar}>
@@ -337,7 +272,7 @@ export const MembersScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { padding: spacing.l, paddingTop: 60, backgroundColor: colors.surface },
   title: { fontSize: 28, fontWeight: '800', color: colors.text, marginBottom: spacing.m },

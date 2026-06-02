@@ -21,6 +21,7 @@ class GymCreate(BaseModel):
     address: str
     plan_duration_months: int = 1
     plan_price: float = 0.0
+    plan_expiry: Optional[str] = None
 
 class GymUpdateStatus(BaseModel):
     status: str # active, inactive, suspended
@@ -28,6 +29,7 @@ class GymUpdateStatus(BaseModel):
 class GymRenew(BaseModel):
     plan_duration_months: int
     plan_price: float
+    plan_expiry: Optional[str] = None
 
 class CustomWhatsAppMessage(BaseModel):
     phone: str
@@ -81,7 +83,14 @@ async def register_gym(gym_in: GymCreate) -> Any:
     activation_code = generate_activation_code()
     
     now = datetime.now(timezone.utc)
-    expiry_date = now + relativedelta(months=gym_in.plan_duration_months)
+    if gym_in.plan_expiry:
+        try:
+            # Parse 'YYYY-MM-DD'
+            expiry_date = datetime.strptime(gym_in.plan_expiry, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            expiry_date = now + relativedelta(months=gym_in.plan_duration_months)
+    else:
+        expiry_date = now + relativedelta(months=gym_in.plan_duration_months)
     
     gym_dict = {
         "gym_id": gym_id,
@@ -240,13 +249,22 @@ async def renew_gym_plan(gym_id: str, payload: GymRenew) -> Any:
         raise HTTPException(status_code=404, detail="Gym not found")
         
     now = datetime.now(timezone.utc)
-    current_expiry = gym.get("plan_expiry")
-    if current_expiry and current_expiry.tzinfo is None:
-        current_expiry = current_expiry.replace(tzinfo=timezone.utc)
-        
-    # If already expired, start renewal from today. If still active, add to existing expiry.
-    base_date = current_expiry if current_expiry and current_expiry > now else now
-    new_expiry = base_date + relativedelta(months=payload.plan_duration_months)
+    if payload.plan_expiry:
+        try:
+            # Parse 'YYYY-MM-DD'
+            new_expiry = datetime.strptime(payload.plan_expiry, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            current_expiry = gym.get("plan_expiry")
+            if current_expiry and current_expiry.tzinfo is None:
+                current_expiry = current_expiry.replace(tzinfo=timezone.utc)
+            base_date = current_expiry if current_expiry and current_expiry > now else now
+            new_expiry = base_date + relativedelta(months=payload.plan_duration_months)
+    else:
+        current_expiry = gym.get("plan_expiry")
+        if current_expiry and current_expiry.tzinfo is None:
+            current_expiry = current_expiry.replace(tzinfo=timezone.utc)
+        base_date = current_expiry if current_expiry and current_expiry > now else now
+        new_expiry = base_date + relativedelta(months=payload.plan_duration_months)
     
     await super_admin_db["gyms"].update_one(
         {"gym_id": gym_id},
@@ -325,10 +343,37 @@ async def send_custom_message(payload: CustomWhatsAppMessage) -> Any:
 # Get WhatsApp pending/sent log history
 @router.get("/whatsapp-logs")
 async def get_whatsapp_logs(limit: int = 50) -> Any:
-    cursor = super_admin_db["whatsapp_logs"].find().sort("logged_at", -1).limit(limit)
+    now = datetime.now(timezone.utc)
+    
+    # 1. Fetch active gyms (status is active and not expired)
+    active_gyms = await super_admin_db["gyms"].find({
+        "status": "active",
+        "plan_expiry": {"$gt": now}
+    }).to_list(length=1000)
+    
+    active_phones = [g["phone"] for g in active_gyms]
+    
+    # 2. Query logs only for these active gym phones
+    cursor = super_admin_db["whatsapp_logs"].find({
+        "phone": {"$in": active_phones}
+    }).sort("logged_at", -1).limit(limit)
+    
     logs = await cursor.to_list(length=limit)
+    
+    # Fetch all registered gyms to resolve names accurately
+    all_gyms = await super_admin_db["gyms"].find({}).to_list(length=2000)
+    gym_map = {g["phone"]: g for g in all_gyms}
+    
     for l in logs:
         l["_id"] = str(l["_id"])
+        gym = gym_map.get(l["phone"])
+        if gym:
+            l["gym_name"] = gym.get("gym_name", "N/A")
+            l["owner_name"] = gym.get("owner_name", "N/A")
+        else:
+            l["gym_name"] = "N/A"
+            l["owner_name"] = "N/A"
+            
     return logs
 
 # Mark WhatsApp log as sent

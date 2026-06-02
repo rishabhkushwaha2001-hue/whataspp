@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { colors, spacing, borderRadius } from '../theme/theme';
-import { GlassCard } from './GlassCard';
+import { useTheme, spacing, borderRadius } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 const { height } = Dimensions.get('window');
@@ -11,13 +10,28 @@ interface DatePickerProps {
   onClose: () => void;
   onSelect: (date: string) => void;
   initialDate?: string;
+  title?: string;
 }
 
-export const DatePickerModal = ({ visible, onClose, onSelect, initialDate }: DatePickerProps) => {
+export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title }: DatePickerProps) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const current = initialDate ? new Date(initialDate) : new Date();
   const [year, setYear] = useState(current.getFullYear());
   const [month, setMonth] = useState(current.getMonth());
   const [day, setDay] = useState(current.getDate());
+
+  useEffect(() => {
+    if (visible) {
+      const currentVal = initialDate ? new Date(initialDate) : new Date();
+      if (!isNaN(currentVal.getTime())) {
+        setYear(currentVal.getFullYear());
+        setMonth(currentVal.getMonth());
+        setDay(currentVal.getDate());
+      }
+    }
+  }, [visible, initialDate]);
+
 
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -53,9 +67,9 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate }: Dat
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.overlay}>
-        <GlassCard style={styles.modalContent}>
+        <View style={styles.modalContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>Select Joining Date</Text>
+            <Text style={styles.title}>{title || 'Select Joining Date'}</Text>
             <TouchableOpacity onPress={onClose}>
               <FontAwesome name="times" size={20} color={colors.textMuted} />
             </TouchableOpacity>
@@ -96,22 +110,30 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate }: Dat
               <Text style={styles.confirmText}>Confirm Date</Text>
             </TouchableOpacity>
           </View>
-        </GlassCard>
+        </View>
       </View>
     </Modal>
   );
 };
 
-const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', maxHeight: height * 0.7, padding: spacing.l },
+const getStyles = (colors: any) => StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { 
+    width: '90%', 
+    maxHeight: height * 0.7, 
+    padding: spacing.l,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.l,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.l },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
-  selectorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', padding: 10, borderRadius: borderRadius.m, marginBottom: spacing.s },
+  selectorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surfaceLight, padding: 10, borderRadius: borderRadius.m, marginBottom: spacing.s },
   navBtn: { padding: 10 },
   selectorValue: { fontSize: 18, fontWeight: '700', color: colors.text },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: spacing.m, justifyContent: 'center' },
-  dayItem: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)' },
+  dayItem: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceLight },
   activeItem: { backgroundColor: colors.primary },
   dayText: { color: colors.text, fontSize: 14, fontWeight: '600' },
   activeText: { color: 'white' },

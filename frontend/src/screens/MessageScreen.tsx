@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Linking, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { GradientButton } from '../components/GradientButton';
 import { ModernInput } from '../components/ModernInput';
@@ -12,10 +12,17 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 
 export const MessageScreen = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+  const getNextMonthDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [amount, setAmount] = useState('');
-  const [duration, setDuration] = useState('1');
   const [gender, setGender] = useState('Male');
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
@@ -24,7 +31,9 @@ export const MessageScreen = () => {
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expiryDate, setExpiryDate] = useState(getNextMonthDate(new Date().toISOString().split('T')[0]));
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry'>('joining');
   const [isManual, setIsManual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [gymName, setGymName] = useState('Gym');
@@ -76,13 +85,23 @@ export const MessageScreen = () => {
         return;
       }
 
+      const getDurationInDays = (start: string, end: string) => {
+        const s = new Date(start);
+        const e = new Date(end);
+        const diff = e.getTime() - s.getTime();
+        return Math.max(0, Math.ceil(diff / (1000 * 3600 * 24)));
+      };
+
+      const durationDays = getDurationInDays(joiningDate, expiryDate);
+
       const enrollmentData = {
         full_name: name,
         phone: finalPhone,
         address: address || 'Not provided',
         joining_date: new Date(joiningDate).toISOString(),
+        next_due_date: new Date(expiryDate).toISOString(),
         monthly_fees: parsedAmount,
-        plan_duration_months: parseInt(duration) || 1,
+        plan_duration_months: Math.max(1, Math.round(durationDays / 30.0)),
         gender: gender,
         age: age && !isNaN(parseInt(age)) ? parseInt(age) : undefined,
         weight: weight && !isNaN(parseFloat(weight)) ? parseFloat(weight) : undefined,
@@ -97,16 +116,16 @@ export const MessageScreen = () => {
 
       if (!isManual) {
         const isRenewal = member.category === "Renewal";
-        const expiryDate = new Date(member.next_due_date).toLocaleDateString();
+        const finalExpiryStr = new Date(member.next_due_date).toLocaleDateString();
         
         const welcomeMsg = isRenewal 
           ? `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
             `Hello *${name}*, thank you for continuing your journey with us! 💪\n\n` +
             `*RENEWAL DETAILS:*\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
-            `🗓️ *New Plan:* ${duration} Month(s)\n` +
+            `🗓️ *Plan Duration:* ${durationDays} Days\n` +
             `💰 *Amount Paid:* ₹${amount}\n` +
-            `📅 *New Expiry:* ${expiryDate}\n` +
+            `🗓️ *New Expiry:* ${finalExpiryStr}\n` +
             `━━━━━━━━━━━━━━━━━━━━\n\n` +
             `*Let's push your limits again!* 🚀`
           : `*${gymName.toUpperCase()} - WELCOME KIT* 🧾\n\n` +
@@ -114,9 +133,10 @@ export const MessageScreen = () => {
             `*MEMBERSHIP DETAILS:*\n` +
             `━━━━━━━━━━━━━━━━━━━━\n` +
             `📱 *Phone:* ${finalPhone}\n` +
-            `🗓️ *Plan:* ${duration} Month(s)\n` +
+            `🗓️ *Joining Date:* ${new Date(joiningDate).toLocaleDateString()}\n` +
+            `🗓️ *Plan Duration:* ${durationDays} Days\n` +
             `💰 *Amount Paid:* ₹${amount}\n` +
-            `📅 *Expiry Date:* ${expiryDate}\n` +
+            `🗓️ *Expiry Date:* ${finalExpiryStr}\n` +
             `━━━━━━━━━━━━━━━━━━━━\n\n` +
             `*Stay Strong & Crush Your Goals!* 🚀`;
 
@@ -161,11 +181,12 @@ export const MessageScreen = () => {
   const clearForm = () => {
     setName(''); setPhone(''); setAmount(''); setAge(''); setWeight('');
     setAddress(''); setNotes(''); setTrainer('General');
-    setDuration('1');         // Reset plan duration to 1 month
     setGender('Male');        // Reset gender
     setPaymentMode('Cash');   // Reset payment mode
     setIsManual(false);       // Reset manual toggle
-    setJoiningDate(new Date().toISOString().split('T')[0]); // Reset to today
+    const todayStr = new Date().toISOString().split('T')[0];
+    setJoiningDate(todayStr); // Reset to today
+    setExpiryDate(getNextMonthDate(todayStr));
   };
 
   const Selector = ({ options, selected, onSelect, label }: any) => (
@@ -224,31 +245,100 @@ export const MessageScreen = () => {
           
           <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
 
-          <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-            <ModernInput 
-              label="Joining Date" 
-              value={joiningDate} 
-              editable={false} 
-              placeholder="Select Date" 
-              icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} 
-            />
-          </TouchableOpacity>
+          <View style={styles.row}>
+            <View style={{ flex: 1, marginRight: spacing.s }}>
+              <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
+                <ModernInput 
+                  label="From Date (Joining) *" 
+                  value={joiningDate} 
+                  editable={false} 
+                  placeholder="Select Date" 
+                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} 
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={{ flex: 1, marginLeft: spacing.s }}>
+              <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
+                <ModernInput 
+                  label="To Date (Expiry) *" 
+                  value={expiryDate} 
+                  editable={false} 
+                  placeholder="Select Date" 
+                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Quick Date Presets Row */}
+          <View style={styles.datePresetsRow}>
+            <Text style={styles.presetsLabel}>QUICK PLAN PRESETS</Text>
+            <View style={styles.presetsBtnGroup}>
+              {[{ label: '1M', val: 1 }, { label: '2M', val: 2 }, { label: '3M', val: 3 }, { label: '6M', val: 6 }, { label: '12M', val: 12 }].map((item) => (
+                <TouchableOpacity
+                  key={item.label}
+                  style={styles.datePresetBtn}
+                  onPress={() => {
+                    const d = new Date(joiningDate);
+                    d.setMonth(d.getMonth() + item.val);
+                    setExpiryDate(d.toISOString().split('T')[0]);
+                  }}
+                >
+                  <Text style={styles.datePresetBtnText}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Real-time Duration Display */}
+          {(() => {
+            const getDurationInDays = (start: string, end: string) => {
+              const s = new Date(start);
+              const e = new Date(end);
+              const diff = e.getTime() - s.getTime();
+              return Math.max(0, Math.ceil(diff / (1000 * 3600 * 24)));
+            };
+            const durationDays = getDurationInDays(joiningDate, expiryDate);
+            return (
+              <View style={styles.durationDisplay}>
+                <FontAwesome name="info-circle" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.durationDisplayText}>
+                  Calculated Duration: <Text style={{ color: colors.primary, fontWeight: '800' }}>{durationDays} Days</Text>
+                </Text>
+              </View>
+            );
+          })()}
 
           <DatePickerModal 
             visible={showDatePicker} 
             onClose={() => setShowDatePicker(false)} 
-            onSelect={setJoiningDate}
-            initialDate={joiningDate}
+            onSelect={(date) => {
+              if (datePickerType === 'joining') {
+                setJoiningDate(date);
+                // Shift expiry date to maintain 1 month default spacing
+                const d = new Date(date);
+                d.setMonth(d.getMonth() + 1);
+                setExpiryDate(d.toISOString().split('T')[0]);
+              } else {
+                if (new Date(date) < new Date(joiningDate)) {
+                  showCustomAlert('Invalid Expiry Date', 'To Date cannot be before From Date', 'error');
+                } else {
+                  setExpiryDate(date);
+                }
+              }
+            }} 
+            initialDate={datePickerType === 'joining' ? joiningDate : expiryDate}
+            title={datePickerType === 'joining' ? 'Select From Date' : 'Select To Date'}
           />
 
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: spacing.s }}>
-              <ModernInput label="Amount (₹) *" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="0" icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />} />
-            </View>
-            <View style={{ flex: 1, marginLeft: spacing.s }}>
-              <Selector label="Plan" options={[{ label: '1M', value: '1' }, { label: '2M', value: '2' }, { label: '3M', value: '3' }, { label: '6M', value: '6' }, { label: '12M', value: '12' }]} selected={duration} onSelect={setDuration} />
-            </View>
-          </View>
+          <ModernInput 
+            label="Amount (₹) *" 
+            value={amount} 
+            onChangeText={setAmount} 
+            keyboardType="numeric" 
+            placeholder="0" 
+            icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />} 
+          />
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: spacing.s }}>
@@ -278,7 +368,7 @@ export const MessageScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.m, paddingBottom: 100 },
   header: { marginBottom: spacing.l, marginTop: spacing.xl },
@@ -302,5 +392,52 @@ const styles = StyleSheet.create({
   alertTitle: { color: colors.text, fontSize: 20, fontWeight: '800', marginBottom: spacing.s, textAlign: 'center' },
   alertMessage: { color: colors.textSecondary, fontSize: 14, textAlign: 'center', marginBottom: spacing.l, lineHeight: 20 },
   alertBtn: { paddingVertical: 12, paddingHorizontal: 32, borderRadius: borderRadius.m, width: '100%', alignItems: 'center' },
-  alertBtnText: { color: 'white', fontSize: 16, fontWeight: '700' }
+  alertBtnText: { color: 'white', fontSize: 16, fontWeight: '700' },
+  emptyContainer: { marginTop: 100, alignItems: 'center', gap: 12 },
+  emptyText: { color: colors.textMuted, fontSize: 16 },
+  datePresetsRow: {
+    marginBottom: spacing.m,
+    marginTop: -spacing.xs,
+  },
+  presetsLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  presetsBtnGroup: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  datePresetBtn: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    paddingVertical: 8,
+    borderRadius: borderRadius.s,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  datePresetBtnText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  durationDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.05)',
+    padding: 10,
+    borderRadius: borderRadius.s,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+    marginBottom: spacing.m,
+  },
+  durationDisplayText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
 });

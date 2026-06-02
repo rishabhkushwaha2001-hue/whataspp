@@ -40,26 +40,26 @@ export const sendWhatsAppMessage = async (phone: string, message: string = ''): 
   const formattedPhone = formatWhatsAppPhone(phone);
   if (!formattedPhone) return false;
   
-  // Construct native deep link and universal HTTPS link
-  const nativeUrl = message 
-    ? `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
-    : `whatsapp://send?phone=${formattedPhone}`;
+  // Use api.whatsapp.com universal link as the primary method.
+  // This natively opens the WhatsApp app and guarantees the message is pre-filled on both Android & iOS.
+  const primaryUrl = message
+    ? `https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(message)}`
+    : `https://api.whatsapp.com/send?phone=${formattedPhone}`;
     
-  const webUrl = message
+  const fallbackUrl = message
     ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
     : `https://wa.me/${formattedPhone}`;
   
   try {
-    // Attempt native launch directly
-    await Linking.openURL(nativeUrl);
+    await Linking.openURL(primaryUrl);
     return true;
-  } catch (nativeErr) {
+  } catch (primaryErr) {
     try {
-      // Fallback to web link which opens browser -> triggers WhatsApp client redirection
-      await Linking.openURL(webUrl);
+      // Fallback to wa.me link if api.whatsapp.com fails
+      await Linking.openURL(fallbackUrl);
       return true;
-    } catch (webErr) {
-      console.warn('Failed to open WhatsApp URL', webErr);
+    } catch (fallbackErr) {
+      console.warn('Failed to open WhatsApp URL', fallbackErr);
       return false;
     }
   }

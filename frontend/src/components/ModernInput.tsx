@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, Text, StyleSheet, TextInputProps } from 'react-native';
-import { colors, borderRadius, spacing } from '../theme/theme';
+import { useTheme, borderRadius, spacing } from '../theme/theme';
 
 interface ModernInputProps extends TextInputProps {
   label: string;
@@ -17,6 +17,8 @@ export const ModernInput: React.FC<ModernInputProps> = ({
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   return (
     <View style={styles.container}>
@@ -42,7 +44,7 @@ export const ModernInput: React.FC<ModernInputProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { marginBottom: spacing.m },
   label: { color: colors.textSecondary, fontSize: 13, marginBottom: spacing.xs, fontWeight: '600', letterSpacing: 0.5 },
   inputContainer: { 

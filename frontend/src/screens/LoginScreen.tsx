@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 export const LoginScreen = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const [step, setStep] = useState(1); // 1 = Phone Verification, 2 = Activation Code / Admin ID
   const [phone, setPhone] = useState('');
   const [activationCode, setActivationCode] = useState('');
@@ -265,7 +267,7 @@ export const LoginScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scrollContainer: { flexGrow: 1, justifyContent: 'center', padding: spacing.l },
   headerSection: { alignItems: 'center', marginBottom: spacing.xl },

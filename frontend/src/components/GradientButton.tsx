@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, borderRadius, spacing, shadows } from '../theme/theme';
+import { useTheme, borderRadius, spacing, shadows } from '../theme/theme';
 
 interface GradientButtonProps {
   title: string;
@@ -16,8 +16,12 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
   onPress,
   isLoading = false,
   disabled = false,
-  colors: gradientColors = [colors.primary, colors.secondary],
+  colors: propColors,
 }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+  const gradientColors = propColors || [colors.primary, colors.secondary];
+
   return (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -41,7 +45,7 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     borderRadius: borderRadius.m,
     overflow: 'visible',
@@ -55,7 +59,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.m,
   },
   text: {
-    color: colors.text,
+    color: '#ffffff', // Keep text white for contrast on gradients
     fontSize: 16,
     fontWeight: 'bold',
     letterSpacing: 1,

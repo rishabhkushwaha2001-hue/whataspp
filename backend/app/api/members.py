@@ -44,14 +44,19 @@ async def create_member(member_in: MemberCreate) -> Any:
         
     member_dict = member_in.dict()
     
-    # Calculate expiry date based on plan duration
-    plan_months = member_dict.get("plan_duration_months", 1)
+    # Calculate expiry date based on plan duration if not custom provided
     joining_date = member_dict["joining_date"]
     if joining_date.tzinfo is None:
         joining_date = joining_date.replace(tzinfo=timezone.utc)
         
-    next_due_date = joining_date + relativedelta(months=plan_months)
-    
+    next_due_date = member_dict.get("next_due_date")
+    if not next_due_date:
+        plan_months = member_dict.get("plan_duration_months", 1)
+        next_due_date = joining_date + relativedelta(months=plan_months)
+    else:
+        if next_due_date.tzinfo is None:
+            next_due_date = next_due_date.replace(tzinfo=timezone.utc)
+            
     member_dict["next_due_date"] = next_due_date
     member_dict["status"] = "active"
     member_dict["member_id"] = await generate_member_id(db)
@@ -209,8 +214,8 @@ async def export_members_csv(gym_id: str = None) -> Any:
     writer = csv.writer(output)
     writer.writerow(["Full Name", "Phone", "Joining Date", "Next Due Date", "Status", "Fees", "Plan (Months)", "Category"])
     for m in members:
-        joining_date_str = m.get("joining_date").strftime("%d-%m-%Y") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date", ""))
-        next_due_date_str = m.get("next_due_date").strftime("%d-%m-%Y") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date", ""))
+        joining_date_str = m.get("joining_date").strftime("%d/%m/%Y") if isinstance(m.get("joining_date"), datetime) else str(m.get("joining_date", ""))
+        next_due_date_str = m.get("next_due_date").strftime("%d/%m/%Y") if isinstance(m.get("next_due_date"), datetime) else str(m.get("next_due_date", ""))
         writer.writerow([
             m.get("full_name", ""),
             m.get("phone", ""),
@@ -369,6 +374,8 @@ class RenewPayload(BaseModel):
     plan_duration_months: int = 1
     amount: float
     payment_mode: str = "Cash"
+    next_due_date: Optional[datetime] = None
+    joining_date: Optional[datetime] = None
 
 @router.post("/{member_id}/renew")
 async def renew_member(member_id: str, payload: RenewPayload) -> Any:
@@ -386,19 +393,29 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
         
-    # Calculate new due date
+    # Calculate or set new due date
     now = datetime.now(timezone.utc)
-    current_due = member.get("next_due_date")
-    if current_due and current_due.tzinfo is None:
-        current_due = current_due.replace(tzinfo=timezone.utc)
-        
-    # If member is already expired, renew from today. If still active, add to existing due date.
-    if current_due and current_due > now:
-        base_date = current_due
+    if payload.next_due_date:
+        new_due_date = payload.next_due_date
+        if new_due_date.tzinfo is None:
+            new_due_date = new_due_date.replace(tzinfo=timezone.utc)
+            
+        renewal_start_date = payload.joining_date or now
+        if renewal_start_date.tzinfo is None:
+            renewal_start_date = renewal_start_date.replace(tzinfo=timezone.utc)
     else:
-        base_date = now
-        
-    new_due_date = base_date + relativedelta(months=payload.plan_duration_months)
+        current_due = member.get("next_due_date")
+        if current_due and current_due.tzinfo is None:
+            current_due = current_due.replace(tzinfo=timezone.utc)
+            
+        # If member is already expired, renew from today. If still active, add to existing due date.
+        if current_due and current_due > now:
+            base_date = current_due
+        else:
+            base_date = now
+            
+        new_due_date = base_date + relativedelta(months=payload.plan_duration_months)
+        renewal_start_date = now
     
     # Update member — also update plan_duration_months and monthly_fees
     # so profile shows correct plan and next renewal amount is calculated correctly
@@ -420,7 +437,7 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "member_id": str(member["_id"]),
         "amount": payload.amount,
         "plan_duration": payload.plan_duration_months,
-        "payment_date": now,
+        "payment_date": renewal_start_date,
         "payment_method": payload.payment_mode,
         "type": "Renewal"
     }

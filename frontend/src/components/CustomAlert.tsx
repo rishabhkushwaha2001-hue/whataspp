@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 interface CustomAlertProps {
@@ -28,6 +28,9 @@ export const CustomAlert = ({
   showCancel = false,
   children
 }: CustomAlertProps) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   if (!visible) return null;
 
   const getIcon = () => {
@@ -85,7 +88,7 @@ export const CustomAlert = ({
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',
@@ -94,14 +97,14 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   alertBox: {
-    backgroundColor: '#1c1c1e', // Dark premium background
+    backgroundColor: colors.surface, 
     padding: spacing.xl,
     borderRadius: 28,
     width: '100%',
     alignItems: 'center',
     ...shadows.premium,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: colors.border,
   },
   iconContainer: {
     width: 72,
@@ -112,7 +115,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   title: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 24,
     fontWeight: '800',
     marginBottom: spacing.s,
@@ -120,7 +123,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   message: {
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
     marginBottom: spacing.xl * 1.5,
@@ -139,10 +142,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: colors.border,
   },
   cancelBtnText: {
-    color: '#fff',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },

@@ -23,7 +23,20 @@ async def log_message(msg_in: MessageCreate) -> Any:
 @router.get("/history", response_model=List[MessageInDB])
 async def get_message_history(limit: int = 10) -> Any:
     db = get_database()
-    cursor = db["messages"].find().sort("sent_at", -1).limit(limit)
+    now = datetime.now(timezone.utc)
+    
+    # 1. Fetch all active members (next_due_date > now)
+    active_members = await db["members"].find({
+        "next_due_date": {"$gt": now}
+    }).to_list(length=5000)
+    
+    active_phones = [m["phone"] for m in active_members]
+    
+    # 2. Query messages for these active phone numbers
+    cursor = db["messages"].find({
+        "recipient_phone": {"$in": active_phones}
+    }).sort("sent_at", -1).limit(limit)
+    
     messages = await cursor.to_list(length=limit)
     for m in messages:
         m["_id"] = str(m["_id"])

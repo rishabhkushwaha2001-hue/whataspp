@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
@@ -11,6 +11,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 const { width } = Dimensions.get('window');
 
 export const MemberSummaryScreen = () => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
+  const DetailItem = ({ icon, label, value, half }: any) => (
+    <View style={[styles.detailItem, half && { flex: 1 }]}>
+      <View style={styles.detailIcon}>
+        <FontAwesome name={icon} size={14} color={colors.primary} />
+      </View>
+      <View>
+        <Text style={styles.detailLabel}>{label}</Text>
+        <Text style={styles.detailValue}>{value}</Text>
+      </View>
+    </View>
+  );
+
   const { id, name, mid, cat } = useLocalSearchParams<{ id: string, name?: string, mid?: string, cat?: string }>();
   const router = useRouter();
   
@@ -177,19 +192,7 @@ export const MemberSummaryScreen = () => {
   );
 };
 
-const DetailItem = ({ icon, label, value, half }: any) => (
-  <View style={[styles.detailItem, half && { flex: 1 }]}>
-    <View style={styles.detailIcon}>
-      <FontAwesome name={icon} size={14} color={colors.primary} />
-    </View>
-    <View>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  </View>
-);
-
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.m, paddingTop: 50 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.l },

@@ -7,6 +7,7 @@ class MemberCreate(BaseModel):
     phone: str
     address: str
     joining_date: datetime
+    next_due_date: Optional[datetime] = None
     monthly_fees: float
     plan_duration_months: int
     gender: str

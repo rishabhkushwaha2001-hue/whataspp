@@ -2,14 +2,35 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, RefreshControl, Modal, ScrollView, ActivityIndicator, Linking, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, borderRadius, shadows } from '../theme/theme';
+import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { DatePickerModal } from '../components/DatePickerModal';
+
+const formatLogDate = (dateStr: string) => {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const day = d.getDate().toString().padStart(2, '0');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    let hours = d.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    return `${day} ${month} ${hours}:${minutes} ${ampm}`;
+  } catch (e) {
+    return dateStr;
+  }
+};
 
 export const SuperAdminScreen = () => {
+  const { theme, colors, toggleTheme } = useTheme();
+  const styles = getStyles(colors);
   const [gyms, setGyms] = useState<any[]>([]);
   const [filteredGyms, setFilteredGyms] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -39,10 +60,15 @@ export const SuperAdminScreen = () => {
   const [address, setAddress] = useState('');
   const [duration, setDuration] = useState('1');
   const [price, setPrice] = useState('1500');
+  const [planExpiry, setPlanExpiry] = useState('');
 
   const [selectedGym, setSelectedGym] = useState<any>(null);
   const [renewDuration, setRenewDuration] = useState('1');
   const [renewPrice, setRenewPrice] = useState('1500');
+  const [renewPlanExpiry, setRenewPlanExpiry] = useState('');
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerType, setDatePickerType] = useState<'register' | 'renew'>('register');
 
   const [customMsg, setCustomMsg] = useState('');
   const [whatsappLogs, setWhatsappLogs] = useState<any[]>([]);
@@ -118,7 +144,8 @@ export const SuperAdminScreen = () => {
         gym_name: gymName,
         address: address,
         plan_duration_months: parseInt(duration),
-        plan_price: parseFloat(price)
+        plan_price: parseFloat(price),
+        plan_expiry: planExpiry || undefined
       });
 
       setRegisterModal(false);
@@ -129,6 +156,7 @@ export const SuperAdminScreen = () => {
       setAddress('');
       setDuration('1');
       setPrice('1500');
+      setPlanExpiry('');
 
       fetchGyms();
 
@@ -179,9 +207,11 @@ export const SuperAdminScreen = () => {
     try {
       const res = await api.post(`/super-admin/gyms/${selectedGym.gym_id}/renew`, {
         plan_duration_months: parseInt(renewDuration),
-        plan_price: parseFloat(renewPrice)
+        plan_price: parseFloat(renewPrice),
+        plan_expiry: renewPlanExpiry || undefined
       });
       setRenewModal(false);
+      setRenewPlanExpiry('');
       fetchGyms();
 
       // Prompt to send renewal receipt
@@ -274,21 +304,42 @@ export const SuperAdminScreen = () => {
 
       {/* Header Section */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {/* Left: title, shrinks to fit */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <View style={styles.badgeIcon}>
-            <FontAwesome name="shield" size={20} color={colors.primary} />
+            <FontAwesome name="shield" size={18} color={colors.primary} />
           </View>
-          <View>
-            <Text style={styles.title}>Master Admin</Text>
-            <Text style={styles.subtitle}>Super Control & Multi-Tenant Panel</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">Master Admin</Text>
+            <Text style={styles.subtitle} numberOfLines={1} ellipsizeMode="tail">Super Control Panel</Text>
           </View>
         </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity style={styles.iconBtn} onPress={fetchWhatsappLogs}>
-            <FontAwesome name="history" size={18} color={colors.text} />
+
+        {/* Right: fixed-width button row — NEVER clips */}
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={[
+              styles.iconBtn,
+              {
+                backgroundColor: theme === 'dark' ? 'rgba(251,191,36,0.18)' : 'rgba(109,40,217,0.14)',
+                borderColor: theme === 'dark' ? '#FBBF24' : '#7C3AED',
+              }
+            ]}
+            onPress={toggleTheme}
+          >
+            <FontAwesome
+              name={theme === 'dark' ? 'sun-o' : 'moon-o'}
+              size={15}
+              color={theme === 'dark' ? '#FBBF24' : '#7C3AED'}
+            />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconBtn, { borderColor: `${colors.error}30` }]} onPress={handleLogout}>
-            <FontAwesome name="sign-out" size={18} color={colors.error} />
+
+          <TouchableOpacity style={styles.iconBtn} onPress={fetchWhatsappLogs}>
+            <FontAwesome name="history" size={14} color={colors.text} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.iconBtn, { borderColor: colors.error }]} onPress={handleLogout}>
+            <FontAwesome name="sign-out" size={14} color={colors.error} />
           </TouchableOpacity>
         </View>
       </View>
@@ -308,22 +359,22 @@ export const SuperAdminScreen = () => {
                 <Text style={styles.statsLabel}>Total Gyms</Text>
               </GlassCard>
 
-              <GlassCard style={[styles.statsCard, { borderLeftColor: colors.accent, borderLeftWidth: 3 }]}>
+              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.accent, borderLeftWidth: 3 }}>
                 <Text style={[styles.statsNum, { color: colors.accent }]}>{stats.active}</Text>
                 <Text style={styles.statsLabel}>Active</Text>
               </GlassCard>
 
-              <GlassCard style={[styles.statsCard, { borderLeftColor: colors.error, borderLeftWidth: 3 }]}>
+              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.error, borderLeftWidth: 3 }}>
                 <Text style={[styles.statsNum, { color: colors.error }]}>{stats.inactive}</Text>
                 <Text style={styles.statsLabel}>Inactive / Suspended</Text>
               </GlassCard>
 
-              <GlassCard style={[styles.statsCard, { borderLeftColor: colors.warning, borderLeftWidth: 3 }]}>
+              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.warning, borderLeftWidth: 3 }}>
                 <Text style={[styles.statsNum, { color: colors.warning }]}>{stats.expiring}</Text>
                 <Text style={styles.statsLabel}>Expiring Soon</Text>
               </GlassCard>
 
-              <GlassCard style={[styles.statsCard, { borderLeftColor: colors.primary, borderLeftWidth: 3 }]}>
+              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.primary, borderLeftWidth: 3 }}>
                 <Text style={[styles.statsNum, { color: colors.primary }]}>₹{stats.revenue}</Text>
                 <Text style={styles.statsLabel}>Total Billings</Text>
               </GlassCard>
@@ -341,7 +392,7 @@ export const SuperAdminScreen = () => {
                   onChangeText={handleSearch}
                 />
               </View>
-              <TouchableOpacity style={styles.registerBtn} onPress={() => setRegisterModal(true)}>
+              <TouchableOpacity style={styles.registerBtn} onPress={() => { setPlanExpiry(''); setRegisterModal(true); }}>
                 <FontAwesome name="plus" size={14} color="#fff" style={{ marginRight: 6 }} />
                 <Text style={styles.registerBtnText}>Add Gym</Text>
               </TouchableOpacity>
@@ -431,6 +482,7 @@ export const SuperAdminScreen = () => {
                     setSelectedGym(item);
                     setRenewDuration(item.plan_duration_months?.toString() || '1');
                     setRenewPrice(item.plan_price?.toString() || '1500');
+                    setRenewPlanExpiry('');
                     setRenewModal(true);
                   }}
                 >
@@ -498,6 +550,21 @@ export const SuperAdminScreen = () => {
                 </View>
               </View>
 
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>CUSTOM EXPIRY DATE (OPTIONAL)</Text>
+                <TouchableOpacity 
+                  onPress={() => { setDatePickerType('register'); setShowDatePicker(true); }}
+                  style={[styles.modalInput, { justifyContent: 'center' }]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: planExpiry ? colors.text : colors.textMuted }}>
+                      {planExpiry || 'Select custom date (Overrides months)...'}
+                    </Text>
+                    <FontAwesome name="calendar" size={16} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleRegisterGym}>
                 <Text style={styles.submitBtnText}>Create Separate Gym Database 🚀</Text>
               </TouchableOpacity>
@@ -531,6 +598,21 @@ export const SuperAdminScreen = () => {
                   <Text style={styles.label}>RENEWAL PRICE (₹)</Text>
                   <TextInput style={styles.modalInput} value={renewPrice} keyboardType="numeric" onChangeText={setRenewPrice} />
                 </View>
+              </View>
+
+              <View style={[styles.inputGroup, { marginBottom: 10 }]}>
+                <Text style={styles.label}>CUSTOM EXPIRY DATE (OPTIONAL)</Text>
+                <TouchableOpacity 
+                  onPress={() => { setDatePickerType('renew'); setShowDatePicker(true); }}
+                  style={[styles.modalInput, { justifyContent: 'center' }]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: renewPlanExpiry ? colors.text : colors.textMuted }}>
+                      {renewPlanExpiry || 'Select custom date (Overrides months)...'}
+                    </Text>
+                    <FontAwesome name="calendar" size={16} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleRenewSubmit}>
@@ -594,14 +676,19 @@ export const SuperAdminScreen = () => {
               contentContainerStyle={{ gap: 10, paddingVertical: 10 }}
               renderItem={({ item }) => (
                 <View style={styles.logCard}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }}>{item.phone}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>{new Date(item.logged_at).toLocaleTimeString()}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 12 }} numberOfLines={1}>
+                        {item.gym_name && item.gym_name !== 'N/A' ? `${item.gym_name} (${item.owner_name})` : 'Unknown Gym'}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>
+                        {item.phone} • {item.type?.toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.textMuted, fontSize: 9 }}>{formatLogDate(item.logged_at)}</Text>
                   </View>
                   <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 16 }} numberOfLines={3}>{item.message}</Text>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 9 }}>{item.type.toUpperCase()}</Text>
-                    
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 }}>
                     <TouchableOpacity 
                       style={[styles.smallBtn, { backgroundColor: item.sent ? 'rgba(16,185,129,0.15)' : colors.primary }]}
                       onPress={async () => {
@@ -631,24 +718,40 @@ export const SuperAdminScreen = () => {
         </View>
       </Modal>
 
+      <DatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelect={(date) => {
+          if (datePickerType === 'register') {
+            setPlanExpiry(date);
+          } else {
+            setRenewPlanExpiry(date);
+          }
+        }}
+        initialDate={datePickerType === 'register' ? (planExpiry || new Date().toISOString().split('T')[0]) : (renewPlanExpiry || new Date().toISOString().split('T')[0])}
+        title="Select Expiry Date"
+      />
+
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  inputGroup: {},
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    padding: spacing.l, 
-    paddingTop: 60, 
+    paddingHorizontal: spacing.m,
+    paddingVertical: spacing.m,
+    paddingTop: 56, 
     borderBottomWidth: 1, 
     borderBottomColor: colors.border 
   },
   badgeIcon: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: borderRadius.m,
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
     alignItems: 'center',
@@ -656,12 +759,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.2)'
   },
-  title: { fontSize: 22, fontWeight: '850', color: colors.text, letterSpacing: -0.5 },
-  subtitle: { fontSize: 11, color: colors.textMuted },
+  title: { fontSize: 20, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  subtitle: { fontSize: 10, color: colors.textMuted },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,   // NEVER compress — always show all 3 buttons
+    marginLeft: 8,
+  },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'center',
@@ -716,7 +826,7 @@ const styles = StyleSheet.create({
   ownerText: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusText: { fontSize: 10, fontWeight: '800' },
-  securityBlock: { backgroundColor: 'rgba(255,255,255,0.02)', padding: 10, borderRadius: borderRadius.s, borderLeftColor: colors.primary, borderLeftWidth: 2, marginVertical: spacing.s, gap: 4 },
+  securityBlock: { backgroundColor: colors.surfaceLight, padding: 10, borderRadius: borderRadius.s, borderLeftColor: colors.primary, borderLeftWidth: 2, marginVertical: spacing.s, gap: 4 },
   securityRow: { flexDirection: 'row', alignItems: 'center' },
   securityLabel: { color: colors.textSecondary, fontSize: 11 },
   securityVal: { color: colors.text, fontSize: 11, fontWeight: '700' },
@@ -734,28 +844,28 @@ const styles = StyleSheet.create({
     borderColor: colors.border, 
     borderRadius: 8,
     marginHorizontal: 3,
-    backgroundColor: 'rgba(255,255,255,0.01)'
+    backgroundColor: colors.surfaceLight
   },
   cardActionText: { fontSize: 10, fontWeight: '700' },
   emptyContainer: { alignItems: 'center', marginTop: 60, gap: 10 },
   emptyText: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: spacing.l },
   modalContent: { 
-    backgroundColor: '#111827', 
+    backgroundColor: colors.surface, 
     borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.12)', 
+    borderColor: colors.border, 
     padding: spacing.l, 
     borderRadius: borderRadius.l 
   },
   label: { 
     fontSize: 11, 
     fontWeight: '700', 
-    color: '#E5E7EB', 
+    color: colors.textSecondary, 
     marginBottom: 8, 
     letterSpacing: 0.5 
   },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 12, marginBottom: 15 },
-  modalTitle: { fontSize: 18, fontWeight: '850', color: colors.text },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   formContent: { gap: spacing.m },
   modalInput: { backgroundColor: colors.surfaceLight, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.m, color: colors.text, paddingHorizontal: spacing.m, height: 44, fontSize: 14 },
   modalSubmitBtn: { backgroundColor: colors.primary, height: 46, borderRadius: borderRadius.m, alignItems: 'center', justifyContent: 'center', marginTop: 10, ...shadows.premium },

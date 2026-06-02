@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { colors, borderRadius } from '../theme/theme';
+import { useTheme, borderRadius } from '../theme/theme';
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -8,6 +8,8 @@ interface GlassCardProps {
 }
 
 export const GlassCard: React.FC<GlassCardProps> = ({ children, style }) => {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   return (
     <View style={[styles.card, style]}>
       {children}
@@ -15,7 +17,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({ children, style }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   card: {
     backgroundColor: colors.glass,
     borderRadius: borderRadius.l,
