@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity, Image, TextInput, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,10 +20,30 @@ export const SettingsScreen = () => {
   const [phone, setPhone] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [businessType, setBusinessType] = useState('');
+  const [enableHours, setEnableHours] = useState(false);
+  const [joiningTemplate, setJoiningTemplate] = useState('');
+  const [renewalTemplate, setRenewalTemplate] = useState('');
+  const [reminderTemplate, setReminderTemplate] = useState('');
+  const [defaultTemplates, setDefaultTemplates] = useState<any>({});
+  const [hideRevenue, setHideRevenue] = useState(false);
 
   useEffect(() => {
     fetchSettings();
+    // Load revenue visibility preference from local storage
+    AsyncStorage.getItem('hideRevenue').then(val => {
+      if (val === 'true') setHideRevenue(true);
+    });
+    // Load business type from local storage to prevent flash
+    AsyncStorage.getItem('businessType').then(type => {
+      if (type) setBusinessType(type);
+    });
   }, []);
+
+  const toggleHideRevenue = async (val: boolean) => {
+    setHideRevenue(val);
+    await AsyncStorage.setItem('hideRevenue', val ? 'true' : 'false');
+  };
 
   const fetchSettings = async () => {
     try {
@@ -32,6 +52,17 @@ export const SettingsScreen = () => {
       setAddress(response.data.address);
       setPhone(response.data.phone || '');
       setLogoUrl(response.data.logo_url || '');
+      setBusinessType(response.data.business_type || 'gym');
+      setEnableHours(response.data.enable_hours_feature || false);
+      setJoiningTemplate(response.data.joining_msg_template || '');
+      setRenewalTemplate(response.data.renewal_msg_template || '');
+      setReminderTemplate(response.data.reminder_msg_template || '');
+      // Store defaults for reset button
+      setDefaultTemplates({
+        joining: response.data.joining_msg_template || '',
+        renewal: response.data.renewal_msg_template || '',
+        reminder: response.data.reminder_msg_template || '',
+      });
     } catch (error) {
       console.error('Error fetching settings:', error);
     }
@@ -83,11 +114,17 @@ export const SettingsScreen = () => {
         address: address,
         phone: phone,
         logo_url: logoUrl,
+        business_type: businessType,
+        enable_hours_feature: enableHours,
+        joining_msg_template: joiningTemplate,
+        renewal_msg_template: renewalTemplate,
+        reminder_msg_template: reminderTemplate,
       });
       // BUG FIX: Update AsyncStorage cache so Dashboard reflects new name instantly
       await AsyncStorage.setItem('gymName', gymName);
       await AsyncStorage.setItem('gymAddress', address);
-      Alert.alert('Success', 'Gym Profile updated successfully!');
+      await AsyncStorage.setItem('businessType', businessType);
+      Alert.alert('Success', 'Profile & Templates saved successfully!');
     } catch (error) {
       console.error('Error updating settings:', error);
       Alert.alert('Error', 'Failed to update profile');
@@ -164,7 +201,7 @@ export const SettingsScreen = () => {
       
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Gym Profile</Text>
+          <Text style={styles.title}>{businessType === 'library' ? 'Library Profile' : businessType === 'gym' ? 'Gym Profile' : 'Business Profile'}</Text>
           <Text style={styles.subtitle}>Customize your brand</Text>
         </View>
 
@@ -178,7 +215,7 @@ export const SettingsScreen = () => {
                 <FontAwesome name="image" size={32} color={colors.textMuted} />
               </View>
             )}
-            <Text style={styles.logoPreviewLabel}>Gym Brand Logo</Text>
+            <Text style={styles.logoPreviewLabel}>{businessType === 'library' ? 'Library Logo' : businessType === 'gym' ? 'Gym Logo' : 'Business Logo'}</Text>
             
             <View style={styles.logoActionRow}>
               <TouchableOpacity style={styles.uploadLogoBtn} onPress={handleLogoSelect}>
@@ -195,8 +232,8 @@ export const SettingsScreen = () => {
           </View>
 
           <ModernInput
-            label="Gym Name"
-            placeholder="e.g. Gym"
+            label={businessType === 'library' ? 'Library Name' : businessType === 'gym' ? 'Gym Name' : 'Business Name'}
+            placeholder={businessType === 'library' ? 'e.g. City Library' : businessType === 'gym' ? 'e.g. City Gym' : 'e.g. My Business'}
             value={gymName}
             onChangeText={setGymName}
           />
@@ -262,6 +299,30 @@ export const SettingsScreen = () => {
 
           <View style={styles.divider} />
 
+          {/* Revenue Privacy Toggle */}
+          <Text style={styles.sectionTitle}>🔒 Revenue Privacy</Text>
+          <Text style={styles.sectionSub}>Hide revenue amount on Dashboard so others can't see it</Text>
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>
+                {hideRevenue ? '🔒 Revenue Hidden' : '👁️ Revenue Visible'}
+              </Text>
+              <Text style={styles.toggleSub}>
+                {hideRevenue
+                  ? 'Tap the eye icon on Dashboard to reveal'
+                  : 'Revenue is shown on Dashboard'}
+              </Text>
+            </View>
+            <Switch
+              value={hideRevenue}
+              onValueChange={toggleHideRevenue}
+              trackColor={{ false: colors.surfaceLight, true: colors.primary }}
+              thumbColor={hideRevenue ? 'white' : '#f4f3f4'}
+            />
+          </View>
+
+          <View style={styles.divider} />
+
           <Text style={styles.sectionTitle}>Backup & Restore</Text>
           <Text style={styles.sectionSub}>Export to Excel (CSV) or restore entire gym database</Text>
 
@@ -281,14 +342,31 @@ export const SettingsScreen = () => {
             </TouchableOpacity>
           </View>
 
+
+          <View style={styles.divider} />
+
+
+          {/* WhatsApp Message Templates Section */}
+          <Text style={styles.sectionTitle}>💬 WhatsApp Message Templates</Text>
+          <Text style={styles.sectionSub}>Customize messages for Joining, Renewal & Reminders.</Text>
+          <TouchableOpacity 
+            style={[styles.themeButton, { marginBottom: spacing.m, backgroundColor: colors.accent, paddingVertical: 14 }]} 
+            onPress={() => router.push('/custom-messages')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <FontAwesome name="envelope" size={16} color="white" style={{ marginRight: 8 }} />
+              <Text style={[styles.actionButtonText, { color: 'white' }]}>Manage Custom Messages</Text>
+            </View>
+          </TouchableOpacity>
+
           <View style={styles.divider} />
 
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.25)', borderStyle: 'solid', height: 46 }]} 
             onPress={() => {
               Alert.alert(
-                'Deactivate Gym Session',
-                'Are you sure you want to log out and disconnect this gym database from this device?',
+                'Deactivate Business Session',
+                'Are you sure you want to log out and disconnect this business database from this device?',
                 [
                   { text: 'Cancel', style: 'cancel' },
                   { 
@@ -303,7 +381,7 @@ export const SettingsScreen = () => {
               );
             }}
           >
-            <Text style={[styles.actionButtonText, { color: colors.error }]}>Disconnect Gym Session 🔌</Text>
+            <Text style={[styles.actionButtonText, { color: colors.error }]}>Disconnect Business Session 🔌</Text>
           </TouchableOpacity>
 
         </GlassCard>
@@ -474,5 +552,53 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.error,
     fontSize: 13,
     fontWeight: '700',
+  },
+  templateBox: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.m,
+    marginBottom: 6,
+    minHeight: 120,
+  },
+  templateInput: {
+    fontSize: 13,
+    lineHeight: 20,
+    minHeight: 100,
+  },
+  resetBtn: {
+    alignSelf: 'flex-end',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: borderRadius.s,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  resetBtnText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.m,
+    marginBottom: spacing.s,
+  },
+  toggleLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  toggleSub: {
+    color: colors.textSecondary,
+    fontSize: 12,
   },
 });

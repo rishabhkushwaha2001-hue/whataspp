@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "kush-gym-management",
+    "name": "Aetheron Management System",
     "slug": "gym-manager-whatsapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "gym-manager",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#030712",
-    "icon": "./assets/icon.jpg",
+    "icon": "./assets/app_logo.png",
     "splash": {
-      "image": "./assets/icon.jpg",
+      "image": "./assets/app_logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#030712"
     },

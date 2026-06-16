@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { RenewalModal } from '../components/RenewalModal';
+import { fetchMessageTemplates, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
 
 export const MembersScreen = () => {
   const { colors } = useTheme();
@@ -23,6 +24,9 @@ export const MembersScreen = () => {
   const [renewingMember, setRenewingMember] = useState<any>(null);
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [gymName, setGymName] = useState('Gym');
+  const [businessType, setBusinessType] = useState('gym');
+  const [enableHours, setEnableHours] = useState(false);
+  const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);
@@ -41,17 +45,22 @@ export const MembersScreen = () => {
     useCallback(() => {
       fetchMembers();
       
-      const loadGymName = async () => {
+      const loadSettings = async () => {
         try {
-          const storedName = await AsyncStorage.getItem('gymName');
-          if (storedName) {
-            setGymName(storedName);
-          }
+          const templates = await fetchMessageTemplates();
+          setGymName(templates.gymName);
+          setBusinessType(templates.businessType);
+          setEnableHours(templates.enableHours);
+          // Use DB template if non-empty, else fallback to system default
+          const defaults = getDefaultTemplates(templates.businessType);
+          const dbRenewal = templates.renewalTemplate;
+          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : defaults.renewal);
         } catch (e) {
-          console.log('Failed to load gymName', e);
+          const storedName = await AsyncStorage.getItem('gymName');
+          if (storedName) setGymName(storedName);
         }
       };
-      loadGymName();
+      loadSettings();
     }, [fetchMembers])
   );
 
@@ -92,7 +101,15 @@ export const MembersScreen = () => {
     setShowRenewModal(true);
   };
 
-  const confirmRenewal = async (durationMonths: number, amount: number, paymentMode: string, nextDueDate?: string, joiningDate?: string) => {
+  const confirmRenewal = async (
+    durationMonths: number,
+    amount: number,
+    paymentMode: string,
+    nextDueDate?: string,
+    joiningDate?: string,
+    hours?: number,
+    timing?: string
+  ) => {
     setShowRenewModal(false);
     if (!renewingMember) return;
     try {
@@ -101,22 +118,28 @@ export const MembersScreen = () => {
         amount: amount,
         payment_mode: paymentMode,
         next_due_date: nextDueDate,
-        joining_date: joiningDate
+        joining_date: joiningDate,
+        daily_hours: hours,
+        timing: timing,
       });
       
       fetchMembers();
       
       const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-      const msg = 
-        `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
-        `Hello *${renewingMember.full_name}*, thank you for continuing your journey with us! 💪\n\n` +
-        `*RENEWAL DETAILS:*\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🗓️ *New Plan:* ${durationMonths} Month(s)\n` +
-        `💰 *Amount Paid:* ₹${amount}\n` +
-        `🗓️ *New Expiry:* ${nextDue}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `*Let's push your limits again!* 🚀`;
+      const msg = buildRenewalMessage(
+        renewalTemplate,
+        businessType,
+        {
+          name: renewingMember.full_name,
+          phone: renewingMember.phone,
+          date: nextDue,
+          fees: amount,
+          hours: hours ?? renewingMember.daily_hours,
+          timing: timing ?? renewingMember.timing,
+          gym: gymName,
+          durationMonths,
+        }
+      );
       
       setAlertConfig({
           visible: true, 
@@ -227,6 +250,7 @@ export const MembersScreen = () => {
       <RenewalModal
         visible={showRenewModal}
         member={renewingMember}
+        enableHours={enableHours}
         onClose={() => setShowRenewModal(false)}
         onConfirm={confirmRenewal}
       />

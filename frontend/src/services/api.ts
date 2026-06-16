@@ -6,11 +6,11 @@ import { router } from 'expo-router';
 // ✅ RENDER PRODUCTION URL (Active)
 const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 
-// 🏠 LOCAL TESTING (Use this for local dev)
-const LOCAL_URL = 'http://192.168.1.34:8000/api/v1';
+// 🏠 LOCAL TESTING (Use this for local dev — change to true only when testing on same WiFi)
+const LOCAL_URL = 'http://192.168.1.38:8000/api/v1';
 
-// Switch this to true if you want to test locally
-const USE_LOCAL = false; // 🚀 PRODUCTION MODE - Render
+// ⚠️ PRODUCTION: Keep false. Set to true ONLY for local dev testing.
+const USE_LOCAL = false; // 🚀 PRODUCTION MODE
 
 const API_URL = USE_LOCAL ? LOCAL_URL : RENDER_URL;
 
@@ -43,21 +43,21 @@ api.interceptors.response.use(
     if (error.code === 'ECONNABORTED') {
       console.warn('API Timeout - Server might be sleeping');
     }
-    
+
     // Auto logout if account is suspended, deleted, or unauthorized (401 or 403 status)
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       const configUrl = error.config?.url || '';
-      const isAuthRoute = configUrl.includes('/auth/verify-phone') || 
-                          configUrl.includes('/auth/activate') || 
-                          configUrl.includes('/super-admin/login');
-                          
+      const isAuthRoute = configUrl.includes('/auth/verify-phone') ||
+        configUrl.includes('/auth/activate') ||
+        configUrl.includes('/super-admin/login');
+
       if (!isAuthRoute) {
         const errorMsg = error.response.data?.detail || 'Your session has expired or your account has been suspended.';
-        
+
         try {
           // Clear session data
           await AsyncStorage.clear();
-          
+
           // Show alert and redirect on OK click
           Alert.alert(
             'Session Terminated',
@@ -77,7 +77,7 @@ api.interceptors.response.use(
         }
       }
     }
-    
+
     return Promise.reject(error);
   }
 );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
@@ -39,6 +40,7 @@ export const MemberSummaryScreen = () => {
   
   const [loading, setLoading] = useState(!name); // Don't show full screen loader if we have basic info
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [businessType, setBusinessType] = useState('gym');
 
   useEffect(() => {
     const fetchMember = async () => {
@@ -61,6 +63,10 @@ export const MemberSummaryScreen = () => {
       }
     };
     fetchMember();
+    
+    AsyncStorage.getItem('businessType').then(type => {
+      if (type) setBusinessType(type);
+    });
   }, [id]);
 
   if (loading) return (
@@ -141,6 +147,21 @@ export const MemberSummaryScreen = () => {
             <Text style={styles.badgeText}>{member.plan_duration_months} Month Plan</Text>
           </View>
         </View>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: spacing.l, paddingTop: spacing.m, borderTopWidth: 1, borderTopColor: colors.border }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Joining Date</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
+              {member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'N/A'}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Plan Ending</Text>
+            <Text style={{ fontSize: 14, fontWeight: '700', color: isExpired ? colors.error : colors.text }}>
+              {expiryDate ? expiryDate.toLocaleDateString() : 'N/A'}
+            </Text>
+          </View>
+        </View>
       </GlassCard>
 
       <View style={styles.row}>
@@ -163,11 +184,19 @@ export const MemberSummaryScreen = () => {
         <DetailItem icon="phone" label="Phone" value={member.phone || 'Loading...'} />
         <DetailItem icon="map-marker" label="Address" value={member.address || 'Loading...'} />
         <DetailItem icon="calendar" label="Joining Date" value={member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'Loading...'} />
-        <DetailItem icon="user" label="Trainer" value={member.trainer_assigned || 'General'} />
+        {businessType !== 'library' && (
+          <DetailItem icon="user" label="Trainer" value={member.trainer_assigned || 'General'} />
+        )}
         <View style={styles.row}>
           <DetailItem icon="birthday-cake" label="Age" value={member.age || 'N/A'} half />
           <DetailItem icon="balance-scale" label="Weight" value={member.weight ? `${member.weight} kg` : 'N/A'} half />
         </View>
+        {(member.daily_hours || member.timing) && (
+          <View style={styles.row}>
+            {member.daily_hours && <DetailItem icon="clock-o" label="Daily Hours" value={`${member.daily_hours} Hrs`} half={true} />}
+            {member.timing && <DetailItem icon="sun-o" label="Timing" value={member.timing} half={true} />}
+          </View>
+        )}
       </GlassCard>
 
       <Text style={styles.sectionTitle}>Payment History</Text>

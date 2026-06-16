@@ -376,6 +376,8 @@ class RenewPayload(BaseModel):
     payment_mode: str = "Cash"
     next_due_date: Optional[datetime] = None
     joining_date: Optional[datetime] = None
+    daily_hours: Optional[int] = None
+    timing: Optional[str] = None
 
 @router.post("/{member_id}/renew")
 async def renew_member(member_id: str, payload: RenewPayload) -> Any:
@@ -419,17 +421,22 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     
     # Update member — also update plan_duration_months and monthly_fees
     # so profile shows correct plan and next renewal amount is calculated correctly
+    update_fields = {
+        "next_due_date": new_due_date,
+        "status": "active",
+        "category": "Renewal",
+        "plan_duration_months": payload.plan_duration_months,
+        "monthly_fees": payload.amount  # Update to latest paid amount
+    }
+    
+    if payload.daily_hours is not None:
+        update_fields["daily_hours"] = payload.daily_hours
+    if payload.timing is not None:
+        update_fields["timing"] = payload.timing
+
     await db["members"].update_one(
         {"_id": member["_id"]},
-        {
-            "$set": {
-                "next_due_date": new_due_date,
-                "status": "active",
-                "category": "Renewal",
-                "plan_duration_months": payload.plan_duration_months,
-                "monthly_fees": payload.amount  # Update to latest paid amount
-            }
-        }
+        {"$set": update_fields}
     )
     
     # Log payment

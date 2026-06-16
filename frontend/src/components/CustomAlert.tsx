@@ -54,7 +54,7 @@ export const CustomAlert = ({
   const activeColor = getColor();
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.alertBox}>
           <View style={[styles.iconContainer, { backgroundColor: `${activeColor}15` }]}>

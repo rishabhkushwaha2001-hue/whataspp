@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { RenewalModal } from '../components/RenewalModal';
+import { fetchMessageTemplates, buildReminderMessage, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
 
 export const RemindersScreen = () => {
   const { colors } = useTheme();
@@ -21,6 +22,10 @@ export const RemindersScreen = () => {
   const [renewingMember, setRenewingMember] = useState<any>(null);
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [gymName, setGymName] = useState('Gym');
+  const [businessType, setBusinessType] = useState('gym');
+  const [enableHours, setEnableHours] = useState(false);
+  const [reminderTemplate, setReminderTemplate] = useState<string | null>(null);
+  const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
   const router = useRouter();
 
   const applyFilters = useCallback((data: any[], searchText: string) => {
@@ -62,17 +67,24 @@ export const RemindersScreen = () => {
     useCallback(() => {
       fetchDueMembers();
 
-      const loadGymName = async () => {
+      const loadSettings = async () => {
         try {
-          const storedName = await AsyncStorage.getItem('gymName');
-          if (storedName) {
-            setGymName(storedName);
-          }
+          const templates = await fetchMessageTemplates();
+          setGymName(templates.gymName);
+          setBusinessType(templates.businessType);
+          setEnableHours(templates.enableHours);
+          // Use DB template if non-empty, else fallback to system default
+          const defaults = getDefaultTemplates(templates.businessType);
+          const dbReminder = templates.reminderTemplate;
+          const dbRenewal = templates.renewalTemplate;
+          setReminderTemplate((dbReminder && dbReminder.trim()) ? dbReminder : defaults.reminder);
+          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : defaults.renewal);
         } catch (e) {
-          console.log('Failed to load gymName', e);
+          const storedName = await AsyncStorage.getItem('gymName');
+          if (storedName) setGymName(storedName);
         }
       };
-      loadGymName();
+      loadSettings();
 
       // Auto-refresh every 60 seconds while focused
       const interval = setInterval(fetchDueMembers, 60000);
@@ -88,15 +100,18 @@ export const RemindersScreen = () => {
 
   const sendReminder = async (member: any) => {
     const dueDate = new Date(member.next_due_date).toLocaleDateString();
-    const message = 
-      `*${gymName.toUpperCase()} - RENEWAL REMINDER* 🔔\n\n` +
-      `Hello *${member.full_name}* 💪,\n\n` +
-      `We hope you're crushing your fitness goals! This is a friendly reminder that your membership is due for renewal.\n\n` +
-      `*PENDING FEES:* ₹${member.monthly_fees} 💰\n` +
-      `*DUE DATE:* ${dueDate} 🗓️\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `*Don't break the momentum!* Secure your spot and continue your transformation journey today. 🚀\n\n` +
-      `See you at the gym! 🏋️‍♂️`;
+    const message = buildReminderMessage(
+      reminderTemplate,
+      businessType,
+      {
+        name: member.full_name,
+        date: dueDate,
+        fees: member.monthly_fees,
+        hours: member.daily_hours,
+        timing: member.timing,
+        gym: gymName,
+      }
+    );
     
     try {
       await api.post('/messages/log', {
@@ -137,7 +152,15 @@ export const RemindersScreen = () => {
     setShowRenewModal(true);
   };
 
-  const confirmRenewal = async (durationMonths: number, amount: number, paymentMode: string, nextDueDate?: string, joiningDate?: string) => {
+  const confirmRenewal = async (
+    durationMonths: number,
+    amount: number,
+    paymentMode: string,
+    nextDueDate?: string,
+    joiningDate?: string,
+    hours?: number,
+    timing?: string
+  ) => {
     setShowRenewModal(false);
     if (!renewingMember) return;
     try {
@@ -146,13 +169,28 @@ export const RemindersScreen = () => {
         amount: amount,
         payment_mode: paymentMode,
         next_due_date: nextDueDate,
-        joining_date: joiningDate
+        joining_date: joiningDate,
+        daily_hours: hours,
+        timing: timing,
       });
       
       fetchDueMembers();
       
       const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-      const msg = `Hi ${renewingMember.full_name} 💪\n\nThank you for renewing your membership at ${gymName}! 🎉\n\nPayment Received: ₹${amount}\nNew Expiry Date: ${nextDue}\n\nKeep crushing your goals! 🚀`;
+      const msg = buildRenewalMessage(
+        renewalTemplate,
+        businessType,
+        {
+          name: renewingMember.full_name,
+          phone: renewingMember.phone,
+          date: nextDue,
+          fees: amount,
+          hours: hours ?? renewingMember.daily_hours,
+          timing: timing ?? renewingMember.timing,
+          gym: gymName,
+          durationMonths,
+        }
+      );
       
       setAlertConfig({
           visible: true, 
@@ -182,6 +220,7 @@ export const RemindersScreen = () => {
       <RenewalModal
         visible={showRenewModal}
         member={renewingMember}
+        enableHours={enableHours}
         onClose={() => setShowRenewModal(false)}
         onConfirm={confirmRenewal}
       />

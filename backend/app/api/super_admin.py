@@ -22,6 +22,7 @@ class GymCreate(BaseModel):
     plan_duration_months: int = 1
     plan_price: float = 0.0
     plan_expiry: Optional[str] = None
+    business_type: str = "gym"  # gym | library | general
 
 class GymUpdateStatus(BaseModel):
     status: str # active, inactive, suspended
@@ -40,17 +41,125 @@ def generate_activation_code() -> str:
     suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"KGM-ACT-{suffix}"
 
-# Helper to generate unique Gym ID
-async def generate_gym_id() -> str:
-    last_gym = await super_admin_db["gyms"].find_one(sort=[("_id", -1)])
-    if last_gym and "gym_id" in last_gym and last_gym["gym_id"].startswith("KGM_"):
+# Helper to generate unique Tenant ID
+async def generate_gym_id(business_type: str) -> str:
+    prefix = "GYM"
+    if business_type == "library":
+        prefix = "LIB"
+    elif business_type == "general":
+        prefix = "CBT"
+        
+    last_gym = await super_admin_db["gyms"].find_one({"gym_id": {"$regex": f"^{prefix}_"}}, sort=[("_id", -1)])
+    if last_gym and "gym_id" in last_gym:
         try:
             last_id = int(last_gym["gym_id"].split("_")[1])
-            return f"KGM_{last_id + 1}"
+            return f"{prefix}_{last_id + 1}"
         except:
             pass
-    count = await super_admin_db["gyms"].count_documents({})
-    return f"KGM_{200 + count + 1}"
+    count = await super_admin_db["gyms"].count_documents({"gym_id": {"$regex": f"^{prefix}_"}})
+    return f"{prefix}_{200 + count + 1}"
+
+# Helper: Get default WhatsApp message templates based on business type
+def get_default_templates(business_type: str, gym_name: str) -> dict:
+    if business_type == "library":
+        return {
+            "joining_msg_template": (
+                "*{library_name} - WELCOME! 📚*\n\n"
+                "Hello *{name}*! Welcome to {library_name}.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "📱 *Phone:* {phone}\n"
+                "📅 *Joining Date:* {joining_date}\n"
+                "⏰ *Daily Study Plan:* {hours} Hours/Day ({timing})\n"
+                "💰 *Fees Paid:* ₹{fees}\n"
+                "📅 *Valid Till:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Happy studying! Keep up the great work! 🚀"
+            ),
+            "renewal_msg_template": (
+                "*{library_name} - MEMBERSHIP RENEWED! 📚*\n\n"
+                "Hello *{name}*! Your library membership has been renewed.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "⏰ *Daily Study Plan:* {hours} Hours/Day ({timing})\n"
+                "💰 *Amount Paid:* ₹{fees}\n"
+                "📅 *New Expiry:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Keep reading, keep growing! 📖🚀"
+            ),
+            "reminder_msg_template": (
+                "*{library_name} - RENEWAL REMINDER 🔔*\n\n"
+                "Hello *{name}* 📚,\n\n"
+                "Your library membership is due for renewal.\n\n"
+                "*PENDING FEES:* ₹{fees} 💰\n"
+                "*DUE DATE:* {date} 📅\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Renew today and continue your {hours} Hours/Day study plan! 🚀"
+            )
+        }
+    elif business_type == "general":
+        return {
+            "joining_msg_template": (
+                "*{business_name} - SERVICE ACTIVATED ✅*\n\n"
+                "Hello *{name}*!\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "📅 *Date:* {joining_date}\n"
+                "💰 *Amount Paid:* ₹{fees}\n"
+                "📅 *Valid Till:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Thank you for choosing {business_name}! 🙏"
+            ),
+            "renewal_msg_template": (
+                "*{business_name} - PLAN RENEWED ✅*\n\n"
+                "Hello *{name}*! Your plan has been renewed.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "💰 *Amount Paid:* ₹{fees}\n"
+                "📅 *Valid Till:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Thank you for continuing with {business_name}! 🙏"
+            ),
+            "reminder_msg_template": (
+                "*{business_name} - PAYMENT REMINDER 🔔*\n\n"
+                "Hello *{name}*,\n\n"
+                "This is a friendly reminder that your payment is due.\n\n"
+                "*AMOUNT DUE:* ₹{fees}\n"
+                "*DUE DATE:* {date}\n\n"
+                "Please contact us for renewal. Thank you! 🙏"
+            )
+        }
+    else:  # gym (default)
+        return {
+            "joining_msg_template": (
+                "*{gym_name} - WELCOME KIT 🧾*\n\n"
+                "Hello *{name}*, welcome to {gym_name}! 💪\n\n"
+                "*MEMBERSHIP DETAILS:*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "📱 *Phone:* {phone}\n"
+                "📅 *Joining Date:* {joining_date}\n"
+                "💰 *Amount Paid:* ₹{fees}\n"
+                "📅 *Expiry Date:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "*Stay Strong & Crush Your Goals!* 🚀"
+            ),
+            "renewal_msg_template": (
+                "*{gym_name} - MEMBERSHIP RENEWED 🔄*\n\n"
+                "Hello *{name}*, thank you for continuing your journey with us! 💪\n\n"
+                "*RENEWAL DETAILS:*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "💰 *Amount Paid:* ₹{fees}\n"
+                "📅 *New Expiry:* {date}\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "*Let's push your limits again!* 🚀"
+            ),
+            "reminder_msg_template": (
+                "*{gym_name} - RENEWAL REMINDER 🔔*\n\n"
+                "Hello *{name}* 💪,\n\n"
+                "Your membership is due for renewal.\n\n"
+                "*PENDING FEES:* ₹{fees} 💰\n"
+                "*DUE DATE:* {date} 📅\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "*Don't break the momentum!* 🚀\n\n"
+                "See you at the gym! 🏋️‍♂️"
+            )
+        }
 
 # Super Admin Login Route
 @router.post("/login")
@@ -79,7 +188,7 @@ async def register_gym(gym_in: GymCreate) -> Any:
             detail=f"A gym with owner phone {gym_in.phone} is already registered!"
         )
         
-    gym_id = await generate_gym_id()
+    gym_id = await generate_gym_id(gym_in.business_type)
     activation_code = generate_activation_code()
     
     now = datetime.now(timezone.utc)
@@ -103,14 +212,17 @@ async def register_gym(gym_in: GymCreate) -> Any:
         "plan_price": gym_in.plan_price,
         "plan_expiry": expiry_date,
         "status": "active",
+        "business_type": gym_in.business_type,
         "created_at": now
     }
     
     # Save to super admin DB
     await super_admin_db["gyms"].insert_one(gym_dict)
     
-    # Pre-seed the new tenant's database with default gym settings profile
+    # Pre-seed the new tenant's database with default gym settings profile + business type + templates
     tenant_db = client[f"gym_{gym_id}"]
+    default_templates = get_default_templates(gym_in.business_type, gym_in.gym_name)
+    enable_hours = gym_in.business_type == "library"
     await tenant_db["settings"].update_one(
         {"type": "gym_profile"},
         {
@@ -121,7 +233,10 @@ async def register_gym(gym_in: GymCreate) -> Any:
                 "phone": gym_in.phone,
                 "logo_url": None,
                 "email": None,
-                "website": None
+                "website": None,
+                "business_type": gym_in.business_type,
+                "enable_hours_feature": enable_hours,
+                **default_templates
             }
         },
         upsert=True
@@ -192,6 +307,7 @@ async def get_all_gyms(q: Optional[str] = None) -> Any:
     
     # Format for response
     now = datetime.now(timezone.utc)
+    type_counts = {"gym": 0, "library": 0, "general": 0}
     for gym in gyms:
         gym["_id"] = str(gym["_id"])
         # Ensure plan_expiry is datetime
@@ -204,8 +320,18 @@ async def get_all_gyms(q: Optional[str] = None) -> Any:
         else:
             gym["is_expired"] = True
             gym["days_remaining"] = 0
+        # Count by business type
+        btype = gym.get("business_type", "gym")
+        if btype in type_counts:
+            type_counts[btype] += 1
+        else:
+            type_counts[btype] = type_counts.get(btype, 0) + 1
             
-    return gyms
+    return {
+        "gyms": gyms,
+        "total": len(gyms),
+        "type_breakdown": type_counts
+    }
 
 # Update a gym's status (Active/Inactive/Suspended)
 @router.post("/gyms/{gym_id}/status")

@@ -52,6 +52,8 @@ export const DashboardScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
+  const [hideRevenue, setHideRevenue] = useState(false);
+  const [revealedOnce, setRevealedOnce] = useState(false);
 
   const fetchDashboardData = useCallback(async (currentPeriod = period) => {
     setRefreshing(true);
@@ -77,6 +79,11 @@ export const DashboardScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchDashboardData();
+      // Reload revenue visibility preference each time screen is focused
+      AsyncStorage.getItem('hideRevenue').then(val => {
+        setHideRevenue(val === 'true');
+        setRevealedOnce(false); // reset reveal on each focus
+      });
     }, [fetchDashboardData])
   );
 
@@ -218,33 +225,43 @@ export const DashboardScreen = () => {
       </View>
 
       <View style={styles.statsGrid}>
-        <StatCard 
-          title="Total Members" 
-          value={stats?.total_members ?? '...'} 
-          icon="users" 
-          color={colors.primary} 
-          subtitle="Registered members"
-        />
+        {/* Revenue Card — tap to reveal when hidden */}
+        <TouchableOpacity
+          activeOpacity={hideRevenue ? 0.7 : 1}
+          onPress={() => { if (hideRevenue) setRevealedOnce(r => !r); }}
+          style={{ width: (width - spacing.l * 2 - spacing.m) / 2 }}
+        >
+          <GlassCard style={[styles.statCard, hideRevenue && !revealedOnce && { borderColor: `${colors.warning}30`, borderWidth: 1 }]}>
+            <View style={styles.statHeader}>
+              <View style={[styles.iconContainer, { backgroundColor: `${colors.success}20` }]}>
+                <FontAwesome name={hideRevenue && !revealedOnce ? 'lock' : 'money'} size={18} color={colors.success} />
+              </View>
+              {hideRevenue && (
+                <FontAwesome
+                  name={revealedOnce ? 'eye' : 'eye-slash'}
+                  size={13}
+                  color={colors.textMuted}
+                />
+              )}
+            </View>
+            <Text style={styles.statValue}>
+              {hideRevenue && !revealedOnce
+                ? '₹ ****'
+                : stats?.monthly_revenue ? `₹${stats.monthly_revenue}` : '₹0'}
+            </Text>
+            <Text style={styles.statTitle}>Revenue</Text>
+            <Text style={styles.statSubtitle}>
+              {hideRevenue && !revealedOnce ? 'Tap to reveal' : 'Gross Income'}
+            </Text>
+          </GlassCard>
+        </TouchableOpacity>
+
         <StatCard 
           title="Active Plans" 
           value={stats?.active_members ?? '...'} 
           icon="check-circle" 
-          color={colors.success} 
-          subtitle="Non-expired plans"
-        />
-        <StatCard 
-          title="Revenue" 
-          value={stats?.total_earnings ? `₹${stats.total_earnings}` : '₹0'} 
-          icon="money" 
-          color={colors.accent} 
-          subtitle="Plan subscription fees"
-        />
-        <StatCard 
-          title="Expired Plans" 
-          value={stats?.expired_members ?? '...'} 
-          icon="times-circle" 
-          color={colors.error} 
-          subtitle="Awaiting renewal"
+          color={colors.primary} 
+          subtitle="Current members"
         />
       </View>
 
@@ -305,7 +322,7 @@ export const DashboardScreen = () => {
       <Modal
         visible={showMessageModal}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setShowMessageModal(false)}
       >
         <View style={styles.modalOverlay}>

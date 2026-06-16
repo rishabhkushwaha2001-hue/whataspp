@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Linking, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { GradientButton } from '../components/GradientButton';
@@ -10,6 +11,77 @@ import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { fetchMessageTemplates, buildJoiningMessage, getDefaultTemplates } from '../services/messageTemplates';
+
+const getHoursDifference = (startH: string, startAmPm: string, endH: string, endAmPm: string) => {
+  const parseTime = (timeStr: string, amPm: string) => {
+    let [hStr, mStr] = timeStr.split(':');
+    let h = parseInt(hStr || '0');
+    let m = parseInt(mStr || '0');
+    if (isNaN(h)) h = 0;
+    if (isNaN(m)) m = 0;
+
+    if (amPm === 'PM' && h !== 12) h += 12;
+    if (amPm === 'AM' && h === 12) h = 0;
+
+    return h + (m / 60);
+  };
+
+  let s = parseTime(startH, startAmPm);
+  let e = parseTime(endH, endAmPm);
+
+  let diff = e - s;
+  if (diff < 0) diff += 24;
+  return diff;
+};
+
+const formatTimeInput = (text: string) => {
+  let val = text.replace(/[^0-9:]/g, '');
+  if (val === ':') return '';
+
+  let parts = val.split(':');
+
+  if (parts.length === 1) {
+    let p = parts[0];
+    if (p.length >= 2) {
+      if (parseInt(p[0]) > 1) {
+        val = p[0] + ':' + p.substring(1);
+      } else if (p.length === 3) {
+        val = p.substring(0, 2) + ':' + p.substring(2);
+      } else if (p.length > 3) {
+        val = p.substring(0, 2) + ':' + p.substring(2, 4);
+      }
+    }
+  }
+
+  parts = val.split(':');
+  if (parts.length > 1) {
+    let h = parts[0];
+    let m = parts[1];
+
+    if (h.length === 2 && parseInt(h) > 12) val = h[0] + ':' + h[1] + m;
+
+    parts = val.split(':');
+    h = parts[0];
+    m = parts[1];
+
+    if (m && m.length >= 2) {
+      if (parseInt(m.substring(0, 2)) > 59) {
+        m = '59';
+      } else {
+        m = m.substring(0, 2);
+      }
+    }
+    val = h + ':' + m;
+  } else {
+    let h = parts[0];
+    if (h.length === 2 && parseInt(h) > 12) {
+      val = h[0] + ':' + h[1];
+    }
+  }
+
+  return val;
+};
 
 export const MessageScreen = () => {
   const { colors } = useTheme();
@@ -30,6 +102,11 @@ export const MessageScreen = () => {
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [dailyHours, setDailyHours] = useState('');
+  const [timingStartHour, setTimingStartHour] = useState('');
+  const [timingStartAmPm, setTimingStartAmPm] = useState('AM');
+  const [timingEndHour, setTimingEndHour] = useState('');
+  const [timingEndAmPm, setTimingEndAmPm] = useState('PM');
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
   const [expiryDate, setExpiryDate] = useState(getNextMonthDate(new Date().toISOString().split('T')[0]));
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -37,24 +114,42 @@ export const MessageScreen = () => {
   const [isManual, setIsManual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [gymName, setGymName] = useState('Gym');
+  const [businessType, setBusinessType] = useState('gym');
+  const [enableHours, setEnableHours] = useState(false);
+  const [joiningMsgTemplate, setJoiningMsgTemplate] = useState<string | null>(null);
 
-  const [alertConfig, setAlertConfig] = useState<{visible: boolean, title: string, message: string, type: 'success' | 'error'}>({
+  const [alertConfig, setAlertConfig] = useState<{ visible: boolean, title: string, message: string, type: 'success' | 'error' }>({
     visible: false, title: '', message: '', type: 'success'
   });
 
-  useEffect(() => {
-    const loadGymName = async () => {
-      try {
-        const storedName = await AsyncStorage.getItem('gymName');
-        if (storedName) {
-          setGymName(storedName);
+  // Reload settings every time screen is focused — so toggling Hours ON in Settings
+  // is reflected immediately without needing an app restart
+  useFocusEffect(
+    useCallback(() => {
+      const loadSettings = async () => {
+        try {
+          const storedName = await AsyncStorage.getItem('gymName');
+          if (storedName) setGymName(storedName);
+          const templates = await fetchMessageTemplates();
+          setBusinessType(templates.businessType);
+          setEnableHours(templates.enableHours);
+          setGymName(templates.gymName);
+          // Use DB template if non-empty, else fallback to system default
+          const dbTemplate = templates.joiningTemplate;
+          if (dbTemplate && dbTemplate.trim()) {
+            setJoiningMsgTemplate(dbTemplate);
+          } else {
+            const defaults = getDefaultTemplates(templates.businessType);
+            setJoiningMsgTemplate(defaults.joining);
+          }
+        } catch (e) {
+          console.log('Failed to load settings', e);
         }
-      } catch (e) {
-        console.log('Failed to load gymName', e);
-      }
-    };
-    loadGymName();
-  }, []);
+      };
+      loadSettings();
+    }, [])
+  );
+
 
   const showCustomAlert = (title: string, message: string, type: 'success' | 'error' = 'error') => {
     setAlertConfig({ visible: true, title, message, type });
@@ -69,7 +164,7 @@ export const MessageScreen = () => {
     setIsLoading(true);
     try {
       const formattedPhone = phone.replace(/[^0-9]/g, '');
-      
+
       if (formattedPhone.length !== 10) {
         showCustomAlert('Invalid Phone', 'Please enter a valid 10-digit mobile number', 'error');
         setIsLoading(false);
@@ -77,7 +172,7 @@ export const MessageScreen = () => {
       }
 
       const finalPhone = formattedPhone; // No longer adding '91' prefix
-      
+
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount)) {
         showCustomAlert('Error', 'Invalid amount entered', 'error');
@@ -94,6 +189,44 @@ export const MessageScreen = () => {
 
       const durationDays = getDurationInDays(joiningDate, expiryDate);
 
+      if (enableHours && dailyHours && timingStartHour && timingEndHour) {
+        const expectedHours = parseInt(dailyHours);
+        if (!isNaN(expectedHours)) {
+          const diff = getHoursDifference(timingStartHour, timingStartAmPm, timingEndHour, timingEndAmPm);
+          if (diff !== expectedHours) {
+            showCustomAlert('Invalid Timing Slot', `You selected a ${expectedHours}-hour plan, but the timing slot is ${diff} hours long. It must be exactly ${expectedHours} hours.`, 'error');
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+
+      const timingStr = (enableHours && timingStartHour && timingEndHour) ? `${timingStartHour} ${timingStartAmPm} - ${timingEndHour} ${timingEndAmPm}` : undefined;
+
+      let welcomeMsg = '';
+      if (!isManual) {
+        const isRenewal = isManual ? false : false; // For new enrollments, it's never a renewal from this screen except maybe if category is set. Wait, category here is "New" or "Manual".
+        const finalExpiryStr = new Date(expiryDate).toLocaleDateString();
+        const joiningDateStr = new Date(joiningDate).toLocaleDateString();
+        const hoursVal = (enableHours && dailyHours) ? parseInt(dailyHours) : undefined;
+
+        welcomeMsg = buildJoiningMessage(
+          joiningMsgTemplate,
+          businessType,
+          {
+            name,
+            phone: finalPhone,
+            date: finalExpiryStr,
+            joining_date: joiningDateStr,
+            fees: amount,
+            hours: hoursVal,
+            timing: timingStr,
+            gym: gymName,
+            durationDays,
+          }
+        );
+      }
+
       const enrollmentData = {
         full_name: name,
         phone: finalPhone,
@@ -108,38 +241,14 @@ export const MessageScreen = () => {
         trainer_assigned: trainer,
         payment_mode: paymentMode,
         notes: notes || '',
-        category: isManual ? "Manual" : "New"
+        category: isManual ? "Manual" : "New",
+        daily_hours: (enableHours && dailyHours) ? parseInt(dailyHours) : undefined,
+        timing: timingStr,
       };
 
       const response = await api.post('/members/', enrollmentData);
-      const member = response.data;
 
       if (!isManual) {
-        const isRenewal = member.category === "Renewal";
-        const finalExpiryStr = new Date(member.next_due_date).toLocaleDateString();
-        
-        const welcomeMsg = isRenewal 
-          ? `*${gymName.toUpperCase()} - MEMBERSHIP RENEWED* 🔄\n\n` +
-            `Hello *${name}*, thank you for continuing your journey with us! 💪\n\n` +
-            `*RENEWAL DETAILS:*\n` +
-            `━━━━━━━━━━━━━━━━━━━━\n` +
-            `🗓️ *Plan Duration:* ${durationDays} Days\n` +
-            `💰 *Amount Paid:* ₹${amount}\n` +
-            `🗓️ *New Expiry:* ${finalExpiryStr}\n` +
-            `━━━━━━━━━━━━━━━━━━━━\n\n` +
-            `*Let's push your limits again!* 🚀`
-          : `*${gymName.toUpperCase()} - WELCOME KIT* 🧾\n\n` +
-            `Hello *${name}*, welcome to ${gymName}! 💪\n\n` +
-            `*MEMBERSHIP DETAILS:*\n` +
-            `━━━━━━━━━━━━━━━━━━━━\n` +
-            `📱 *Phone:* ${finalPhone}\n` +
-            `🗓️ *Joining Date:* ${new Date(joiningDate).toLocaleDateString()}\n` +
-            `🗓️ *Plan Duration:* ${durationDays} Days\n` +
-            `💰 *Amount Paid:* ₹${amount}\n` +
-            `🗓️ *Expiry Date:* ${finalExpiryStr}\n` +
-            `━━━━━━━━━━━━━━━━━━━━\n\n` +
-            `*Stay Strong & Crush Your Goals!* 🚀`;
-
         try {
           await api.post('/messages/log', {
             recipient_phone: finalPhone,
@@ -149,11 +258,11 @@ export const MessageScreen = () => {
         } catch (e) { console.warn('Log failed'); }
 
         showCustomAlert(
-          isRenewal ? 'Renewal Successful' : 'Enrollment Successful',
+          'Enrollment Successful',
           `Member saved! Now opening WhatsApp to send the receipt...`,
           'success'
         );
-        
+
         setTimeout(async () => {
           await sendWhatsAppMessage(finalPhone, welcomeMsg);
           clearForm();
@@ -165,11 +274,10 @@ export const MessageScreen = () => {
       }
 
     } catch (error: any) {
-      console.error('Enroll error', error.response?.data || error.message);
       let errMsg = error.message;
       if (error.response?.data?.detail) {
-        errMsg = typeof error.response.data.detail === 'string' 
-          ? error.response.data.detail 
+        errMsg = typeof error.response.data.detail === 'string'
+          ? error.response.data.detail
           : JSON.stringify(error.response.data.detail);
       }
       showCustomAlert('Enrollment Failed', errMsg, 'error');
@@ -180,7 +288,7 @@ export const MessageScreen = () => {
 
   const clearForm = () => {
     setName(''); setPhone(''); setAmount(''); setAge(''); setWeight('');
-    setAddress(''); setNotes(''); setTrainer('General');
+    setAddress(''); setNotes(''); setTrainer('General'); setDailyHours(''); setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
     setGender('Male');        // Reset gender
     setPaymentMode('Cash');   // Reset payment mode
     setIsManual(false);       // Reset manual toggle
@@ -213,7 +321,7 @@ export const MessageScreen = () => {
 
   return (
     <View style={styles.container}>
-      <CustomAlert 
+      <CustomAlert
         visible={alertConfig.visible}
         title={alertConfig.title}
         message={alertConfig.message}
@@ -233,8 +341,8 @@ export const MessageScreen = () => {
               <Text style={styles.manualTitle}>Manual Add</Text>
               <Text style={styles.manualSub}>Skip WhatsApp receipt</Text>
             </View>
-            <Switch 
-              value={isManual} 
+            <Switch
+              value={isManual}
               onValueChange={setIsManual}
               trackColor={{ false: colors.surfaceLight, true: colors.primary }}
               thumbColor={isManual ? colors.text : '#f4f3f4'}
@@ -242,29 +350,96 @@ export const MessageScreen = () => {
           </View>
 
           <ModernInput label="Full Name *" value={name} onChangeText={setName} placeholder="e.g. John Doe" icon={<FontAwesome name="user-o" size={16} color={colors.textSecondary} />} />
-          
+
+          {/* Library / General Hours & Timing Fields */}
+          {enableHours && (
+            <View>
+              <ModernInput
+                label="Daily Hours ⏰"
+                value={dailyHours}
+                onChangeText={setDailyHours}
+                keyboardType="numeric"
+                placeholder="e.g. 8"
+                icon={<FontAwesome name="clock-o" size={16} color={colors.primary} />}
+              />
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8, marginTop: 4, fontWeight: '600' }}>Timing Slot 🌞</Text>
+              <View style={styles.row}>
+                {/* START TIME */}
+                <View style={{ flex: 1, marginRight: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 6 }}>
+                    <TextInput
+                      style={{ flex: 1, color: colors.text, fontSize: 13 }}
+                      placeholder="10:00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={timingStartHour}
+                      onChangeText={(t) => setTimingStartHour(formatTimeInput(t))}
+                    />
+                    <TouchableOpacity
+                      style={{ backgroundColor: timingStartAmPm === 'AM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => setTimingStartAmPm('AM')}>
+                      <Text style={{ color: timingStartAmPm === 'AM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>AM</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: timingStartAmPm === 'PM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => setTimingStartAmPm('PM')}>
+                      <Text style={{ color: timingStartAmPm === 'PM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>PM</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* TO TEXT */}
+                <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '700', alignSelf: 'center', marginHorizontal: 2 }}>TO</Text>
+
+                {/* END TIME */}
+                <View style={{ flex: 1, marginLeft: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 6 }}>
+                    <TextInput
+                      style={{ flex: 1, color: colors.text, fontSize: 13, marginLeft: 4 }}
+                      placeholder="05:00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={timingEndHour}
+                      onChangeText={(t) => setTimingEndHour(formatTimeInput(t))}
+                    />
+                    <TouchableOpacity
+                      style={{ backgroundColor: timingEndAmPm === 'AM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => setTimingEndAmPm('AM')}>
+                      <Text style={{ color: timingEndAmPm === 'AM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>AM</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: timingEndAmPm === 'PM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 6 }}
+                      onPress={() => setTimingEndAmPm('PM')}>
+                      <Text style={{ color: timingEndAmPm === 'PM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>PM</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
           <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: spacing.s }}>
               <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
-                <ModernInput 
-                  label="From Date (Joining) *" 
-                  value={joiningDate} 
-                  editable={false} 
-                  placeholder="Select Date" 
-                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} 
+                <ModernInput
+                  label="From Date (Joining) *"
+                  value={joiningDate}
+                  editable={false}
+                  placeholder="Select Date"
+                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
                 />
               </TouchableOpacity>
             </View>
             <View style={{ flex: 1, marginLeft: spacing.s }}>
               <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
-                <ModernInput 
-                  label="To Date (Expiry) *" 
-                  value={expiryDate} 
-                  editable={false} 
-                  placeholder="Select Date" 
-                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} 
+                <ModernInput
+                  label="To Date (Expiry) *"
+                  value={expiryDate}
+                  editable={false}
+                  placeholder="Select Date"
+                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
                 />
               </TouchableOpacity>
             </View>
@@ -309,9 +484,9 @@ export const MessageScreen = () => {
             );
           })()}
 
-          <DatePickerModal 
-            visible={showDatePicker} 
-            onClose={() => setShowDatePicker(false)} 
+          <DatePickerModal
+            visible={showDatePicker}
+            onClose={() => setShowDatePicker(false)}
             onSelect={(date) => {
               if (datePickerType === 'joining') {
                 setJoiningDate(date);
@@ -326,18 +501,18 @@ export const MessageScreen = () => {
                   setExpiryDate(date);
                 }
               }
-            }} 
+            }}
             initialDate={datePickerType === 'joining' ? joiningDate : expiryDate}
             title={datePickerType === 'joining' ? 'Select From Date' : 'Select To Date'}
           />
 
-          <ModernInput 
-            label="Amount (₹) *" 
-            value={amount} 
-            onChangeText={setAmount} 
-            keyboardType="numeric" 
-            placeholder="0" 
-            icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />} 
+          <ModernInput
+            label="Amount (₹) *"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="numeric"
+            placeholder="0"
+            icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
           />
 
           <View style={styles.row}>
@@ -353,7 +528,9 @@ export const MessageScreen = () => {
 
           <Selector label="Gender" options={['Male', 'Female', 'Other']} selected={gender} onSelect={setGender} />
 
-          <ModernInput label="Trainer Assigned" value={trainer} onChangeText={setTrainer} placeholder="General / Personal Trainer Name" icon={<FontAwesome name="id-badge" size={16} color={colors.textSecondary} />} />
+          {businessType !== 'library' && (
+            <ModernInput label="Trainer Assigned" value={trainer} onChangeText={setTrainer} placeholder="General / Personal Trainer Name" icon={<FontAwesome name="id-badge" size={16} color={colors.textSecondary} />} />
+          )}
 
           <ModernInput label="Address" value={address} onChangeText={setAddress} placeholder="Area/City" icon={<FontAwesome name="map-marker" size={16} color={colors.textSecondary} />} />
 

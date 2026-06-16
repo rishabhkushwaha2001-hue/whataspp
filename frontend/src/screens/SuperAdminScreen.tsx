@@ -46,6 +46,7 @@ export const SuperAdminScreen = () => {
     expiring: 0,
     revenue: 0,
   });
+  const [typeBreakdown, setTypeBreakdown] = useState<any>({});
 
   // Modal States
   const [registerModal, setRegisterModal] = useState(false);
@@ -61,6 +62,7 @@ export const SuperAdminScreen = () => {
   const [duration, setDuration] = useState('1');
   const [price, setPrice] = useState('1500');
   const [planExpiry, setPlanExpiry] = useState('');
+  const [businessType, setBusinessType] = useState<'gym' | 'library' | 'general'>('gym');
 
   const [selectedGym, setSelectedGym] = useState<any>(null);
   const [renewDuration, setRenewDuration] = useState('1');
@@ -77,8 +79,13 @@ export const SuperAdminScreen = () => {
     setRefreshing(true);
     try {
       const res = await api.get('/super-admin/gyms');
-      setGyms(res.data);
-      setFilteredGyms(res.data);
+      // API now returns { gyms: [...], total, type_breakdown }
+      const gymList = Array.isArray(res.data) ? res.data : (res.data.gyms || []);
+      setGyms(gymList);
+      setFilteredGyms(gymList);
+      if (res.data.type_breakdown) {
+        setTypeBreakdown(res.data.type_breakdown);
+      }
 
       // Compute stats
       let activeCount = 0;
@@ -86,7 +93,7 @@ export const SuperAdminScreen = () => {
       let expiringCount = 0;
       let totalRevenue = 0;
 
-      res.data.forEach((gym: any) => {
+      gymList.forEach((gym: any) => {
         if (gym.status === 'active' && !gym.is_expired) {
           activeCount++;
         } else {
@@ -99,7 +106,7 @@ export const SuperAdminScreen = () => {
       });
 
       setStats({
-        total: res.data.length,
+        total: gymList.length,
         active: activeCount,
         inactive: inactiveCount,
         expiring: expiringCount,
@@ -126,7 +133,8 @@ export const SuperAdminScreen = () => {
       gym.gym_name.toLowerCase().includes(text.toLowerCase()) ||
       gym.owner_name.toLowerCase().includes(text.toLowerCase()) ||
       gym.phone.includes(text) ||
-      gym.address.toLowerCase().includes(text.toLowerCase())
+      gym.address.toLowerCase().includes(text.toLowerCase()) ||
+      (gym.business_type || '').toLowerCase().includes(text.toLowerCase())
     );
     setFilteredGyms(filtered);
   };
@@ -145,7 +153,8 @@ export const SuperAdminScreen = () => {
         address: address,
         plan_duration_months: parseInt(duration),
         plan_price: parseFloat(price),
-        plan_expiry: planExpiry || undefined
+        plan_expiry: planExpiry || undefined,
+        business_type: businessType
       });
 
       setRegisterModal(false);
@@ -157,6 +166,7 @@ export const SuperAdminScreen = () => {
       setDuration('1');
       setPrice('1500');
       setPlanExpiry('');
+      setBusinessType('gym');
 
       fetchGyms();
 
@@ -380,12 +390,11 @@ export const SuperAdminScreen = () => {
               </GlassCard>
             </ScrollView>
 
-            {/* Actions Bar */}
             <View style={styles.actionBar}>
               <View style={styles.searchBar}>
                 <FontAwesome name="search" size={14} color={colors.textMuted} style={{ marginRight: 8 }} />
                 <TextInput
-                  placeholder="Search Gym, Owner, Phone or Address..."
+                  placeholder="Search Business, Owner, Phone..."
                   placeholderTextColor={colors.textMuted}
                   style={styles.searchInput}
                   value={search}
@@ -394,11 +403,42 @@ export const SuperAdminScreen = () => {
               </View>
               <TouchableOpacity style={styles.registerBtn} onPress={() => { setPlanExpiry(''); setRegisterModal(true); }}>
                 <FontAwesome name="plus" size={14} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.registerBtnText}>Add Gym</Text>
+                <Text style={styles.registerBtnText}>Add Business</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.sectionTitle}>Registered Gym Partners</Text>
+            {/* Business Type Breakdown chips */}
+            <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                onPress={() => setFilteredGyms(gyms)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700' }}>All {stats.total}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFilteredGyms(gyms.filter(g => (g.business_type || 'gym') === 'gym'))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98115', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#10B98130' }}
+              >
+                <Text style={{ fontSize: 10 }}>🏋️</Text>
+                <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700' }}>Gym {typeBreakdown?.gym || 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'library'))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#8B5CF615', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#8B5CF630' }}
+              >
+                <Text style={{ fontSize: 10 }}>📚</Text>
+                <Text style={{ color: '#8B5CF6', fontSize: 11, fontWeight: '700' }}>Library {typeBreakdown?.library || 0}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'general'))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F59E0B15', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#F59E0B30' }}
+              >
+                <Text style={{ fontSize: 10 }}>🏠</Text>
+                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '700' }}>General {typeBreakdown?.general || 0}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.sectionTitle}>Registered Business Partners</Text>
           </View>
         )}
         renderItem={({ item }) => {
@@ -407,6 +447,39 @@ export const SuperAdminScreen = () => {
 
           return (
             <GlassCard style={styles.gymCard}>
+              {/* Business Type Banner — color-coded strip at top */}
+              {(() => {
+                const btype = item.business_type || 'gym';
+                const btypeConfig: Record<string, { color: string; bg: string; icon: string; label: string }> = {
+                  library:  { color: '#8B5CF6', bg: '#8B5CF615', icon: '📚', label: 'Library' },
+                  general:  { color: '#F59E0B', bg: '#F59E0B15', icon: '🏠', label: 'General / Rent' },
+                  gym:      { color: '#10B981', bg: '#10B98115', icon: '🏋️', label: 'Gym / Fitness' },
+                };
+                const cfg = btypeConfig[btype] || btypeConfig['gym'];
+                return (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    backgroundColor: cfg.bg,
+                    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+                    marginBottom: 12, gap: 8,
+                    borderLeftWidth: 3, borderLeftColor: cfg.color,
+                  }}>
+                    <Text style={{ fontSize: 16 }}>{cfg.icon}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: cfg.color, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
+                        {cfg.label.toUpperCase()}
+                      </Text>
+                      <Text style={{ color: cfg.color, fontSize: 11, opacity: 0.8, fontFamily: 'monospace' }}>
+                        DB: gym_{item.gym_id}
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: cfg.color + '25', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                      <Text style={{ color: cfg.color, fontSize: 10, fontWeight: '800' }}>ISOLATED DB</Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {/* Card Header */}
               <View style={styles.cardHeader}>
                 <View>
@@ -427,12 +500,8 @@ export const SuperAdminScreen = () => {
                   <Text style={styles.securityVal}>{item.activation_code}</Text>
                 </View>
                 <View style={styles.securityRow}>
-                  <Text style={styles.securityLabel}>📍 Gym Tenant ID: </Text>
+                  <Text style={styles.securityLabel}>📍 Tenant ID: </Text>
                   <Text style={styles.securityVal}>{item.gym_id}</Text>
-                </View>
-                <View style={styles.securityRow}>
-                  <Text style={styles.securityLabel}>📂 Isolated DB: </Text>
-                  <Text style={[styles.securityVal, { color: colors.primary }]}>gym_{item.gym_id}</Text>
                 </View>
               </View>
 
@@ -508,11 +577,11 @@ export const SuperAdminScreen = () => {
       />
 
       {/* REGISTER NEW GYM MODAL */}
-      <Modal visible={registerModal} animationType="slide" transparent>
+      <Modal visible={registerModal} animationType="none" transparent>
         <View style={styles.modalBg}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Register Partner Gym 🏋️‍♂️</Text>
+              <Text style={styles.modalTitle}>Register Partner Business 🏢</Text>
               <TouchableOpacity onPress={() => setRegisterModal(false)}>
                 <FontAwesome name="times-circle" size={24} color={colors.textMuted} />
               </TouchableOpacity>
@@ -530,13 +599,13 @@ export const SuperAdminScreen = () => {
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>GYM NAME</Text>
-                <TextInput style={styles.modalInput} value={gymName} onChangeText={setGymName} placeholder="Enter gym name..." placeholderTextColor={colors.textMuted} />
+                <Text style={styles.label}>BUSINESS NAME</Text>
+                <TextInput style={styles.modalInput} value={gymName} onChangeText={setGymName} placeholder="Enter business name..." placeholderTextColor={colors.textMuted} />
               </View>
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>GYM ADDRESS</Text>
-                <TextInput style={styles.modalInput} value={address} onChangeText={setAddress} placeholder="Enter full address..." placeholderTextColor={colors.textMuted} />
+                <Text style={styles.label}>BUSINESS ADDRESS</Text>
+                <TextInput style={styles.modalInput} value={address} onChangeText={setAddress} placeholder="Enter full business address..." placeholderTextColor={colors.textMuted} />
               </View>
 
               <View style={{ flexDirection: 'row', gap: 15 }}>
@@ -547,6 +616,34 @@ export const SuperAdminScreen = () => {
                 <View style={[styles.inputGroup, { flex: 1 }]}>
                   <Text style={styles.label}>BILLING AMOUNT (₹)</Text>
                   <TextInput style={styles.modalInput} value={price} keyboardType="numeric" onChangeText={setPrice} placeholder="e.g. 1500" placeholderTextColor={colors.textMuted} />
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>BUSINESS TYPE</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                  {[
+                    { key: 'gym', label: '🏋️ Gym' },
+                    { key: 'library', label: '📚 Library' },
+                    { key: 'general', label: '🏠 General' },
+                  ].map((type) => (
+                    <TouchableOpacity
+                      key={type.key}
+                      onPress={() => setBusinessType(type.key as any)}
+                      style={[
+                        styles.modalInput,
+                        { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 10,
+                          backgroundColor: businessType === type.key ? colors.primary : colors.surfaceLight,
+                          borderColor: businessType === type.key ? colors.primary : colors.border,
+                        }
+                      ]}
+                    >
+                      <Text style={{ 
+                        color: businessType === type.key ? '#fff' : colors.text, 
+                        fontWeight: '700', fontSize: 12 
+                      }}>{type.label}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
 
@@ -574,7 +671,7 @@ export const SuperAdminScreen = () => {
       </Modal>
 
       {/* RENEW SUBSCRIPTION PLAN MODAL */}
-      <Modal visible={renewModal} animationType="slide" transparent>
+      <Modal visible={renewModal} animationType="none" transparent>
         <View style={styles.modalBg}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -624,7 +721,7 @@ export const SuperAdminScreen = () => {
       </Modal>
 
       {/* WHATSAPP CUSTOM MESSAGE MODAL */}
-      <Modal visible={whatsappModal} animationType="slide" transparent>
+      <Modal visible={whatsappModal} animationType="none" transparent>
         <View style={styles.modalBg}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -660,7 +757,7 @@ export const SuperAdminScreen = () => {
       </Modal>
 
       {/* WHATSAPP LOGS VIEW MODAL */}
-      <Modal visible={logsModal} animationType="slide" transparent>
+      <Modal visible={logsModal} animationType="none" transparent>
         <View style={styles.modalBg}>
           <View style={[styles.modalContent, { maxHeight: '80%', padding: spacing.m }]}>
             <View style={styles.modalHeader}>

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 class MemberCreate(BaseModel):
     full_name: str
@@ -19,6 +19,8 @@ class MemberCreate(BaseModel):
     trainer_assigned: Optional[str] = "General"
     payment_mode: Optional[str] = "Cash"
     category: Optional[str] = "New"
+    daily_hours: Optional[int] = None  # Library-specific: daily study hours (e.g. 8, 10)
+    timing: Optional[str] = None        # Library-specific: study timing (e.g. 9 AM - 5 PM)
 
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -32,7 +34,7 @@ class PaymentBase(BaseModel):
     member_id: str
     amount: float
     plan_duration: int
-    payment_date: datetime = Field(default_factory=datetime.utcnow)
+    payment_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     payment_method: str = "Cash"
     notes: Optional[str] = None
 
@@ -41,7 +43,7 @@ class PaymentInDB(PaymentBase):
 
 class AttendanceBase(BaseModel):
     member_id: str
-    check_in_time: datetime = Field(default_factory=datetime.utcnow)
+    check_in_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "Present"
 
 class AttendanceInDB(AttendanceBase):
@@ -59,12 +61,14 @@ class MemberInDB(MemberCreate):
 class DashboardStats(BaseModel):
     total_members: int
     active_members: int
+    expired_members: int
     expiring_soon: int
     pending_payments: int
     total_revenue: float
     monthly_revenue: float
-    new_members_this_month: int
-    plan_distribution: dict # e.g., {"Monthly": 10, "Yearly": 5}
+    new_members_count: int
+    renewal_members_count: int
+    manual_members_count: int
 
 class MessageCreate(BaseModel):
     recipient_phone: str
@@ -73,7 +77,7 @@ class MessageCreate(BaseModel):
 
 class MessageInDB(MessageCreate):
     id: str = Field(alias="_id")
-    sent_at: datetime = Field(default_factory=datetime.utcnow)
+    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class GymSettings(BaseModel):
     gym_name: str = "Gym Name"
@@ -82,3 +86,20 @@ class GymSettings(BaseModel):
     logo_url: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+    # Multi-business type support
+    business_type: Optional[str] = "gym"          # gym | library | general
+    enable_hours_feature: Optional[bool] = False   # Show daily_hours field in member form
+    # Custom WhatsApp message templates
+    # Use {name}, {date}, {fees}, {hours}, {gym} as placeholders
+    joining_msg_template: Optional[str] = None
+    renewal_msg_template: Optional[str] = None
+    reminder_msg_template: Optional[str] = None
+
+class ExpenseCreate(BaseModel):
+    amount: float
+    category: str
+    date: datetime = Field(default_factory=datetime.utcnow)
+    notes: Optional[str] = None
+
+class ExpenseInDB(ExpenseCreate):
+    id: str = Field(alias="_id")

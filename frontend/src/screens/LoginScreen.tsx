@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
@@ -35,16 +35,16 @@ export const LoginScreen = () => {
     try {
       const res = await api.post('/auth/verify-phone', { phone: phone.trim() });
       setLoading(false);
-      
+
       const isAdm = res.data.is_admin === true;
       setIsAdminSession(isAdm);
 
       setAlertConfig({
         visible: true,
         title: 'Verification Success',
-        message: isAdm 
+        message: isAdm
           ? 'Super Admin phone number recognized! Click Continue to enter your Security Admin ID.'
-          : `Bhai, ${res.data.owner_name} verified for ${res.data.gym_name}!\n\nNow enter your 12-digit activation code.`,
+          : `Welcome ${res.data.owner_name}! Verified for ${res.data.business_type === 'library' ? 'Library' : 'Gym'} ${res.data.gym_name}.\n\nNow enter your 12-digit activation code.`,
         type: 'success',
         onConfirm: () => {
           setAlertConfig({ visible: false });
@@ -80,11 +80,11 @@ export const LoginScreen = () => {
         phone: phone.trim(),
         activation_code: activationCode.trim()
       });
-      
+
       if (res.data.is_admin === true) {
         // ✅ Clear ALL previous session data first
         await AsyncStorage.clear();
-        
+
         // Save Super Admin session
         await AsyncStorage.setItem('gymId', 'super_admin');
         await AsyncStorage.setItem('gymName', 'Super Admin Control Panel');
@@ -111,12 +111,13 @@ export const LoginScreen = () => {
         await AsyncStorage.setItem('gymName', res.data.gym_name);
         await AsyncStorage.setItem('ownerName', res.data.owner_name);
         await AsyncStorage.setItem('isAdmin', 'false');
+        await AsyncStorage.setItem('businessType', res.data.business_type || 'gym');
 
         setLoading(false);
         setAlertConfig({
           visible: true,
           title: 'Welcome! 🎉',
-          message: `Gym ${res.data.gym_name} activated successfully!\nLet's grow your fitness club.`,
+          message: `${res.data.business_type === 'library' ? 'Library' : 'Gym'} ${res.data.gym_name} activated successfully!\nLet's grow your ${res.data.business_type === 'library' ? 'library' : 'business'}.`,
           type: 'success',
           onConfirm: () => {
             setAlertConfig({ visible: false });
@@ -148,12 +149,9 @@ export const LoginScreen = () => {
         />
 
         <View style={styles.headerSection}>
-          <View style={styles.iconContainer}>
-            <FontAwesome name="flash" size={42} color={colors.primary} />
-          </View>
-          <Text style={styles.brandTitle}>KGM</Text>
-          <Text style={styles.brandSubtitle}>Professional</Text>
+          <Image source={require('../../assets/kgm_logo.png')} style={styles.logo} resizeMode="contain" />
         </View>
+
 
         <GlassCard style={styles.card}>
           <Text style={styles.cardTitle}>
@@ -163,8 +161,8 @@ export const LoginScreen = () => {
             {step === 1
               ? 'Step 1: Enter your registered mobile number'
               : isAdminSession
-              ? 'Step 2: Enter master administrative security ID'
-              : 'Step 2: Enter your isolated database activation code'}
+                ? 'Step 2: Enter master administrative security ID'
+                : 'Step 2: Enter your isolated database activation code'}
           </Text>
 
           {step === 1 ? (
@@ -206,11 +204,11 @@ export const LoginScreen = () => {
                   {isAdminSession ? 'SUPER ADMIN SECURITY ID' : 'ACTIVATION CODE'}
                 </Text>
                 <View style={styles.inputWrapper}>
-                  <FontAwesome 
-                    name={isAdminSession ? "lock" : "key"} 
-                    size={16} 
-                    color={colors.textMuted} 
-                    style={styles.inputIcon} 
+                  <FontAwesome
+                    name={isAdminSession ? "lock" : "key"}
+                    size={16}
+                    color={colors.textMuted}
+                    style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
@@ -262,6 +260,10 @@ export const LoginScreen = () => {
             </View>
           )}
         </GlassCard>
+
+        <View style={styles.footerSection}>
+          <Text style={styles.poweredByText}>Powered by Aetheron Technologies</Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -269,29 +271,13 @@ export const LoginScreen = () => {
 
 const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { flexGrow: 1, justifyContent: 'center', padding: spacing.l },
-  headerSection: { alignItems: 'center', marginBottom: spacing.xl },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: borderRadius.l,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
-    marginBottom: spacing.m,
+  scrollContainer: { flexGrow: 1, justifyContent: 'flex-start', paddingHorizontal: spacing.l, paddingTop: 40, paddingBottom: spacing.l },
+  headerSection: { alignItems: 'center', marginBottom: spacing.m },
+  logo: {
+    width: 260,
+    height: 260,
+    marginBottom: 0,
   },
-  brandTitle: {
-    fontSize: 36,
-    fontWeight: '900',
-    color: colors.text,
-    letterSpacing: 2,
-    textShadowColor: 'rgba(139, 92, 246, 0.5)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 10,
-  },
-  brandSubtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4, fontWeight: '600' },
   card: { padding: spacing.xl, borderRadius: borderRadius.l },
   cardTitle: { fontSize: 22, fontWeight: '800', color: colors.text, textAlign: 'center' },
   cardSubtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6, marginBottom: spacing.l },
@@ -322,4 +308,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   backBtn: { alignItems: 'center', marginTop: spacing.s },
   backBtnText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  footerSection: { alignItems: 'center', marginTop: 'auto', paddingTop: spacing.xl },
+  poweredByText: { color: colors.textMuted, fontSize: 12, fontWeight: '500', letterSpacing: 0.5 },
 });

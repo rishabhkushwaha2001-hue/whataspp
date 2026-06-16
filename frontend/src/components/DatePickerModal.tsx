@@ -65,7 +65,7 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="none">
       <View style={styles.overlay}>
         <View style={styles.modalContent}>
           <View style={styles.header}>

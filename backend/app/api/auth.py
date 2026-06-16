@@ -50,7 +50,8 @@ async def verify_phone(payload: PhoneVerifyRequest):
         "is_admin": False,
         "message": "Phone number verified successfully",
         "gym_name": gym.get("gym_name"),
-        "owner_name": gym.get("owner_name")
+        "owner_name": gym.get("owner_name"),
+        "business_type": gym.get("business_type", "gym")
     }
 
 @router.post("/activate")
@@ -112,6 +113,7 @@ async def activate_gym(payload: ActivateRequest):
         "message": "Gym activated and connected successfully!",
         "gym_id": gym.get("gym_id"),
         "gym_name": gym.get("gym_name"),
-        "owner_name": gym.get("owner_name")
+        "owner_name": gym.get("owner_name"),
+        "business_type": gym.get("business_type", "gym"),
     }
 
