@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "appVersionSource": "local"
+  },
   "build": {
     "development": {
       "developmentClient": true,
@@ -6,9 +9,18 @@
     },
     "preview": {
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "withoutCredentials": false
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
-    "production": {}
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
   }
 }

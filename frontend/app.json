@@ -13,7 +13,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#F3F4F6"
     },
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "jsEngine": "hermes",
     "runtimeVersion": {
       "policy": "appVersion"
@@ -25,15 +25,30 @@
       "supportsTablet": true
     },
     "android": {
-      "edgeToEdgeEnabled": true,
-      "package": "com.mayankkush2001.gymmanagerwhatsapp"
+      "package": "com.mayankkush2001.gymmanagerwhatsapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/app_logo.png",
+        "backgroundColor": "#F3F4F6"
+      }
     },
     "web": {
       "bundler": "metro",
       "output": "static"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "targetSdkVersion": 34,
+            "compileSdkVersion": 34,
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
