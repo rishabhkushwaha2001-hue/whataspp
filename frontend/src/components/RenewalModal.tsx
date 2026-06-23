@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Dimensions, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Dimensions, TextInput } from 'react-native';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { ModernInput } from './ModernInput';
 import { DatePickerModal } from './DatePickerModal';
+import { api } from '../services/api';
+import { DropdownModal } from './DropdownModal';
+import { useAppAlert } from '../hooks/useAppAlert';
 
 const { height } = Dimensions.get('window');
 
@@ -19,7 +22,9 @@ interface RenewalModalProps {
     nextDueDate?: string,
     joiningDate?: string,
     hours?: number,
-    timing?: string
+    timing?: string,
+    allocatedSeat?: string,
+    wifiDetails?: string
   ) => void;
 }
 
@@ -32,6 +37,7 @@ export const RenewalModal = ({
 }: RenewalModalProps) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const { showError, AlertModal } = useAppAlert();
   const getNextMonthDate = (dateStr: string) => {
     const d = new Date(dateStr);
     d.setMonth(d.getMonth() + 1);
@@ -49,6 +55,52 @@ export const RenewalModal = ({
   const [timingEndAmPm, setTimingEndAmPm] = useState('PM');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry'>('joining');
+  const [allocatedSeat, setAllocatedSeat] = useState('');
+  const [wifiDetails, setWifiDetails] = useState('');
+  const [availableSeats, setAvailableSeats] = useState<any[]>([]);
+  const [wifiOptions, setWifiOptions] = useState<any[]>([]);
+  const [showSeatModal, setShowSeatModal] = useState(false);
+  const [showWifiModal, setShowWifiModal] = useState(false);
+
+
+  
+  useEffect(() => {
+    if (enableHours && visible) {
+      api.get('/settings/').then(res => {
+        setWifiOptions(res.data.wifi_networks || []);
+      }).catch(() => {});
+      api.get('/seats/').then(res => {
+        setAvailableSeats(Array.isArray(res.data) ? res.data : res.data?.seats || []);
+      }).catch(() => {});
+    }
+  }, [enableHours, visible]);
+
+  useEffect(() => {
+    if (dailyHours && timingStartHour && timingStartAmPm) {
+      const hours = parseInt(dailyHours);
+      if (!isNaN(hours) && hours > 0) {
+        let startH = parseInt(timingStartHour.split(':')[0] || timingStartHour);
+        if (isNaN(startH)) return;
+        if (timingStartAmPm === 'PM' && startH !== 12) startH += 12;
+        if (timingStartAmPm === 'AM' && startH === 12) startH = 0;
+        let endH = startH + hours;
+        endH = endH % 24;
+        let endAmPm = 'AM';
+        let formattedEndH = endH;
+        if (endH >= 12) {
+          endAmPm = 'PM';
+          if (endH > 12) formattedEndH = endH - 12;
+        } else if (endH === 0) {
+          formattedEndH = 12;
+        }
+        let minPart = timingStartHour.includes(':') 
+          ? ':' + (timingStartHour.split(':')[1] || '').padEnd(2, '0') 
+          : ':00';
+        setTimingEndHour(`${formattedEndH.toString().padStart(2, '0')}${minPart}`);
+        setTimingEndAmPm(endAmPm);
+      }
+    }
+  }, [dailyHours, timingStartHour, timingStartAmPm]);
 
   const getHoursDifference = (startH: string, startAmPm: string, endH: string, endAmPm: string) => {
     const parseTime = (timeStr: string, amPm: string) => {
@@ -121,33 +173,36 @@ export const RenewalModal = ({
   };
 
   // Reset/Initialize state when member or visibility changes
-  useEffect(() => {
+useEffect(() => {
     if (visible && member) {
-      const now = new Date();
-      const currentDue = member.next_due_date ? new Date(member.next_due_date) : null;
-      const validDue = currentDue && !isNaN(currentDue.getTime()) ? currentDue : null;
-
-      const baseDate = validDue || now;
-      const fromStr = baseDate.toISOString().split('T')[0];
-      const toStr = getNextMonthDate(fromStr);
-
-      setJoiningDate(fromStr);
-      setExpiryDate(toStr);
-      setAmount(member.monthly_fees?.toString() || '0');
-      setPaymentMode(member.payment_mode || 'Cash');
-      // Pre-fill hours/timing from existing member record
-      setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
-      const timeStr = member.timing || '';
-      if (timeStr.includes(' - ')) {
-        const parts = timeStr.split(' - ');
-        const startMatch = parts[0].match(/(AM|PM)/i);
-        if (startMatch) {
-          setTimingStartAmPm(startMatch[0].toUpperCase());
+      setAmount(member.monthly_fees ? member.monthly_fees.toString() : '0');
+      
+      const nowStr = new Date().toISOString().split('T')[0];
+      const nextDue = member.next_due_date ? new Date(member.next_due_date).toISOString().split('T')[0] : nowStr;
+      
+      let baseStart = nowStr;
+      if (new Date(nextDue) > new Date()) {
+        baseStart = nextDue;
+      }
+      
+      setJoiningDate(baseStart);
+      const planMonths = member.plan_duration_months || 1;
+      const baseD = new Date(baseStart);
+      baseD.setMonth(baseD.getMonth() + planMonths);
+      setExpiryDate(baseD.toISOString().split('T')[0]);
+      
+      setDailyHours(member.daily_hours ? member.daily_hours.toString() : '');
+      setAllocatedSeat(member.allocated_seat || '');
+      setWifiDetails('');
+      
+      if (member.timing) {
+        const parts = member.timing.split('to');
+        if (parts.length === 2) {
+          const startMatch = parts[0].trim().match(/(AM|PM)/i);
+          const endMatch = parts[1].trim().match(/(AM|PM)/i);
+          if (startMatch) setTimingStartAmPm(startMatch[0].toUpperCase());
           setTimingStartHour(parts[0].replace(/(AM|PM)/i, '').trim());
-        }
-        const endMatch = parts[1].match(/(AM|PM)/i);
-        if (endMatch) {
-          setTimingEndAmPm(endMatch[0].toUpperCase());
+          if (endMatch) setTimingEndAmPm(endMatch[0].toUpperCase());
           setTimingEndHour(parts[1].replace(/(AM|PM)/i, '').trim());
         }
       } else {
@@ -167,9 +222,31 @@ export const RenewalModal = ({
 
   const durationDays = getDurationInDays();
 
+  
+  const formatTo24Hour = (hour: string, amPm: string) => {
+    if (!hour) return null;
+    let h = parseInt(hour, 10);
+    if (amPm === 'PM' && h !== 12) h += 12;
+    if (amPm === 'AM' && h === 12) h = 0;
+    return `${h.toString().padStart(2, '0')}:00`;
+  };
+
+  const checkTimeOverlap = (start1: string, end1: string, start2: string, end2: string) => {
+    const timeToMins = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const s1 = timeToMins(start1), e1 = timeToMins(end1);
+    const s2 = timeToMins(start2), e2 = timeToMins(end2);
+    let _e1 = e1, _e2 = e2;
+    if (_e1 <= s1) _e1 += 24 * 60;
+    if (_e2 <= s2) _e2 += 24 * 60;
+    return Math.max(s1, s2) < Math.min(_e1, _e2);
+  };
+
   const handleConfirm = () => {
     if (expiryDate < joiningDate) {
-      Alert.alert('Invalid Expiry Date', 'To Date cannot be before From Date.');
+      showError('Invalid Expiry Date', 'To Date cannot be before From Date.');
       return;
     }
     const parsedAmount = parseFloat(amount) || 0;
@@ -178,14 +255,49 @@ export const RenewalModal = ({
       ? parseInt(dailyHours)
       : undefined;
       
+
     let parsedTiming = undefined;
     if (enableHours && parsedHours && timingStartHour && timingEndHour) {
       const diff = getHoursDifference(timingStartHour, timingStartAmPm, timingEndHour, timingEndAmPm);
       if (diff !== parsedHours) {
-        Alert.alert('Invalid Timing Slot', `You are renewing a ${parsedHours}-hour plan, but the timing slot is ${diff} hours long. It must be exactly ${parsedHours} hours.`);
+        showError('Invalid Timing Slot', `You are renewing a ${parsedHours}-hour plan, but the timing slot is ${diff} hours long. It must be exactly ${parsedHours} hours.`);
         return;
       }
       parsedTiming = `${timingStartHour.trim()} ${timingStartAmPm} - ${timingEndHour.trim()} ${timingEndAmPm}`;
+      
+      // Conflict checking
+      if (allocatedSeat) {
+        const seatObj = availableSeats.find(s => s.seat_number === allocatedSeat);
+        if (seatObj && seatObj.allotted_members) {
+          const newStart = formatTo24Hour(timingStartHour, timingStartAmPm);
+          const newEnd = formatTo24Hour(timingEndHour, timingEndAmPm);
+          
+          if (newStart && newEnd) {
+            const overlappingMember = seatObj.allotted_members.find((am: any) => {
+              if (am.timing && String(am.member_id) !== String(member.member_id) && String(am.member_id) !== String(member._id)) {
+                const parts = am.timing.split(' to ');
+                if (parts.length === 2) {
+                  const [t1, amPm1] = parts[0].trim().split(' ');
+                  const [t2, amPm2] = parts[1].trim().split(' ');
+                  if (t1 && amPm1 && t2 && amPm2) {
+                    const existingStart = formatTo24Hour(t1.split(':')[0], amPm1);
+                    const existingEnd = formatTo24Hour(t2.split(':')[0], amPm2);
+                    if (existingStart && existingEnd) {
+                      return checkTimeOverlap(newStart, newEnd, existingStart, existingEnd);
+                    }
+                  }
+                }
+              }
+              return false;
+            });
+            
+            if (overlappingMember) {
+              showError('Seat Unavailable', `Seat ${allocatedSeat} is already occupied by ${overlappingMember.name} during this time (${overlappingMember.timing})!`);
+              return;
+            }
+          }
+        }
+      }
     }
 
     onConfirm(
@@ -195,7 +307,9 @@ export const RenewalModal = ({
       new Date(expiryDate).toISOString(),
       new Date(joiningDate).toISOString(),
       parsedHours,
-      parsedTiming
+      parsedTiming,
+      allocatedSeat,
+      wifiDetails
     );
   };
 
@@ -239,7 +353,7 @@ export const RenewalModal = ({
                 <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
                   <ModernInput
                     label="From Date (Start) *"
-                    value={joiningDate}
+                    value={joiningDate.split('-').reverse().join('/')}
                     editable={false}
                     placeholder="Select Date"
                     icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
@@ -250,7 +364,7 @@ export const RenewalModal = ({
                 <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
                   <ModernInput
                     label="To Date (Expiry) *"
-                    value={expiryDate}
+                    value={expiryDate.split('-').reverse().join('/')}
                     editable={false}
                     placeholder="Select Date"
                     icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
@@ -356,6 +470,33 @@ export const RenewalModal = ({
               </View>
             )}
 
+            {enableHours && (
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: spacing.s }}>
+                  <TouchableOpacity onPress={() => setShowSeatModal(true)}>
+                    <ModernInput
+                      label="Allocated Seat"
+                      value={allocatedSeat}
+                      editable={false}
+                      placeholder="Select Seat"
+                      icon={<FontAwesome name="desktop" size={14} color={colors.primary} />}
+                    />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flex: 1, marginLeft: spacing.s }}>
+                  <TouchableOpacity onPress={() => setShowWifiModal(true)}>
+                    <ModernInput
+                      label="WiFi Network"
+                      value={wifiDetails}
+                      editable={false}
+                      placeholder="Select WiFi"
+                      icon={<FontAwesome name="wifi" size={14} color={colors.primary} />}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* Payment Mode Selector */}
             <View style={styles.selectorContainer}>
               <Text style={styles.selectorLabel}>Payment Mode</Text>
@@ -397,7 +538,7 @@ export const RenewalModal = ({
                 }
                 if (date < minDateStr) {
                   const [y, mo, d] = minDateStr.split('-');
-                  Alert.alert('Invalid Date', `Start date cannot be before ${d}/${mo}/${y}.`);
+                  showError('Invalid Date', `Start date cannot be before ${d}/${mo}/${y}.`);
                 } else {
                   setJoiningDate(date);
                   const nd = new Date(date);
@@ -406,7 +547,7 @@ export const RenewalModal = ({
                 }
               } else {
                 if (date < joiningDate) {
-                  Alert.alert('Invalid Date', 'Expiry date cannot be before start date.');
+                  showError('Invalid Date', 'Expiry date cannot be before start date.');
                 } else {
                   setExpiryDate(date);
                 }
@@ -427,6 +568,29 @@ export const RenewalModal = ({
           </View>
         </View>
       </View>
+    
+      <DropdownModal
+        visible={showSeatModal}
+        title="Select Seat"
+        items={availableSeats.map(s => ({
+          label: s.status === 'Available' ? `${s.seat_number} (Available)` : s.status === 'Reserved' ? `${s.seat_number} (Reserved)` : `${s.seat_number} (Occupied: ${s.allotted_members?.map((m:any) => m.name).join(', ') || 'Unknown'})`,
+          value: s.seat_number
+        }))}
+        onSelect={(val) => setAllocatedSeat(val.value)}
+        onClose={() => setShowSeatModal(false)}
+      />
+      <DropdownModal
+        visible={showWifiModal}
+        title="Select WiFi Network"
+        items={wifiOptions.map(w => ({
+          label: `${w.name} (Pass: ${w.password})`,
+          value: w.name
+        }))}
+        onSelect={(val) => setWifiDetails(val.value)}
+        onClose={() => setShowWifiModal(false)}
+      />
+
+      <AlertModal />
     </Modal>
   );
 };

@@ -153,13 +153,15 @@ export const RemindersScreen = () => {
   };
 
   const confirmRenewal = async (
-    durationMonths: number,
-    amount: number,
-    paymentMode: string,
-    nextDueDate?: string,
+    durationMonths: number, 
+    amount: number, 
+    paymentMode: string, 
+    nextDueDate?: string, 
     joiningDate?: string,
     hours?: number,
-    timing?: string
+    timing?: string,
+    allocatedSeat?: string,
+    wifiDetails?: string
   ) => {
     setShowRenewModal(false);
     if (!renewingMember) return;
@@ -172,6 +174,7 @@ export const RemindersScreen = () => {
         joining_date: joiningDate,
         daily_hours: hours,
         timing: timing,
+        allocated_seat: allocatedSeat,
       });
       
       fetchDueMembers();
@@ -189,6 +192,8 @@ export const RemindersScreen = () => {
           timing: timing ?? renewingMember.timing,
           gym: gymName,
           durationMonths,
+          seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
+          wifi: wifiDetails || 'Not Provided',
         }
       );
       
@@ -232,64 +237,91 @@ export const RemindersScreen = () => {
         ListHeaderComponent={() => (
           <View style={styles.header}>
             <Text style={styles.title}>Due Reminders</Text>
-            <Text style={styles.subtitle}>1-click reminders for upcoming renewals (5 days left)</Text>
-            <View style={styles.searchBar}>
-              <FontAwesome name="search" size={16} color={colors.textMuted} style={{ marginRight: 10 }} />
+            <Text style={styles.subtitle}>Upcoming renewals within 5 days</Text>
+            <View style={[styles.searchBar, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+              <FontAwesome name="search" size={14} color={colors.textMuted} />
               <TextInput
                 placeholder="Search name, phone or ID..."
                 placeholderTextColor={colors.textMuted}
-                style={styles.searchInput}
+                style={[styles.searchInput, { color: colors.text }]}
                 value={search}
                 onChangeText={handleSearch}
               />
             </View>
           </View>
         )}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => router.push(`/members/${item.id || item._id}`)}>
-            <GlassCard style={styles.memberCard}>
-              <View style={styles.infoContainer}>
-                <View style={styles.mainInfo}>
-                  <Text style={styles.memberName}>{item.full_name}</Text>
-                  <View style={[styles.badge, { backgroundColor: item.remaining_days <= 0 ? `${colors.error}20` : `${colors.warning}20` }]}>
-                    <Text style={[styles.badgeText, { color: item.remaining_days <= 0 ? colors.error : colors.warning }]}>
-                      {item.remaining_days <= 0 ? 'EXPIRED' : `${item.remaining_days} DAYS LEFT`}
-                    </Text>
+        renderItem={({ item }) => {
+          const isExpired = item.remaining_days <= 0;
+          const initials = item.full_name.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();
+          const avatarColors = ['#8B5CF6','#EC4899','#10B981','#F59E0B','#3B82F6'];
+          const avatarColor = avatarColors[item.full_name.charCodeAt(0) % avatarColors.length];
+          return (
+            <TouchableOpacity activeOpacity={0.75} onPress={() => router.push(`/members/${item.id || item._id}`)}>
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.accentBar, { backgroundColor: isExpired ? colors.error : colors.warning }]} />
+                <View style={styles.cardInner}>
+                  <View style={styles.topRow}>
+                    <View style={[styles.avatar, { backgroundColor: `${avatarColor}20` }]}>
+                      <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+                    </View>
+                    <View style={styles.nameBlock}>
+                      <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>{item.full_name}</Text>
+                      <Text style={[styles.memberPhone, { color: colors.textMuted }]}>{item.phone}</Text>
+                    </View>
+                    <View style={[styles.badge, { backgroundColor: isExpired ? `${colors.error}15` : `${colors.warning}15` }]}>
+                      <Text style={[styles.badgeText, { color: isExpired ? colors.error : colors.warning }]}>
+                        {isExpired ? 'EXPIRED' : `${item.remaining_days}d left`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoRow}>
+                    <View style={styles.infoChip}>
+                      <FontAwesome name="calendar" size={10} color={colors.textMuted} />
+                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                        {new Date(item.next_due_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short' })}
+                      </Text>
+                    </View>
+                    <View style={styles.infoChip}>
+                      <FontAwesome name="money" size={10} color={colors.accent} />
+                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>₹{item.monthly_fees}</Text>
+                    </View>
+                    <View style={styles.infoChip}>
+                      <FontAwesome name="clock-o" size={10} color={colors.primary} />
+                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>{item.plan_duration_months}M Plan</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                  <View style={styles.actionsRow}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: '#25D36615', borderColor: '#25D36630' }]}
+                      onPress={() => sendReminder(item)}
+                    >
+                      <FontAwesome name="whatsapp" size={14} color="#25D366" />
+                      <Text style={[styles.actionText, { color: '#25D366' }]}>Remind</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]}
+                      onPress={() => handleRenew(item)}
+                    >
+                      <FontAwesome name="refresh" size={14} color={colors.primary} />
+                      <Text style={[styles.actionText, { color: colors.primary }]}>Renew</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
-                <Text style={styles.memberPhone}>{item.phone}</Text>
-                <View style={styles.dueRow}>
-                  <FontAwesome name="calendar" size={12} color={colors.textMuted} />
-                  <Text style={styles.memberDue}>Expires: {new Date(item.next_due_date).toLocaleDateString()}</Text>
-                </View>
-                <View style={[styles.dueRow, { marginTop: 4 }]}>
-                  <FontAwesome name="money" size={12} color={colors.accent} />
-                  <Text style={[styles.memberDue, { color: colors.text, fontWeight: '600' }]}>Rs. {item.monthly_fees} ({item.plan_duration_months}M)</Text>
-                </View>
               </View>
-              
-              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => sendReminder(item)}>
-                  <FontAwesome name="whatsapp" size={20} color={colors.success} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]} 
-                  onPress={() => handleRenew(item)}
-                >
-                  <FontAwesome name="refresh" size={18} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-
-            </GlassCard>
-          </TouchableOpacity>
-        )}
-
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-              <FontAwesome name="check-circle" size={48} color={colors.accent} />
+            <View style={[styles.emptyIcon, { backgroundColor: `${colors.accent}15` }]}>
+              <FontAwesome name="check-circle" size={32} color={colors.accent} />
             </View>
-            <Text style={styles.emptyText}>All members are up to date!</Text>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up!</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>No renewals due in the next 5 days</Text>
           </View>
         )}
       />
@@ -299,23 +331,55 @@ export const RemindersScreen = () => {
 
 const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.l, paddingTop: 60, paddingBottom: 100 },
-  header: { marginBottom: spacing.xl },
-  title: { fontSize: 32, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, paddingHorizontal: spacing.m, height: 44, borderWidth: 1, borderColor: colors.border, marginTop: spacing.m },
-  searchInput: { flex: 1, color: colors.text, fontSize: 14 },
-  memberCard: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.m, padding: spacing.m },
-  infoContainer: { flex: 1 },
-  mainInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  memberName: { fontSize: 18, fontWeight: '700', color: colors.text },
-  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  content: { padding: spacing.m, paddingTop: 56, paddingBottom: 100 },
+  header: { marginBottom: spacing.l, paddingHorizontal: spacing.s },
+  title: { fontSize: 26, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: colors.textMuted, marginTop: 3 },
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: borderRadius.m, paddingHorizontal: spacing.m,
+    height: 44, borderWidth: 1, marginTop: spacing.m,
+  },
+  searchInput: { flex: 1, fontSize: 14 },
+
+  // Card
+  card: {
+    flexDirection: 'row', borderRadius: borderRadius.l,
+    marginBottom: spacing.m, borderWidth: 1, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  },
+  accentBar: { width: 4 },
+  cardInner: { flex: 1, padding: spacing.m },
+  topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.s },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  avatarText: { fontSize: 14, fontWeight: '800' },
+  nameBlock: { flex: 1, marginRight: 8 },
+  memberName: { fontSize: 15, fontWeight: '700' },
+  memberPhone: { fontSize: 12, marginTop: 1 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: borderRadius.full },
   badgeText: { fontSize: 10, fontWeight: '800' },
-  memberPhone: { fontSize: 13, color: colors.textSecondary, marginBottom: 4 },
+
+  infoRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.s },
+  infoChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  infoText: { fontSize: 12 },
+  divider: { height: 1, marginBottom: spacing.s },
+
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 8, borderRadius: borderRadius.m, borderWidth: 1,
+  },
+  actionText: { fontSize: 12, fontWeight: '700' },
+
+  emptyContainer: { marginTop: 80, alignItems: 'center', gap: 10 },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 17, fontWeight: '700' },
+  emptySubtitle: { fontSize: 13 },
+
+  // legacy (kept for safety)
+  infoContainer: { flex: 1 },
+  mainInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' },
   dueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   memberDue: { fontSize: 12, color: colors.textMuted },
-  actionBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  emptyContainer: { marginTop: 80, alignItems: 'center' },
-  emptyIcon: { marginBottom: spacing.m, opacity: 0.5 },
-  emptyText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
 });

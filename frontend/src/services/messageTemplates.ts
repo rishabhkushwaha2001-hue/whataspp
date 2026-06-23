@@ -15,11 +15,12 @@ export const fetchMessageTemplates = async () => {
       joiningTemplate: response.data.joining_msg_template || null,
       renewalTemplate: response.data.renewal_msg_template || null,
       reminderTemplate: response.data.reminder_msg_template || null,
+      wifiNetworks: response.data.wifi_networks || [],
     };
   } catch {
     const gymName = await AsyncStorage.getItem('gymName') || 'Gym';
     const businessType = await AsyncStorage.getItem('businessType') || 'gym';
-    return { businessType, enableHours: false, gymName, joiningTemplate: null, renewalTemplate: null, reminderTemplate: null };
+    return { businessType, enableHours: false, gymName, joiningTemplate: null, renewalTemplate: null, reminderTemplate: null, wifiNetworks: [] };
   }
 };
 
@@ -29,9 +30,9 @@ export const fetchMessageTemplates = async () => {
 export const getDefaultTemplates = (businessType: string) => {
   if (businessType === 'library') {
     return {
-      joining: `*{library_name} - WELCOME! 📚*\n\nHello *{name}*! Welcome to {library_name}.\n\n━━━━━━━━━━━━━━━━━━━━\n📱 *Phone:* {phone}\n📅 *Joining Date:* {joining_date}\n⏰ *Daily Study Plan:* {hours} Hours/Day\n🌞 *Timing:* {timing}\n💰 *Fees Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nHappy studying! 🚀`,
-      renewal: `*{library_name} - MEMBERSHIP RENEWED! 📚*\n\nHello *{name}*! Your library membership has been renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n⏰ *Daily Study Plan:* {hours} Hours/Day\n🌞 *Timing:* {timing}\n💰 *Amount Paid:* ₹{fees}\n📅 *New Expiry:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nKeep reading, keep growing! 📖🚀`,
-      reminder: `*{library_name} - RENEWAL REMINDER 🔔*\n\nHello *{name}* 📚,\n\nYour library membership is due for renewal.\n\n*PENDING FEES:* ₹{fees} 💰\n*DUE DATE:* {date} 📅\n━━━━━━━━━━━━━━━━━━━━\n\nRenew today and continue your {hours} Hours/Day study plan at {timing}! 🚀`
+      joining: `*{library_name} - MEMBERSHIP CONFIRMATION 📚*\n\nDear *{name}*,\n\nWelcome to {library_name}! Your membership has been successfully registered. We are committed to providing you with a silent and productive study environment.\n\n━━━━━━━━━━━━━━━━━━━━\n👤 *Member Phone:* {phone}\n📅 *Joining Date:* {joining_date}\n⏰ *Allotted Timings:* {hours} Hours/Day ({timing})\n🪑 *Assigned Seat:* {seat}\n📶 *Wi-Fi Details:* {wifi}\n💰 *Fees Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nPlease maintain silence inside the premises. Happy studying! 🚀`,
+      renewal: `*{library_name} - MEMBERSHIP RENEWED 📚*\n\nDear *{name}*,\n\nYour library membership has been successfully renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n⏰ *Allotted Timings:* {hours} Hours/Day ({timing})\n🪑 *Assigned Seat:* {seat}\n📶 *Wi-Fi Details:* {wifi}\n💰 *Amount Paid:* ₹{fees}\n📅 *New Expiry Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nKeep reading, keep growing! 📖🚀`,
+      reminder: `*{library_name} - RENEWAL REMINDER 🔔*\n\nDear *{name}* 📚,\n\nThis is a gentle reminder that your library membership is due for renewal.\n\n💰 *Pending Fees:* ₹{fees}\n📅 *Due Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nPlease renew your membership to continue accessing your assigned seat ({seat}) and Wi-Fi. Thank you! 🚀`
     };
   } else if (businessType === 'general') {
     return {
@@ -60,6 +61,8 @@ export const fillTemplate = (template: string, vars: {
   hours?: string | number;
   timing?: string;
   gym?: string;
+  seat?: string;
+  wifi?: string;
 }): string => {
   let result = template
     .replace(/\{name\}/g, vars.name || '')
@@ -69,13 +72,17 @@ export const fillTemplate = (template: string, vars: {
     .replace(/\{fees\}/g, String(vars.fees || ''))
     .replace(/\{hours\}/g, String(vars.hours || ''))
     .replace(/\{timing\}/g, vars.timing || '')
+    .replace(/\{seat\}/g, vars.seat || 'Unassigned')
+    .replace(/\{wifi\}/g, vars.wifi || 'N/A')
     .replace(/\{gym\}|\{library_name\}|\{business_name\}|\{gym_name\}/g, vars.gym || '');
 
   // Auto-inject timing and hours if they exist but template is missing them
-  if ((vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}'))) {
+  if ((vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}')) || (vars.seat && !template.includes('{seat}')) || (vars.wifi && !template.includes('{wifi}'))) {
     let extraStr = '';
     if (vars.hours && !template.includes('{hours}')) extraStr += `\n⏰ *Hours:* ${vars.hours} Hrs`;
     if (vars.timing && !template.includes('{timing}')) extraStr += `\n🌞 *Timing:* ${vars.timing}`;
+    if (vars.seat && !template.includes('{seat}')) extraStr += `\n🪑 *Assigned Seat:* ${vars.seat}`;
+    if (vars.wifi && !template.includes('{wifi}')) extraStr += `\n📶 *Wi-Fi Details:* ${vars.wifi}`;
     
     // Inject before "Amount Paid" or at the end of the list
     if (result.includes('💰 *Amount Paid')) {
@@ -100,7 +107,7 @@ export const fillTemplate = (template: string, vars: {
 export const buildJoiningMessage = (
   template: string | null,
   businessType: string,
-  vars: { name: string; phone: string; date: string; joining_date: string; fees: number | string; hours?: number; timing?: string; gym: string; durationDays?: number }
+  vars: { name: string; phone: string; date: string; joining_date: string; fees: number | string; hours?: number; timing?: string; gym: string; durationDays?: number; seat?: string; wifi?: string; }
 ): string => {
   if (template) {
     return fillTemplate(template, vars);
@@ -109,17 +116,19 @@ export const buildJoiningMessage = (
   const gymUp = vars.gym.toUpperCase();
   if (businessType === 'library') {
     return (
-      `*${gymUp} - WELCOME! 📚*\n\n` +
-      `Hello *${vars.name}*! Welcome to ${vars.gym}.\n\n` +
+      `*{gymUp} - MEMBERSHIP CONFIRMATION 📚*\n\n` +
+      `Dear *${vars.name}*,\n\n` +
+      `Welcome to ${vars.gym}! Your membership has been successfully registered. We are committed to providing you with a silent and productive study environment.\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Phone:* ${vars.phone}\n` +
+      `👤 *Member Phone:* ${vars.phone}\n` +
       `📅 *Joining Date:* ${vars.joining_date}\n` +
-      `⏰ *Daily Study Plan:* ${vars.hours || '—'} Hours/Day\n` +
-      (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
+      `⏰ *Allotted Timings:* ${vars.hours || '—'} Hours/Day (${vars.timing || 'N/A'})\n` +
+      `🪑 *Assigned Seat:* ${vars.seat || 'Unassigned'}\n` +
+      `📶 *Wi-Fi Details:* ${vars.wifi || 'N/A'}\n` +
       `💰 *Fees Paid:* ₹${vars.fees}\n` +
       `📅 *Valid Till:* ${vars.date}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Happy studying! 🚀`
+      `Please maintain silence inside the premises. Happy studying! 🚀`
     );
   } else if (businessType === 'general') {
     return (
@@ -157,7 +166,7 @@ export const buildJoiningMessage = (
 export const buildRenewalMessage = (
   template: string | null,
   businessType: string,
-  vars: { name: string; phone: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string; durationMonths?: number }
+  vars: { name: string; phone: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string; durationMonths?: number; seat?: string; wifi?: string; }
 ): string => {
   if (template) {
     return fillTemplate(template, vars);
@@ -165,13 +174,15 @@ export const buildRenewalMessage = (
   const gymUp = vars.gym.toUpperCase();
   if (businessType === 'library') {
     return (
-      `*${gymUp} - MEMBERSHIP RENEWED! 📚*\n\n` +
-      `Hello *${vars.name}*! Your library membership has been renewed.\n\n` +
+      `*${gymUp} - MEMBERSHIP RENEWED 📚*\n\n` +
+      `Dear *${vars.name}*,\n\n` +
+      `Your library membership has been successfully renewed.\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⏰ *Daily Study Plan:* ${vars.hours || '—'} Hours/Day\n` +
-      (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
+      `⏰ *Allotted Timings:* ${vars.hours || '—'} Hours/Day (${vars.timing || 'N/A'})\n` +
+      `🪑 *Assigned Seat:* ${vars.seat || 'Unassigned'}\n` +
+      `📶 *Wi-Fi Details:* ${vars.wifi || 'N/A'}\n` +
       `💰 *Amount Paid:* ₹${vars.fees}\n` +
-      `📅 *New Expiry:* ${vars.date}\n` +
+      `📅 *New Expiry Date:* ${vars.date}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
       `Keep reading, keep growing! 📖🚀`
     );
@@ -207,7 +218,7 @@ export const buildRenewalMessage = (
 export const buildReminderMessage = (
   template: string | null,
   businessType: string,
-  vars: { name: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string }
+  vars: { name: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string; seat?: string; }
 ): string => {
   if (template) {
     return fillTemplate(template, vars);
@@ -216,13 +227,12 @@ export const buildReminderMessage = (
   if (businessType === 'library') {
     return (
       `*${gymUp} - RENEWAL REMINDER 🔔*\n\n` +
-      `Hello *${vars.name}* 📚,\n\n` +
-      `Your library membership is due for renewal.\n\n` +
-      `*PENDING FEES:* ₹${vars.fees} 💰\n` +
-      `*DUE DATE:* ${vars.date} 📅\n` +
+      `Dear *${vars.name}* 📚,\n\n` +
+      `This is a gentle reminder that your library membership is due for renewal.\n\n` +
+      `💰 *Pending Fees:* ₹${vars.fees}\n` +
+      `📅 *Due Date:* ${vars.date}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Renew today and continue your ${vars.hours || '—'} Hours/Day study plan` +
-      (vars.timing ? ` at ${vars.timing}` : '') + `! 🚀`
+      `Please renew your membership to continue accessing your assigned seat (${vars.seat || 'Unassigned'}) and Wi-Fi. Thank you! 🚀`
     );
   } else if (businessType === 'general') {
     return (

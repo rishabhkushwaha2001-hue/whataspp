@@ -64,35 +64,41 @@ def get_default_templates(business_type: str, gym_name: str) -> dict:
     if business_type == "library":
         return {
             "joining_msg_template": (
-                "*{library_name} - WELCOME! 📚*\n\n"
-                "Hello *{name}*! Welcome to {library_name}.\n\n"
+                "*{library_name} - MEMBERSHIP CONFIRMATION 📚*\n\n"
+                "Dear *{name}*,\n\n"
+                "Welcome to {library_name}! Your membership has been successfully registered. We are committed to providing you with a silent and productive study environment.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                "📱 *Phone:* {phone}\n"
+                "👤 *Member Phone:* {phone}\n"
                 "📅 *Joining Date:* {joining_date}\n"
-                "⏰ *Daily Study Plan:* {hours} Hours/Day ({timing})\n"
+                "⏰ *Allotted Timings:* {hours} Hours/Day ({timing})\n"
+                "🪑 *Assigned Seat:* {seat}\n"
+                "📶 *Wi-Fi Details:* {wifi}\n"
                 "💰 *Fees Paid:* ₹{fees}\n"
                 "📅 *Valid Till:* {date}\n"
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Happy studying! Keep up the great work! 🚀"
+                "Please maintain silence inside the premises. Happy studying! 🚀"
             ),
             "renewal_msg_template": (
-                "*{library_name} - MEMBERSHIP RENEWED! 📚*\n\n"
-                "Hello *{name}*! Your library membership has been renewed.\n\n"
+                "*{library_name} - MEMBERSHIP RENEWED 📚*\n\n"
+                "Dear *{name}*,\n\n"
+                "Your library membership has been successfully renewed.\n\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
-                "⏰ *Daily Study Plan:* {hours} Hours/Day ({timing})\n"
+                "⏰ *Allotted Timings:* {hours} Hours/Day ({timing})\n"
+                "🪑 *Assigned Seat:* {seat}\n"
+                "📶 *Wi-Fi Details:* {wifi}\n"
                 "💰 *Amount Paid:* ₹{fees}\n"
-                "📅 *New Expiry:* {date}\n"
+                "📅 *New Expiry Date:* {date}\n"
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
                 "Keep reading, keep growing! 📖🚀"
             ),
             "reminder_msg_template": (
                 "*{library_name} - RENEWAL REMINDER 🔔*\n\n"
-                "Hello *{name}* 📚,\n\n"
-                "Your library membership is due for renewal.\n\n"
-                "*PENDING FEES:* ₹{fees} 💰\n"
-                "*DUE DATE:* {date} 📅\n"
+                "Dear *{name}* 📚,\n\n"
+                "This is a gentle reminder that your library membership is due for renewal.\n\n"
+                "💰 *Pending Fees:* ₹{fees}\n"
+                "📅 *Due Date:* {date}\n"
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Renew today and continue your {hours} Hours/Day study plan! 🚀"
+                "Please renew your membership to continue accessing your assigned seat ({seat}) and Wi-Fi. Thank you! 🚀"
             )
         }
     elif business_type == "general":
@@ -243,21 +249,22 @@ async def register_gym(gym_in: GymCreate) -> Any:
     )
     
     # Generate automated WhatsApp notifications
-    reg_msg = f"*KGM - REGISTRATION SUCCESSFUL* 🎉\n\nDear *{gym_in.owner_name}*,\n\nYour mobile number *{gym_in.phone}* has been registered successfully as the Gym Owner of *{gym_in.gym_name}*."
+    reg_msg = f"*Aetheron Management System - REGISTRATION SUCCESSFUL* 🎉\n\nDear *{gym_in.owner_name}*,\n\nYour mobile number *{gym_in.phone}* has been registered successfully as the Owner of *{gym_in.gym_name}*."
     
     act_msg = (
-        f"*KGM - ACTIVATION DETAILS* 🔑\n\n"
-        f"Hi *{gym_in.owner_name}* 💪,\n"
-        f"Your separate database has been created successfully!\n\n"
+        f"*Aetheron Management System - ACTIVATION DETAILS* 🔑\n\n"
+        f"Hi *{gym_in.owner_name}*,\n"
+        f"Your separate isolated database has been created successfully!\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📍 *Gym ID:* `{gym_id}`\n"
+        f"📍 *Tenant ID:* `{gym_id}`\n"
         f"🔑 *Activation Code:* `{activation_code}`\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🚀 *Login Instructions:*\n"
         f"1. Open the App.\n"
-        f"2. Enter your registered mobile number: *{gym_in.phone}*.\n"
-        f"3. Enter your activation code: *{activation_code}*.\n\n"
-        f"Welcome to the premium club management experience! 🏋️‍♂️"
+        f"2. Select 'Admin / Owner' mode.\n"
+        f"3. Enter your registered mobile number: *{gym_in.phone}*.\n"
+        f"4. Enter your activation code: *{activation_code}*.\n\n"
+        f"Welcome to the premium management experience! 🏢"
     )
     
     # Log these in the global whatsapp_logs collection
@@ -348,9 +355,9 @@ async def update_gym_status(gym_id: str, payload: GymUpdateStatus) -> Any:
     # Log WhatsApp notification of status change
     now = datetime.now(timezone.utc)
     status_msg = (
-        f"*KGM - ACCOUNT STATUS UPDATE* 🔔\n\n"
+        f"*Aetheron Management System - ACCOUNT STATUS UPDATE* 🔔\n\n"
         f"Dear *{gym['owner_name']}*,\n\n"
-        f"Your Gym Account for *{gym['gym_name']}* status has been updated to *{payload.status.upper()}* by Super Admin.\n\n"
+        f"Your Account for *{gym['gym_name']}* status has been updated to *{payload.status.upper()}* by Super Admin.\n\n"
         f"Please contact Super Admin for any queries."
     )
     
@@ -406,15 +413,15 @@ async def renew_gym_plan(gym_id: str, payload: GymRenew) -> Any:
     
     # Log renewal WhatsApp message
     renewal_msg = (
-        f"*KGM - SUBSCRIPTION RENEWED* ✅\n\n"
+        f"*Aetheron Management System - SUBSCRIPTION RENEWED* ✅\n\n"
         f"Hi *{gym['owner_name']}* 🎉,\n"
-        f"Your subscription for *{gym['gym_name']}* has been successfully renewed!\n\n"
+        f"Your software subscription for *{gym['gym_name']}* has been successfully renewed!\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📅 *New Expiry Date:* {new_expiry.strftime('%d %B %Y')}\n"
         f"⏱️ *Duration:* {payload.plan_duration_months} Month(s)\n"
         f"💳 *Price:* ₹{payload.plan_price}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Thank you for your business! Let's continue growing! 💪"
+        f"Thank you for your business! Let's continue growing! 🏢"
     )
     
     await super_admin_db["whatsapp_logs"].insert_one({

@@ -12,6 +12,10 @@ from api.messages import router as messages_router
 from api.settings import router as settings_router
 from api.super_admin import router as super_admin_router
 from api.auth import router as auth_router
+from api.seats import router as seats_router
+from api.feedback import router as feedback_router
+from api.attendance import router as attendance_router
+from api.student_auth import router as student_auth_router
 from database import client, tenant_db_var, super_admin_db
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
@@ -111,6 +115,10 @@ app.include_router(messages_router, prefix="/api/v1/messages", tags=["messages"]
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(super_admin_router, prefix="/api/v1/super-admin", tags=["super-admin"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(seats_router, prefix="/api/v1/seats", tags=["seats"])
+app.include_router(feedback_router, prefix="/api/v1/feedback", tags=["feedback"])
+app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
+app.include_router(student_auth_router, prefix="/api/v1/student", tags=["student"])
 
 @app.get("/")
 async def root():

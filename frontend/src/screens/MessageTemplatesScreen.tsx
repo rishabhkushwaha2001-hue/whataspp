@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, spacing, borderRadius } from '../theme/theme';
@@ -8,11 +8,13 @@ import { GradientButton } from '../components/GradientButton';
 import { api } from '../services/api';
 import { getDefaultTemplates } from '../services/messageTemplates';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useAppAlert } from '../hooks/useAppAlert';
 
 export const MessageTemplatesScreen = () => {
   const router = useRouter();
   const { theme, colors } = useTheme();
   const styles = getStyles(colors);
+  const { showSuccess, showError, AlertModal } = useAppAlert();
   
   const [isLoading, setIsLoading] = useState(false);
   const [businessType, setBusinessType] = useState('gym');
@@ -80,10 +82,10 @@ export const MessageTemplatesScreen = () => {
         renewal_msg_template: renewalTemplate,
         reminder_msg_template: reminderTemplate,
       });
-      Alert.alert('Success', 'Message Templates saved successfully!');
+      showSuccess('Saved!', 'Message templates updated successfully.');
     } catch (error) {
       console.error('Error updating settings:', error);
-      Alert.alert('Error', 'Failed to update templates');
+      showError('Save Failed', 'Failed to update templates');
     } finally {
       setIsLoading(false);
     }
@@ -209,6 +211,7 @@ export const MessageTemplatesScreen = () => {
           />
         </GlassCard>
       </ScrollView>
+      <AlertModal />
     </View>
   );
 };

@@ -38,7 +38,7 @@ export const lightColors = {
 };
 
 // For backwards-compatibility in static contexts
-export let colors = darkColors;
+export let colors = lightColors;
 
 type ThemeType = 'dark' | 'light';
 
@@ -49,27 +49,27 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  theme: 'dark',
-  colors: darkColors,
+  theme: 'light',
+  colors: lightColors,
   toggleTheme: () => {},
 });
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [theme, setTheme] = useState<ThemeType>('dark');
-  const [currentColors, setCurrentColors] = useState(darkColors);
+  const [theme, setTheme] = useState<ThemeType>('light');
+  const [currentColors, setCurrentColors] = useState(lightColors);
 
   useEffect(() => {
     const loadTheme = async () => {
       try {
         const storedTheme = await AsyncStorage.getItem('appTheme');
-        if (storedTheme === 'light') {
-          setTheme('light');
-          setCurrentColors(lightColors);
-          colors = lightColors;
-        } else {
+        if (storedTheme === 'dark') {
           setTheme('dark');
           setCurrentColors(darkColors);
           colors = darkColors;
+        } else {
+          setTheme('light');
+          setCurrentColors(lightColors);
+          colors = lightColors;
         }
       } catch (e) {
         console.log('Failed to load theme settings', e);

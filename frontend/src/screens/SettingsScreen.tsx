@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Linking, TouchableOpacity, Image, TextInput, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Linking, TouchableOpacity, Image, TextInput, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,7 @@ import { GradientButton } from '../components/GradientButton';
 import { api } from '../services/api';
 import * as DocumentPicker from 'expo-document-picker';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useAppAlert } from '../hooks/useAppAlert';
 
 export const SettingsScreen = () => {
   const router = useRouter();
@@ -21,12 +22,9 @@ export const SettingsScreen = () => {
   const [logoUrl, setLogoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [businessType, setBusinessType] = useState('');
-  const [enableHours, setEnableHours] = useState(false);
-  const [joiningTemplate, setJoiningTemplate] = useState('');
-  const [renewalTemplate, setRenewalTemplate] = useState('');
-  const [reminderTemplate, setReminderTemplate] = useState('');
-  const [defaultTemplates, setDefaultTemplates] = useState<any>({});
   const [hideRevenue, setHideRevenue] = useState(false);
+  const [wifiNetworks, setWifiNetworks] = useState<{name: string, password: string}[]>([]);
+  const { showSuccess, showError, showConfirm, AlertModal } = useAppAlert();
 
   useEffect(() => {
     fetchSettings();
@@ -53,17 +51,10 @@ export const SettingsScreen = () => {
       setPhone(response.data.phone || '');
       setLogoUrl(response.data.logo_url || '');
       setBusinessType(response.data.business_type || 'gym');
-      setEnableHours(response.data.enable_hours_feature || false);
-      setJoiningTemplate(response.data.joining_msg_template || '');
-      setRenewalTemplate(response.data.renewal_msg_template || '');
-      setReminderTemplate(response.data.reminder_msg_template || '');
-      // Store defaults for reset button
-      setDefaultTemplates({
-        joining: response.data.joining_msg_template || '',
-        renewal: response.data.renewal_msg_template || '',
-        reminder: response.data.reminder_msg_template || '',
-      });
-    } catch (error) {
+        if (response.data.wifi_networks) {
+          setWifiNetworks(response.data.wifi_networks);
+        }
+      } catch (error) {
       console.error('Error fetching settings:', error);
     }
   };
@@ -79,7 +70,7 @@ export const SettingsScreen = () => {
 
       const asset = result.assets[0];
       if (asset.size && asset.size > 2 * 1024 * 1024) {
-        Alert.alert('Image Too Large', 'Please select a logo image smaller than 2MB.');
+        showError('Image Too Large', 'Please select a logo image smaller than 2MB.');
         return;
       }
 
@@ -95,13 +86,13 @@ export const SettingsScreen = () => {
         setIsLoading(false);
       };
       reader.onerror = () => {
-        Alert.alert('Error', 'Failed to read image file');
+        showError('Error', 'Failed to read image file');
         setIsLoading(false);
       };
       reader.readAsDataURL(blob);
     } catch (error) {
       console.error('Logo selection failed:', error);
-      Alert.alert('Error', 'Failed to select image');
+      showError('Error', 'Failed to select image');
       setIsLoading(false);
     }
   };
@@ -109,25 +100,27 @@ export const SettingsScreen = () => {
   const handleSave = async () => {
     setIsLoading(true);
     try {
+      // Fetch current settings to prevent stale state from overwriting message templates
+      const res = await api.get('/settings/');
+      const currentSettings = res.data;
+
       await api.post('/settings/', {
+        ...currentSettings,
         gym_name: gymName,
         address: address,
         phone: phone,
         logo_url: logoUrl,
         business_type: businessType,
-        enable_hours_feature: enableHours,
-        joining_msg_template: joiningTemplate,
-        renewal_msg_template: renewalTemplate,
-        reminder_msg_template: reminderTemplate,
+        wifi_networks: wifiNetworks
       });
       // BUG FIX: Update AsyncStorage cache so Dashboard reflects new name instantly
       await AsyncStorage.setItem('gymName', gymName);
       await AsyncStorage.setItem('gymAddress', address);
       await AsyncStorage.setItem('businessType', businessType);
-      Alert.alert('Success', 'Profile & Templates saved successfully!');
+      showSuccess('Success', 'Profile saved successfully!');
     } catch (error) {
       console.error('Error updating settings:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      showError('Error', 'Failed to update profile');
     } finally {
       setIsLoading(false);
     }
@@ -138,7 +131,7 @@ export const SettingsScreen = () => {
       // ✅ Use api instance so X-Tenant-ID header is included automatically
       const gymId = await AsyncStorage.getItem('gymId');
       if (!gymId) {
-        Alert.alert('Error', 'Not logged in. Please restart the app.');
+        showError('Error', 'Not logged in. Please restart the app.');
         return;
       }
 
@@ -154,10 +147,10 @@ export const SettingsScreen = () => {
       if (supported) {
         await Linking.openURL(downloadUrl);
       } else {
-        Alert.alert('Error', 'Unable to open export URL. Try from a browser.');
+        showError('Error', 'Unable to open export URL. Try from a browser.');
       }
     } catch (error) {
-      Alert.alert('Export Failed', 'Unable to export members data.');
+      showError('Export Failed', 'Unable to export members data.');
     }
   };
 
@@ -186,10 +179,10 @@ export const SettingsScreen = () => {
         },
       });
 
-      Alert.alert('Import Success', response.data.message);
+      showSuccess('Import Success', response.data.message);
     } catch (error: any) {
       console.error('Import Error:', error.response?.data || error.message);
-      Alert.alert('Import Failed', error.response?.data?.detail || 'Make sure the CSV format is correct.');
+      showError('Import Failed', error.response?.data?.detail || 'Make sure the CSV format is correct.');
     } finally {
       setIsLoading(false);
     }
@@ -199,13 +192,16 @@ export const SettingsScreen = () => {
     <View style={styles.container}>
       <LinearGradient colors={[colors.background, theme === 'dark' ? '#1a103c' : '#ede9fe']} style={StyleSheet.absoluteFill} />
       
+      <View style={styles.header}>
+        <Text style={styles.title}>{businessType === 'library' ? 'Library Profile' : businessType === 'gym' ? 'Gym Profile' : 'Business Profile'}</Text>
+        <Text style={styles.subtitle}>Customize your brand</Text>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{businessType === 'library' ? 'Library Profile' : businessType === 'gym' ? 'Gym Profile' : 'Business Profile'}</Text>
-          <Text style={styles.subtitle}>Customize your brand</Text>
-        </View>
 
         <GlassCard style={styles.card}>
+
+
           {/* Logo Preview & Upload */}
           <View style={styles.logoPreviewContainer}>
             {logoUrl ? (
@@ -265,6 +261,63 @@ export const SettingsScreen = () => {
             onPress={handleSave}
             isLoading={isLoading}
           />
+
+          <View style={styles.divider} />
+
+          {businessType === 'library' && (
+            <View style={{ marginBottom: spacing.l }}>
+              <Text style={styles.sectionTitle}>Manage WiFi Networks</Text>
+              {wifiNetworks.map((wifi, index) => (
+                <View key={index} style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <ModernInput
+                      label="WiFi Name"
+                      value={wifi.name}
+                      onChangeText={(val) => {
+                        const newNets = [...wifiNetworks];
+                        newNets[index].name = val;
+                        setWifiNetworks(newNets);
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ModernInput
+                      label="Password"
+                      value={wifi.password}
+                      onChangeText={(val) => {
+                        const newNets = [...wifiNetworks];
+                        newNets[index].password = val;
+                        setWifiNetworks(newNets);
+                      }}
+                    />
+                  </View>
+                  <TouchableOpacity 
+                    style={{ justifyContent: 'center', alignItems: 'center', padding: 10, marginTop: 15 }}
+                    onPress={() => {
+                      const newNets = wifiNetworks.filter((_, i) => i !== index);
+                      setWifiNetworks(newNets);
+                    }}
+                  >
+                    <FontAwesome name="trash" size={20} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, backgroundColor: `${colors.primary}15`, borderRadius: 12, marginTop: 10 }}
+                onPress={() => setWifiNetworks([...wifiNetworks, { name: '', password: '' }])}
+              >
+                <FontAwesome name="plus" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>Add WiFi Network</Text>
+              </TouchableOpacity>
+              <View style={{ marginTop: 15 }}>
+                <GradientButton
+                  title="Save WiFi Settings"
+                  onPress={handleSave}
+                  isLoading={isLoading}
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.divider} />
 
@@ -364,28 +417,25 @@ export const SettingsScreen = () => {
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.25)', borderStyle: 'solid', height: 46 }]} 
             onPress={() => {
-              Alert.alert(
+              showConfirm(
                 'Deactivate Business Session',
                 'Are you sure you want to log out and disconnect this business database from this device?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { 
-                    text: 'Logout & Disconnect', 
-                    style: 'destructive',
-                    onPress: async () => {
-                      await AsyncStorage.clear();
-                      router.replace('/login');
-                    }
-                  }
-                ]
+                async () => {
+                  await AsyncStorage.clear();
+                  router.replace('/login');
+                },
+                'Logout & Disconnect',
+                true
               );
             }}
           >
             <Text style={[styles.actionButtonText, { color: colors.error }]}>Disconnect Business Session 🔌</Text>
           </TouchableOpacity>
-
         </GlassCard>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
+      <AlertModal />
     </View>
   );
 };
@@ -397,22 +447,22 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.l,
-    paddingTop: 60,
   },
   header: {
-    marginBottom: spacing.xl,
+    paddingHorizontal: spacing.l,
+    paddingTop: 56,
+    paddingBottom: spacing.m,
   },
   title: {
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: '800',
     color: colors.text,
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: '600',
-    marginTop: 4,
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 3,
   },
   card: {
     padding: spacing.l,

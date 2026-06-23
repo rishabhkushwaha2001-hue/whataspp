@@ -5,13 +5,13 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "gym-manager",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#030712",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F3F4F6",
     "icon": "./assets/app_logo.png",
     "splash": {
       "image": "./assets/app_logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#030712"
+      "backgroundColor": "#F3F4F6"
     },
     "newArchEnabled": true,
     "jsEngine": "hermes",
@@ -33,7 +33,16 @@
       "output": "static"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

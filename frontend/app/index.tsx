@@ -13,13 +13,17 @@ export default function Index() {
     const checkSession = async () => {
       try {
         const gymId = await AsyncStorage.getItem('gymId');
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
+        const role = await AsyncStorage.getItem('role');
 
         if (!gymId) {
           router.replace('/login');
-        } else if (isAdmin === 'true') {
+        } else if (role === 'super_admin') {
           router.replace('/super-admin');
         } else {
+          // Student portal is hidden for now — all roles use admin tabs
+          // TODO: restore this when student portal is ready:
+          // } else if (role === 'student') {
+          //   router.replace('/(student_tabs)/dashboard' as any);
           router.replace('/(tabs)');
         }
       } catch (e) {

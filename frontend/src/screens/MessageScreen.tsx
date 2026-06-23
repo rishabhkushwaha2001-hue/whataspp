@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator, Linking, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
@@ -10,6 +10,7 @@ import { DatePickerModal } from '../components/DatePickerModal';
 import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { DropdownModal } from '../components/DropdownModal';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { fetchMessageTemplates, buildJoiningMessage, getDefaultTemplates } from '../services/messageTemplates';
 
@@ -117,13 +118,50 @@ export const MessageScreen = () => {
   const [businessType, setBusinessType] = useState('gym');
   const [enableHours, setEnableHours] = useState(false);
   const [joiningMsgTemplate, setJoiningMsgTemplate] = useState<string | null>(null);
+  const [allocatedSeat, setAllocatedSeat] = useState('');
+  const [wifiDetails, setWifiDetails] = useState('');
+  const [availableSeats, setAvailableSeats] = useState<any[]>([]);
+  const [wifiOptions, setWifiOptions] = useState<any[]>([]);
+  const [showSeatModal, setShowSeatModal] = useState(false);
+  const [showWifiModal, setShowWifiModal] = useState(false);
 
   const [alertConfig, setAlertConfig] = useState<{ visible: boolean, title: string, message: string, type: 'success' | 'error' }>({
     visible: false, title: '', message: '', type: 'success'
   });
 
-  // Reload settings every time screen is focused — so toggling Hours ON in Settings
-  // is reflected immediately without needing an app restart
+  useEffect(() => {
+    if (dailyHours && timingStartHour && timingStartAmPm) {
+      const hours = parseInt(dailyHours);
+      if (!isNaN(hours) && hours > 0) {
+        let startH = parseInt(timingStartHour.split(':')[0] || timingStartHour);
+        if (isNaN(startH)) return;
+        
+        if (timingStartAmPm === 'PM' && startH !== 12) startH += 12;
+        if (timingStartAmPm === 'AM' && startH === 12) startH = 0;
+        
+        let endH = startH + hours;
+        endH = endH % 24;
+        
+        let endAmPm = 'AM';
+        let formattedEndH = endH;
+        
+        if (endH >= 12) {
+          endAmPm = 'PM';
+          if (endH > 12) formattedEndH = endH - 12;
+        } else if (endH === 0) {
+          formattedEndH = 12;
+        }
+        
+        // Use minute preservation if input has it
+        let minPart = timingStartHour.includes(':') 
+          ? ':' + (timingStartHour.split(':')[1] || '').padEnd(2, '0') 
+          : ':00';
+        setTimingEndHour(`${formattedEndH.toString().padStart(2, '0')}${minPart}`);
+        setTimingEndAmPm(endAmPm);
+      }
+    }
+  }, [dailyHours, timingStartHour, timingStartAmPm]);
+
   useFocusEffect(
     useCallback(() => {
       const loadSettings = async () => {
@@ -134,13 +172,19 @@ export const MessageScreen = () => {
           setBusinessType(templates.businessType);
           setEnableHours(templates.enableHours);
           setGymName(templates.gymName);
-          // Use DB template if non-empty, else fallback to system default
           const dbTemplate = templates.joiningTemplate;
           if (dbTemplate && dbTemplate.trim()) {
             setJoiningMsgTemplate(dbTemplate);
           } else {
             const defaults = getDefaultTemplates(templates.businessType);
             setJoiningMsgTemplate(defaults.joining);
+          }
+          if (templates.businessType === 'library') {
+            try {
+              const seatsRes = await api.get('/seats/');
+              setAvailableSeats(Array.isArray(seatsRes.data) ? seatsRes.data : seatsRes.data?.seats || []);
+            } catch (err) { console.log('Err fetching seats', err); }
+            setWifiOptions(templates.wifiNetworks || []);
           }
         } catch (e) {
           console.log('Failed to load settings', e);
@@ -153,6 +197,27 @@ export const MessageScreen = () => {
 
   const showCustomAlert = (title: string, message: string, type: 'success' | 'error' = 'error') => {
     setAlertConfig({ visible: true, title, message, type });
+  };
+
+  const checkTimeOverlap = (start1: string, end1: string, start2: string, end2: string) => {
+    if (!start1 || !end1 || !start2 || !end2) return false;
+    const timeToMin = (t: string) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    let s1 = timeToMin(start1), e1 = timeToMin(end1);
+    let s2 = timeToMin(start2), e2 = timeToMin(end2);
+    if (e1 <= s1) e1 += 24 * 60;
+    if (e2 <= s2) e2 += 24 * 60;
+    return Math.max(s1, s2) < Math.min(e1, e2);
+  };
+
+  const formatTo24Hour = (hour: string, amPm: string) => {
+    if (!hour) return null;
+    let h = parseInt(hour, 10);
+    if (amPm === 'PM' && h !== 12) h += 12;
+    if (amPm === 'AM' && h === 12) h = 0;
+    return `${h.toString().padStart(2, '0')}:00`;
   };
 
   const handleEnroll = async () => {
@@ -171,7 +236,7 @@ export const MessageScreen = () => {
         return;
       }
 
-      const finalPhone = formattedPhone; // No longer adding '91' prefix
+      const finalPhone = formattedPhone;
 
       const parsedAmount = parseFloat(amount);
       if (isNaN(parsedAmount)) {
@@ -201,11 +266,50 @@ export const MessageScreen = () => {
         }
       }
 
-      const timingStr = (enableHours && timingStartHour && timingEndHour) ? `${timingStartHour} ${timingStartAmPm} - ${timingEndHour} ${timingEndAmPm}` : undefined;
+      let timingStr = '';
+      if (enableHours && dailyHours) {
+        if (timingStartHour && timingEndHour) {
+          timingStr = `${timingStartHour}:00 ${timingStartAmPm} to ${timingEndHour}:00 ${timingEndAmPm}`;
+          
+          // Conflict checking
+          if (businessType === 'library' && allocatedSeat) {
+            const seatObj = availableSeats.find(s => s.seat_number === allocatedSeat);
+            if (seatObj && seatObj.allotted_members) {
+              const newStart = formatTo24Hour(timingStartHour, timingStartAmPm);
+              const newEnd = formatTo24Hour(timingEndHour, timingEndAmPm);
+              
+              if (newStart && newEnd) {
+                const overlappingMember = seatObj.allotted_members.find((am: any) => {
+                  if (am.timing) {
+                    const parts = am.timing.split(' to ');
+                    if (parts.length === 2) {
+                      const [t1, amPm1] = parts[0].trim().split(' ');
+                      const [t2, amPm2] = parts[1].trim().split(' ');
+                      if (t1 && amPm1 && t2 && amPm2) {
+                        const existingStart = formatTo24Hour(t1.split(':')[0], amPm1);
+                        const existingEnd = formatTo24Hour(t2.split(':')[0], amPm2);
+                        if (existingStart && existingEnd) {
+                          return checkTimeOverlap(newStart, newEnd, existingStart, existingEnd);
+                        }
+                      }
+                    }
+                  }
+                  return false;
+                });
+                
+                if (overlappingMember) {
+                  showCustomAlert('Seat Unavailable', `Seat ${allocatedSeat} is already occupied by ${overlappingMember.name} during this time (${overlappingMember.timing})!`, 'error');
+                  setIsLoading(false);
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
 
       let welcomeMsg = '';
       if (!isManual) {
-        const isRenewal = isManual ? false : false; // For new enrollments, it's never a renewal from this screen except maybe if category is set. Wait, category here is "New" or "Manual".
         const finalExpiryStr = new Date(expiryDate).toLocaleDateString();
         const joiningDateStr = new Date(joiningDate).toLocaleDateString();
         const hoursVal = (enableHours && dailyHours) ? parseInt(dailyHours) : undefined;
@@ -223,6 +327,8 @@ export const MessageScreen = () => {
             timing: timingStr,
             gym: gymName,
             durationDays,
+            seat: allocatedSeat,
+            wifi: wifiDetails,
           }
         );
       }
@@ -244,6 +350,8 @@ export const MessageScreen = () => {
         category: isManual ? "Manual" : "New",
         daily_hours: (enableHours && dailyHours) ? parseInt(dailyHours) : undefined,
         timing: timingStr,
+        allocated_seat: businessType === 'library' ? allocatedSeat : undefined,
+        wifi_details: businessType === 'library' ? wifiDetails : undefined,
       };
 
       const response = await api.post('/members/', enrollmentData);
@@ -289,11 +397,12 @@ export const MessageScreen = () => {
   const clearForm = () => {
     setName(''); setPhone(''); setAmount(''); setAge(''); setWeight('');
     setAddress(''); setNotes(''); setTrainer('General'); setDailyHours(''); setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
-    setGender('Male');        // Reset gender
-    setPaymentMode('Cash');   // Reset payment mode
-    setIsManual(false);       // Reset manual toggle
+    setAllocatedSeat(''); setWifiDetails('');
+    setGender('Male');
+    setPaymentMode('Cash');
+    setIsManual(false);
     const todayStr = new Date().toISOString().split('T')[0];
-    setJoiningDate(todayStr); // Reset to today
+    setJoiningDate(todayStr);
     setExpiryDate(getNextMonthDate(todayStr));
   };
 
@@ -351,7 +460,6 @@ export const MessageScreen = () => {
 
           <ModernInput label="Full Name *" value={name} onChangeText={setName} placeholder="e.g. John Doe" icon={<FontAwesome name="user-o" size={16} color={colors.textSecondary} />} />
 
-          {/* Library / General Hours & Timing Fields */}
           {enableHours && (
             <View>
               <ModernInput
@@ -364,7 +472,6 @@ export const MessageScreen = () => {
               />
               <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8, marginTop: 4, fontWeight: '600' }}>Timing Slot 🌞</Text>
               <View style={styles.row}>
-                {/* START TIME */}
                 <View style={{ flex: 1, marginRight: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 6 }}>
                     <TextInput
@@ -388,10 +495,8 @@ export const MessageScreen = () => {
                   </View>
                 </View>
 
-                {/* TO TEXT */}
                 <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '700', alignSelf: 'center', marginHorizontal: 2 }}>TO</Text>
 
-                {/* END TIME */}
                 <View style={{ flex: 1, marginLeft: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, backgroundColor: colors.surfaceLight, borderRadius: borderRadius.m, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 6 }}>
                     <TextInput
@@ -418,6 +523,33 @@ export const MessageScreen = () => {
             </View>
           )}
 
+          {businessType === 'library' && (
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: spacing.s }}>
+                <TouchableOpacity onPress={() => setShowSeatModal(true)}>
+                  <ModernInput
+                    label="Seat Number"
+                    value={allocatedSeat}
+                    editable={false}
+                    placeholder="Select Seat"
+                    icon={<FontAwesome name="bookmark" size={14} color={colors.textSecondary} />}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.s }}>
+                <TouchableOpacity onPress={() => setShowWifiModal(true)}>
+                  <ModernInput
+                    label="Wi-Fi Details"
+                    value={wifiDetails.split(' Password')[0]}
+                    editable={false}
+                    placeholder="Select Network"
+                    icon={<FontAwesome name="wifi" size={14} color={colors.textSecondary} />}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
 
           <View style={styles.row}>
@@ -425,7 +557,7 @@ export const MessageScreen = () => {
               <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
                 <ModernInput
                   label="From Date (Joining) *"
-                  value={joiningDate}
+                  value={joiningDate.split('-').reverse().join('/')}
                   editable={false}
                   placeholder="Select Date"
                   icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
@@ -436,7 +568,7 @@ export const MessageScreen = () => {
               <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
                 <ModernInput
                   label="To Date (Expiry) *"
-                  value={expiryDate}
+                  value={expiryDate.split('-').reverse().join('/')}
                   editable={false}
                   placeholder="Select Date"
                   icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
@@ -445,7 +577,6 @@ export const MessageScreen = () => {
             </View>
           </View>
 
-          {/* Quick Date Presets Row */}
           <View style={styles.datePresetsRow}>
             <Text style={styles.presetsLabel}>QUICK PLAN PRESETS</Text>
             <View style={styles.presetsBtnGroup}>
@@ -465,7 +596,6 @@ export const MessageScreen = () => {
             </View>
           </View>
 
-          {/* Real-time Duration Display */}
           {(() => {
             const getDurationInDays = (start: string, end: string) => {
               const s = new Date(start);
@@ -490,7 +620,6 @@ export const MessageScreen = () => {
             onSelect={(date) => {
               if (datePickerType === 'joining') {
                 setJoiningDate(date);
-                // Shift expiry date to maintain 1 month default spacing
                 const d = new Date(date);
                 d.setMonth(d.getMonth() + 1);
                 setExpiryDate(d.toISOString().split('T')[0]);
@@ -541,6 +670,33 @@ export const MessageScreen = () => {
           </View>
         </GlassCard>
       </ScrollView>
+
+      <DropdownModal
+        visible={showSeatModal}
+        title="Select Seat"
+        items={availableSeats}
+        onClose={() => setShowSeatModal(false)}
+        onSelect={(seat) => setAllocatedSeat(seat.seat_number)}
+        renderItem={(item) => (
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>Seat {item.seat_number}</Text>
+            <Text style={{ color: item.status === 'Available' ? colors.success : colors.warning, fontSize: 14 }}>
+              {item.status}
+            </Text>
+          </View>
+        )}
+      />
+
+      <DropdownModal
+        visible={showWifiModal}
+        title="Select WiFi Network"
+        items={wifiOptions}
+        onClose={() => setShowWifiModal(false)}
+        onSelect={(wifi) => setWifiDetails(`${wifi.name} (Password: ${wifi.password})`)}
+        renderItem={(item) => (
+          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+        )}
+      />
     </View>
   );
 };

@@ -11,7 +11,7 @@ function TabBarIcon(props: {
   return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
 }
 
-export default function TabLayout() {
+export default function StudentTabLayout() {
   const { colors } = useTheme();
   const [businessType, setBusinessType] = useState('gym');
 
@@ -35,71 +35,35 @@ export default function TabLayout() {
           paddingBottom: 10,
           paddingTop: 10,
         },
-        headerShown: false, // We'll use custom headers in screens
+        headerShown: false, 
       }}>
       <Tabs.Screen
-        name="index"
+        name="dashboard"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <TabBarIcon name="th-large" color={color} />,
+          title: 'Dashboard',
+          tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="members"
-        options={{
-          title: 'Members',
-          tabBarIcon: ({ color }) => <TabBarIcon name="users" color={color} />,
-        }}
-      />
-      
-      <Tabs.Screen
-        name="enroll"
-        options={{
-          title: 'Enroll',
-          tabBarIcon: ({ color }) => <TabBarIcon name="user-plus" color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="dues"
-        options={{
-          title: 'Due',
-          tabBarIcon: ({ color }) => <TabBarIcon name="hourglass-half" color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="seats"
-        options={{
-          title: 'Seats',
-          href: businessType === 'library' ? '/seats' : null,
-          tabBarIcon: ({ color }) => <TabBarIcon name="th" color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="qr_scanner"
+        name="scanner"
         options={{
           title: 'Scan QR',
           href: null,
           tabBarIcon: ({ color }) => <TabBarIcon name="qrcode" color={color} />,
         }}
       />
-
       <Tabs.Screen
         name="feedback"
         options={{
           title: 'Feedback',
-          href: null,
-          tabBarIcon: ({ color }) => <TabBarIcon name="comments" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="comment" color={color} />,
         }}
       />
-
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
+          tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
         }}
       />
     </Tabs>

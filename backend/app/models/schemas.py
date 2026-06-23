@@ -21,6 +21,8 @@ class MemberCreate(BaseModel):
     category: Optional[str] = "New"
     daily_hours: Optional[int] = None  # Library-specific: daily study hours (e.g. 8, 10)
     timing: Optional[str] = None        # Library-specific: study timing (e.g. 9 AM - 5 PM)
+    allocated_seat: Optional[str] = None # Library-specific: Assigned seat (e.g. A-12)
+    wifi_details: Optional[str] = None   # Library-specific: Wi-Fi credentials
 
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -29,6 +31,9 @@ class MemberUpdate(BaseModel):
     monthly_fees: Optional[float] = None
     plan_duration_months: Optional[int] = None
     status: Optional[str] = None
+    allocated_seat: Optional[str] = None
+    wifi_details: Optional[str] = None
+    timing: Optional[str] = None
 
 class PaymentBase(BaseModel):
     member_id: str
@@ -94,6 +99,25 @@ class GymSettings(BaseModel):
     joining_msg_template: Optional[str] = None
     renewal_msg_template: Optional[str] = None
     reminder_msg_template: Optional[str] = None
+    wifi_networks: Optional[list] = []
+
+class SettingsUpdate(BaseModel):
+    business_type: Optional[str] = None
+    gym_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    currency: Optional[str] = None
+    timezone: Optional[str] = None
+    tax_percent: Optional[float] = None
+    enable_tax: Optional[bool] = None
+    enable_biometric: Optional[bool] = None
+    enable_hours_feature: Optional[bool] = None
+    upi_id: Optional[str] = None
+    logo_url: Optional[str] = None
+    joining_msg_template: Optional[str] = None
+    renewal_msg_template: Optional[str] = None
+    reminder_msg_template: Optional[str] = None
+    wifi_networks: Optional[list] = []
 
 class ExpenseCreate(BaseModel):
     amount: float
@@ -102,4 +126,30 @@ class ExpenseCreate(BaseModel):
     notes: Optional[str] = None
 
 class ExpenseInDB(ExpenseCreate):
+    id: str = Field(alias="_id")
+
+class SeatBase(BaseModel):
+    seat_number: str # e.g. A1, B2
+    category: str = "Standard"
+    floor: Optional[str] = "Ground"
+    room: Optional[str] = "Main"
+    status: str = "Available" # Available, Occupied, Reserved, Disabled
+    member_id: Optional[str] = None # Link to member when assigned
+
+class SeatInDB(SeatBase):
+    id: str = Field(alias="_id")
+
+class SettingsInDB(SettingsUpdate):
+    id: str = Field(alias="_id")
+    wifi_networks: Optional[list] = []
+
+class FeedbackBase(BaseModel):
+    member_id: Optional[str] = None
+    seat_number: Optional[str] = None
+    category: str # Cleanliness, AC Issue, Internet, Noise, etc.
+    message: str
+    status: str = "Pending" # Pending, Resolved
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class FeedbackInDB(FeedbackBase):
     id: str = Field(alias="_id")

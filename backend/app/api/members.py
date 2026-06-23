@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from typing import Any, List, Optional
 import csv
 import io
+import re
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
 from models.schemas import MemberCreate, MemberInDB, DashboardStats, MemberUpdate
@@ -11,11 +12,61 @@ from database import get_database
 
 router = APIRouter()
 
+def parse_timing(timing_str: str):
+    try:
+        parts = re.split(r'-|TO', timing_str.upper())
+        if len(parts) != 2: return 0, 0
+        def to_minutes(t_str):
+            t_str = t_str.strip()
+            match = re.match(r'(\d+)(?::(\d+))?\s*(AM|PM)?', t_str)
+            if not match: return 0
+            h = int(match.group(1))
+            m = int(match.group(2) or 0)
+            ampm = match.group(3)
+            if ampm == 'PM' and h != 12: h += 12
+            if ampm == 'AM' and h == 12: h = 0
+            return h * 60 + m
+        return to_minutes(parts[0]), to_minutes(parts[1])
+    except: return 0, 0
+
+async def check_seat_overlap(db, seat_number: str, proposed_timing: str, exclude_member_id: str = None):
+    if not seat_number or not proposed_timing:
+        return None
+    proposed_start, proposed_end = parse_timing(proposed_timing)
+    if proposed_start == proposed_end == 0:
+        return None
+        
+    query = {"allocated_seat": seat_number, "status": {"$regex": "^active$", "$options": "i"}}
+    if exclude_member_id:
+        query["member_id"] = {"$ne": exclude_member_id}
+        
+    active_members = await db["members"].find(query).to_list(length=100)
+    for m in active_members:
+        m_timing = m.get("timing", "")
+        if not m_timing: continue
+        m_start, m_end = parse_timing(m_timing)
+        if m_start == m_end == 0: continue
+        
+        def get_minutes_set(start, end):
+            if end < start: return set(range(start, 24*60)) | set(range(0, end))
+            else: return set(range(start, end))
+            
+        if get_minutes_set(proposed_start, proposed_end).intersection(get_minutes_set(m_start, m_end)):
+            return m
+    return None
+
 async def generate_member_id(db) -> str:
-    # Find the member with the highest GYM-XXXX number across ALL existing members
-    # Using sort by member_id would be lexicographic, so we fetch with GYM- filter
+    settings = await db["settings"].find_one({"type": "gym_profile"})
+    prefix = "GYM"
+    if settings:
+        b_type = settings.get("business_type", "gym")
+        if b_type == "library":
+            prefix = "LIB"
+        elif b_type == "general":
+            prefix = "GEN"
+
     pipeline = [
-        {"$match": {"member_id": {"$regex": "^GYM-"}}},
+        {"$match": {"member_id": {"$regex": f"^{prefix}-"}}},
         {"$project": {"member_id": 1}},
         {"$sort": {"_id": -1}},
         {"$limit": 50}
@@ -31,7 +82,7 @@ async def generate_member_id(db) -> str:
                 max_id = num
         except:
             pass
-    return f"GYM-{max_id + 1}"
+    return f"{prefix}-{max_id + 1}"
 
 @router.post("/", response_model=MemberInDB)
 async def create_member(member_in: MemberCreate) -> Any:
@@ -42,6 +93,12 @@ async def create_member(member_in: MemberCreate) -> Any:
     if existing_member:
         raise HTTPException(status_code=400, detail=f"Member with phone {member_in.phone} already exists!")
         
+    # Seat Overlap Check
+    if member_in.allocated_seat and member_in.timing:
+        conflict = await check_seat_overlap(db, member_in.allocated_seat, member_in.timing)
+        if conflict:
+            raise HTTPException(status_code=400, detail=f"Seat {member_in.allocated_seat} is already occupied by {conflict.get('full_name')} during this time ({conflict.get('timing')}). Please select another time or seat.")
+
     member_dict = member_in.dict()
     
     # Calculate expiry date based on plan duration if not custom provided
@@ -172,11 +229,21 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
 async def get_today_attendance() -> Any:
     db = get_database()
     now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Adjust for IST to find the correct local midnight
+    now_ist = now + timedelta(hours=5, minutes=30)
+    today_start_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = today_start_ist - timedelta(hours=5, minutes=30)
+    
     cursor = db["attendance"].find({"check_in_time": {"$gte": today_start}}).sort("check_in_time", -1)
     logs = await cursor.to_list(length=100)
     for l in logs:
         l["id"] = str(l["_id"])
+        # Fetch member info if missing
+        if "member_name" not in l or not l["member_name"]:
+            member = await db["members"].find_one({"member_id": l.get("member_id")})
+            if member:
+                l["member_name"] = member.get("full_name", l.get("member_id"))
+                l["member_phone"] = member.get("phone", "")
     return logs
 
 @router.post("/admin/reset-database")
@@ -354,6 +421,8 @@ async def get_member_summary(member_id: str) -> Any:
     
     return member
 
+
+
 @router.post("/{member_id}/checkin")
 async def member_checkin(member_id: str) -> Any:
     db = get_database()
@@ -370,6 +439,63 @@ async def member_checkin(member_id: str) -> Any:
 
 from pydantic import BaseModel
 
+class EditMemberPayload(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    age: Optional[int] = None
+    weight: Optional[float] = None
+    gender: Optional[str] = None
+    daily_hours: Optional[int] = None
+    timing: Optional[str] = None
+    allocated_seat: Optional[str] = None
+    wifi_details: Optional[str] = None
+    trainer_assigned: Optional[str] = None
+    notes: Optional[str] = None
+
+@router.put("/{member_id}")
+async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
+    db = get_database()
+    member = None
+    if len(member_id) == 24:
+        try:
+            member = await db["members"].find_one({"_id": ObjectId(member_id)})
+        except: pass
+    if not member:
+        member = await db["members"].find_one({"member_id": member_id})
+    if not member:
+        member = await db["members"].find_one({"_id": member_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    new_seat = payload.allocated_seat if payload.allocated_seat is not None else member.get("allocated_seat")
+    new_timing = payload.timing if payload.timing is not None else member.get("timing")
+    seat_changed = payload.allocated_seat is not None and payload.allocated_seat != member.get("allocated_seat")
+    timing_changed = payload.timing is not None and payload.timing != member.get("timing")
+
+    if (seat_changed or timing_changed) and new_seat and new_timing:
+        conflict = await check_seat_overlap(db, new_seat, new_timing, exclude_member_id=member.get("member_id"))
+        if conflict:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Seat {new_seat} is already occupied by {conflict.get('full_name')} during this time ({conflict.get('timing')}). Please select another time or seat."
+            )
+
+    # Build update — only non-None fields (Pydantic v2 compatible)
+    try:
+        update_fields = payload.model_dump(exclude_none=True)
+    except AttributeError:
+        update_fields = {k: v for k, v in payload.dict().items() if v is not None}
+
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    await db["members"].update_one({"_id": member["_id"]}, {"$set": update_fields})
+
+    updated = await db["members"].find_one({"_id": member["_id"]})
+    updated["_id"] = str(updated["_id"])
+    return updated
+
 class RenewPayload(BaseModel):
     plan_duration_months: int = 1
     amount: float
@@ -378,6 +504,7 @@ class RenewPayload(BaseModel):
     joining_date: Optional[datetime] = None
     daily_hours: Optional[int] = None
     timing: Optional[str] = None
+    allocated_seat: Optional[str] = None
 
 @router.post("/{member_id}/renew")
 async def renew_member(member_id: str, payload: RenewPayload) -> Any:
@@ -395,6 +522,15 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
         
+    # Seat Overlap Check
+    new_seat = payload.allocated_seat if payload.allocated_seat is not None else member.get("allocated_seat")
+    new_timing = payload.timing if payload.timing is not None else member.get("timing")
+    
+    if new_seat and new_timing:
+        conflict = await check_seat_overlap(db, new_seat, new_timing, exclude_member_id=member.get("member_id"))
+        if conflict:
+            raise HTTPException(status_code=400, detail=f"Seat {new_seat} is already occupied by {conflict.get('full_name')} during this time ({conflict.get('timing')}). Please select another time or seat.")
+            
     # Calculate or set new due date
     now = datetime.now(timezone.utc)
     if payload.next_due_date:
@@ -433,6 +569,8 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         update_fields["daily_hours"] = payload.daily_hours
     if payload.timing is not None:
         update_fields["timing"] = payload.timing
+    if payload.allocated_seat is not None:
+        update_fields["allocated_seat"] = payload.allocated_seat
 
     await db["members"].update_one(
         {"_id": member["_id"]},
@@ -583,13 +721,19 @@ async def delete_member(member_id: str) -> Any:
         raise HTTPException(status_code=404, detail="Member not found")
         
     actual_id = str(member["_id"])
+    member_str_id = member.get("member_id", "")
     
     # Delete Member
     await db["members"].delete_one({"_id": member["_id"]})
     
-    # Delete associated records
+    # Delete associated payments (by ObjectId string)
     await db["payments"].delete_many({"member_id": actual_id})
-    await db["attendance"].delete_many({"member_id": actual_id})
+    
+    # Delete attendance by both _id string AND member_id (GYM-XXXX style)
+    await db["attendance"].delete_many({"$or": [
+        {"member_id": actual_id},
+        {"member_id": member_str_id}
+    ]})
     
     return {"message": "Member and all related data deleted successfully"}
 

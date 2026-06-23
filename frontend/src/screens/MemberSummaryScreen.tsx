@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
+import { EditMemberModal } from '../components/EditMemberModal';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,9 +39,10 @@ export const MemberSummaryScreen = () => {
     _id: id
   } : null);
   
-  const [loading, setLoading] = useState(!name); // Don't show full screen loader if we have basic info
+  const [loading, setLoading] = useState(!name);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [businessType, setBusinessType] = useState('gym');
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
   useEffect(() => {
     const fetchMember = async () => {
@@ -125,6 +127,9 @@ export const MemberSummaryScreen = () => {
           <FontAwesome name="chevron-left" size={18} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { flex: 1 }]}>Member Summary</Text>
+        <TouchableOpacity onPress={() => setEditModalVisible(true)} style={{ padding: 8, marginRight: 4 }}>
+          <FontAwesome name="pencil" size={18} color={colors.primary} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={{ padding: 8 }}>
           <FontAwesome name="trash" size={20} color={colors.error} />
         </TouchableOpacity>
@@ -181,9 +186,9 @@ export const MemberSummaryScreen = () => {
 
       <Text style={styles.sectionTitle}>Personal Details</Text>
       <GlassCard style={styles.detailsCard}>
-        <DetailItem icon="phone" label="Phone" value={member.phone || 'Loading...'} />
-        <DetailItem icon="map-marker" label="Address" value={member.address || 'Loading...'} />
-        <DetailItem icon="calendar" label="Joining Date" value={member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'Loading...'} />
+        <DetailItem icon="phone" label="Phone" value={member.phone || 'N/A'} />
+        <DetailItem icon="map-marker" label="Address" value={member.address || 'N/A'} />
+        <DetailItem icon="calendar" label="Joining Date" value={member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'N/A'} />
         {businessType !== 'library' && (
           <DetailItem icon="user" label="Trainer" value={member.trainer_assigned || 'General'} />
         )}
@@ -195,6 +200,34 @@ export const MemberSummaryScreen = () => {
           <View style={styles.row}>
             {member.daily_hours && <DetailItem icon="clock-o" label="Daily Hours" value={`${member.daily_hours} Hrs`} half={true} />}
             {member.timing && <DetailItem icon="sun-o" label="Timing" value={member.timing} half={true} />}
+          </View>
+        )}
+        {/* Seat Info */}
+        {member.allocated_seat && (
+          <View style={[styles.seatWifiBanner, { backgroundColor: `${colors.primary}12`, borderColor: `${colors.primary}30` }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}20` }]}>
+                <FontAwesome name="map-pin" size={14} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={[styles.bannerLabel, { color: colors.textMuted }]}>Allocated Seat</Text>
+                <Text style={[styles.bannerValue, { color: colors.primary }]}>{member.allocated_seat}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+        {/* WiFi Info */}
+        {member.wifi_details && (
+          <View style={[styles.seatWifiBanner, { backgroundColor: `${colors.accent}10`, borderColor: `${colors.accent}30`, marginTop: spacing.s }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={[styles.iconCircle, { backgroundColor: `${colors.accent}20` }]}>
+                <FontAwesome name="wifi" size={14} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.bannerLabel, { color: colors.textMuted }]}>WiFi Details</Text>
+                <Text style={[styles.bannerValue, { color: colors.accent }]} numberOfLines={2}>{member.wifi_details}</Text>
+              </View>
+            </View>
           </View>
         )}
       </GlassCard>
@@ -217,6 +250,17 @@ export const MemberSummaryScreen = () => {
 
       <View style={{ height: 50 }} />
     </ScrollView>
+
+    {/* Edit Member Modal */}
+    <EditMemberModal
+      visible={editModalVisible}
+      member={member}
+      onClose={() => setEditModalVisible(false)}
+      onSaved={(updated) => {
+        setMember({ ...member, ...updated });
+        setEditModalVisible(false);
+      }}
+    />
     </View>
   );
 };
@@ -253,5 +297,29 @@ const getStyles = (colors: any) => StyleSheet.create({
   timelineAmount: { fontSize: 16, fontWeight: '800', color: colors.text },
   timelineDate: { fontSize: 12, color: colors.textSecondary },
   timelineText: { fontSize: 13, color: colors.textMuted },
-  text: { color: colors.text, textAlign: 'center', marginTop: 100 }
+  text: { color: colors.text, textAlign: 'center', marginTop: 100 },
+  seatWifiBanner: {
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    padding: spacing.m,
+    marginTop: spacing.m,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  bannerValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 2,
+  },
 });

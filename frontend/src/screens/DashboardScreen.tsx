@@ -231,7 +231,7 @@ export const DashboardScreen = () => {
           onPress={() => { if (hideRevenue) setRevealedOnce(r => !r); }}
           style={{ width: (width - spacing.l * 2 - spacing.m) / 2 }}
         >
-          <GlassCard style={[styles.statCard, hideRevenue && !revealedOnce && { borderColor: `${colors.warning}30`, borderWidth: 1 }]}>
+          <GlassCard style={[styles.statCard, hideRevenue && !revealedOnce && { borderColor: `${colors.warning}30`, borderWidth: 1 }] as any}>
             <View style={styles.statHeader}>
               <View style={[styles.iconContainer, { backgroundColor: `${colors.success}20` }]}>
                 <FontAwesome name={hideRevenue && !revealedOnce ? 'lock' : 'money'} size={18} color={colors.success} />
@@ -315,6 +315,30 @@ export const DashboardScreen = () => {
                 <Text style={styles.logText} numberOfLines={1}>{msg.message_body}</Text>
               </View>
             </TouchableOpacity>
+          ))
+        )}
+      </GlassCard>
+
+      <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
+        <Text style={styles.sectionTitle}>Today's Check-ins</Text>
+      </View>
+      <GlassCard style={styles.activityCard}>
+        {attendance.length === 0 ? (
+          <Text style={styles.emptyText}>No one has checked in today.</Text>
+        ) : (
+          attendance.map((att, idx) => (
+            <View key={idx} style={styles.logItem}>
+              <View style={[styles.logIcon, { backgroundColor: `${colors.primary}15` }]}>
+                <FontAwesome name="check-circle" size={16} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.logPhone}>{att.member_name || att.member_id}</Text>
+                  <Text style={styles.logTime}>{new Date(att.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                </View>
+                {att.member_phone && <Text style={styles.logText}>{att.member_phone}</Text>}
+              </View>
+            </View>
           ))
         )}
       </GlassCard>
