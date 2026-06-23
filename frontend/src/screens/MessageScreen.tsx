@@ -579,21 +579,21 @@ export const MessageScreen = () => {
 
           <View style={styles.datePresetsRow}>
             <Text style={styles.presetsLabel}>QUICK PLAN PRESETS</Text>
-            <View style={styles.presetsBtnGroup}>
-              {[{ label: '1M', val: 1 }, { label: '2M', val: 2 }, { label: '3M', val: 3 }, { label: '6M', val: 6 }, { label: '12M', val: 12 }].map((item) => (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsBtnGroup}>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((val) => (
                 <TouchableOpacity
-                  key={item.label}
+                  key={`preset-${val}`}
                   style={styles.datePresetBtn}
                   onPress={() => {
                     const d = new Date(joiningDate);
-                    d.setMonth(d.getMonth() + item.val);
+                    d.setMonth(d.getMonth() + val);
                     setExpiryDate(d.toISOString().split('T')[0]);
                   }}
                 >
-                  <Text style={styles.datePresetBtnText}>{item.label}</Text>
+                  <Text style={styles.datePresetBtnText}>{val}M</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           </View>
 
           {(() => {

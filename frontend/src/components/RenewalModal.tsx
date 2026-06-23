@@ -374,17 +374,17 @@ useEffect(() => {
             </View>
 
             {/* Presets */}
-            <View style={styles.presetsRow}>
-              {[{ label: '1M', val: 1 }, { label: '2M', val: 2 }, { label: '3M', val: 3 }, { label: '6M', val: 6 }, { label: '12M', val: 12 }].map((preset) => (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((val) => (
                 <TouchableOpacity
-                  key={preset.label}
-                  onPress={() => handlePresetSelect(preset.val)}
+                  key={`preset-${val}`}
+                  onPress={() => handlePresetSelect(val)}
                   style={styles.presetBtn}
                 >
-                  <Text style={styles.presetText}>{preset.label}</Text>
+                  <Text style={styles.presetText}>{val}M</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
 
             {/* Real-time Duration Display */}
             <View style={styles.durationDisplay}>
