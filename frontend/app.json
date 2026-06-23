@@ -13,14 +13,8 @@
       "resizeMode": "contain",
       "backgroundColor": "#F3F4F6"
     },
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "jsEngine": "hermes",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/8b080331-6de2-493f-b127-966283f16220"
-    },
     "ios": {
       "supportsTablet": true
     },
