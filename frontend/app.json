@@ -43,8 +43,7 @@
           "android": {
             "minSdkVersion": 24,
             "targetSdkVersion": 34,
-            "compileSdkVersion": 34,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "compileSdkVersion": 34
           }
         }
       ]
