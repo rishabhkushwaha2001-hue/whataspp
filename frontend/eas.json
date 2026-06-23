@@ -9,12 +9,7 @@
     },
     "preview": {
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease",
-        "withoutCredentials": false
-      },
-      "env": {
-        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+        "buildType": "apk"
       }
     },
     "production": {
