@@ -111,8 +111,9 @@ export const DashboardScreen = () => {
   };
 
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
-  const [cachedGymName, setCachedGymName] = useState<string>('Gym Dashboard');
+  const [cachedGymName, setCachedGymName] = useState<string>('Dashboard');
   const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
+  const [cachedBusinessType, setCachedBusinessType] = useState<string>('');
 
   useFocusEffect(
     useCallback(() => {
@@ -120,8 +121,10 @@ export const DashboardScreen = () => {
         try {
           const name = await AsyncStorage.getItem('gymName');
           const address = await AsyncStorage.getItem('gymAddress'); 
+          const bType = await AsyncStorage.getItem('businessType');
           if (name) setCachedGymName(name);
           if (address) setCachedAddress(address);
+          if (bType) setCachedBusinessType(bType);
         } catch (e) {
           console.log('Failed to read storage cache on dashboard');
         }
@@ -129,6 +132,9 @@ export const DashboardScreen = () => {
       loadCachedInfo();
     }, [])
   );
+
+  const isLibrary = (gymSettings?.business_type || cachedBusinessType) === 'library';
+  const isGym = (gymSettings?.business_type || cachedBusinessType) === 'gym';
 
   const handleReset = () => {
     setAlertConfig({
@@ -195,7 +201,7 @@ export const DashboardScreen = () => {
           style={{ flex: 1, marginRight: spacing.m }}
         >
           <Text style={styles.greeting}>
-            {gymSettings?.gym_name || cachedGymName}
+            {gymSettings?.gym_name || cachedGymName || (isLibrary ? 'Library Dashboard' : isGym ? 'Gym Dashboard' : 'Dashboard')}
           </Text>
           <Text style={styles.subtitle}>
             {gymSettings?.address || cachedAddress}
@@ -283,7 +289,7 @@ export const DashboardScreen = () => {
           "exclamation"
         )}
         {renderProgress(
-          "Today's Gym Attendance", 
+          isLibrary ? "Today's Library Attendance" : isGym ? "Today's Gym Attendance" : "Today's Attendance", 
           attendance?.length ?? 0, 
           stats?.active_members ?? 0, 
           colors.primary, 

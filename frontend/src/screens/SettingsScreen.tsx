@@ -16,8 +16,8 @@ export const SettingsScreen = () => {
   const router = useRouter();
   const { theme, colors, toggleTheme } = useTheme();
   const styles = getStyles(colors);
-  const [gymName, setGymName] = useState('Gym');
-  const [address, setAddress] = useState('Gym Center');
+  const [gymName, setGymName] = useState('');
+  const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
