@@ -66,9 +66,15 @@ async def get_seats(db = Depends(get_database)):
                         return datetime.strptime(t_str, "%I:%M %p")
                     except ValueError:
                         try:
-                            return datetime.strptime(t_str, "%I %p")
+                            return datetime.strptime(t_str, "%I%M %p")
                         except ValueError:
-                            return datetime.strptime(t_str, "%H:%M")
+                            try:
+                                return datetime.strptime(t_str, "%I %p")
+                            except ValueError:
+                                try:
+                                    return datetime.strptime(t_str, "%H:%M")
+                                except ValueError:
+                                    return datetime.strptime(t_str, "%H%M")
                             
                 start_dt = parse_time_part(parts[0])
                 end_dt   = parse_time_part(parts[1])
