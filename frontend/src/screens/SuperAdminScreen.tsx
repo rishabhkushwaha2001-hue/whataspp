@@ -91,6 +91,7 @@ export const SuperAdminScreen = () => {
       let activeCount = 0;
       let inactiveCount = 0;
       let expiringCount = 0;
+      let needsRenewalCount = 0;
       let totalRevenue = 0;
 
       gymList.forEach((gym: any) => {
@@ -102,6 +103,9 @@ export const SuperAdminScreen = () => {
         if (gym.days_remaining >= 0 && gym.days_remaining <= 7) {
           expiringCount++;
         }
+        if (gym.is_expired || (gym.days_remaining >= 0 && gym.days_remaining <= 7)) {
+          needsRenewalCount++;
+        }
         totalRevenue += gym.plan_price || 0;
       });
 
@@ -111,7 +115,8 @@ export const SuperAdminScreen = () => {
         inactive: inactiveCount,
         expiring: expiringCount,
         revenue: totalRevenue,
-      });
+        needsRenewal: needsRenewalCount,
+      } as any);
     } catch (error) {
       console.warn('Super Admin: Failed to fetch gyms');
     } finally {
@@ -408,35 +413,47 @@ export const SuperAdminScreen = () => {
             </View>
 
             {/* Business Type Breakdown chips */}
-            <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 16, marginBottom: 8, flexWrap: 'wrap' }}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false} 
+              contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+              style={{ marginBottom: 12 }}
+            >
               <TouchableOpacity
                 onPress={() => setFilteredGyms(gyms)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceLight, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
               >
                 <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700' }}>All {stats.total}</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                onPress={() => setFilteredGyms(gyms.filter(g => g.is_expired || (g.days_remaining >= 0 && g.days_remaining <= 7)))}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EF444415', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#EF444430' }}
+              >
+                <Text style={{ fontSize: 10 }}>⚠️</Text>
+                <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700' }}>Renewal Due {(stats as any).needsRenewal}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={() => setFilteredGyms(gyms.filter(g => (g.business_type || 'gym') === 'gym'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98115', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#10B98130' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98115', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#10B98130' }}
               >
                 <Text style={{ fontSize: 10 }}>🏋️</Text>
                 <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700' }}>Gym {typeBreakdown?.gym || 0}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'library'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#8B5CF615', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#8B5CF630' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#8B5CF615', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#8B5CF630' }}
               >
                 <Text style={{ fontSize: 10 }}>📚</Text>
                 <Text style={{ color: '#8B5CF6', fontSize: 11, fontWeight: '700' }}>Library {typeBreakdown?.library || 0}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'general'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F59E0B15', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: '#F59E0B30' }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F59E0B15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#F59E0B30' }}
               >
                 <Text style={{ fontSize: 10 }}>🏠</Text>
                 <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '700' }}>General {typeBreakdown?.general || 0}</Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
 
             <Text style={styles.sectionTitle}>Registered Business Partners</Text>
           </View>

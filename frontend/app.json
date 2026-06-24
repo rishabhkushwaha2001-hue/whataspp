@@ -51,6 +51,12 @@
         "projectId": "8b080331-6de2-493f-b127-966283f16220"
       }
     },
-    "owner": "kushmayank2001"
+    "owner": "kushmayank2001",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/8b080331-6de2-493f-b127-966283f16220"
+    }
   }
 }
