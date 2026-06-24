@@ -227,6 +227,7 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
         "new_members_count": new_members,
         "renewal_members_count": renewal_members,
         "manual_members_count": manual_members
+    }
 
 @router.get("/attendance/today")
 async def get_today_attendance() -> Any:
