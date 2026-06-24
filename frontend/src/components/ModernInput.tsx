@@ -22,7 +22,7 @@ export const ModernInput: React.FC<ModernInputProps> = ({
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.label, isFocused && { color: colors.primary }]}>{label}</Text>
+      <Text style={[styles.label, isFocused && { color: colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>{label}</Text>
       <View style={[
         styles.inputContainer, 
         isFocused && styles.inputFocused,
@@ -54,8 +54,8 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderRadius: borderRadius.m, 
     borderWidth: 1, 
     borderColor: colors.border, 
-    paddingHorizontal: spacing.m, 
-    minHeight: 56 
+    paddingHorizontal: 12, 
+    minHeight: 52 
   },
   inputFocused: {
     borderColor: colors.primary,
@@ -63,6 +63,6 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   inputError: { borderColor: colors.error },
   iconContainer: { marginRight: spacing.s },
-  input: { flex: 1, color: colors.text, fontSize: 16, paddingVertical: spacing.m },
+  input: { flex: 1, color: colors.text, fontSize: 14, paddingVertical: spacing.s, minHeight: 40 },
   errorText: { color: colors.error, fontSize: 12, marginTop: spacing.xs },
 });

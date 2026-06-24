@@ -7,7 +7,7 @@ import io
 import re
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
-from models.schemas import MemberCreate, MemberInDB, DashboardStats, MemberUpdate
+from models.schemas import MemberCreate, MemberInDB, DashboardStats, MemberUpdate, ClearDuePayload
 from database import get_database
 
 router = APIRouter()
@@ -114,6 +114,8 @@ async def create_member(member_in: MemberCreate) -> Any:
         if next_due_date.tzinfo is None:
             next_due_date = next_due_date.replace(tzinfo=timezone.utc)
             
+
+
     member_dict["next_due_date"] = next_due_date
     member_dict["status"] = "active"
     member_dict["member_id"] = await generate_member_id(db)
@@ -211,6 +213,8 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     renewal_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Renewal"})
     manual_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Manual"})
     
+
+
     return {
         "total_members": total_members,
         "active_members": active_members,
@@ -223,7 +227,6 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
         "new_members_count": new_members,
         "renewal_members_count": renewal_members,
         "manual_members_count": manual_members
-    }
 
 @router.get("/attendance/today")
 async def get_today_attendance() -> Any:
@@ -562,7 +565,7 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "status": "active",
         "category": "Renewal",
         "plan_duration_months": payload.plan_duration_months,
-        "monthly_fees": payload.amount  # Update to latest paid amount
+        "monthly_fees": payload.amount  # Update to latest plan amount
     }
     
     if payload.daily_hours is not None:
@@ -588,7 +591,9 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     }
     await db["payments"].insert_one(payment_log)
     
-    return {"message": "Membership renewed successfully", "new_due_date": new_due_date}
+    updated_member = await db["members"].find_one({"_id": member["_id"]})
+    updated_member["_id"] = str(updated_member["_id"])
+    return updated_member
 
 @router.get("/{member_id}/payments")
 async def get_member_payments(member_id: str) -> Any:

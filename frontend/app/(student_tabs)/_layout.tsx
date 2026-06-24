@@ -44,14 +44,7 @@ export default function StudentTabLayout() {
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
         }}
       />
-      <Tabs.Screen
-        name="scanner"
-        options={{
-          title: 'Scan QR',
-          href: null,
-          tabBarIcon: ({ color }) => <TabBarIcon name="qrcode" color={color} />,
-        }}
-      />
+
       <Tabs.Screen
         name="feedback"
         options={{

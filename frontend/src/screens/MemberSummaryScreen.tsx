@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 import { EditMemberModal } from '../components/EditMemberModal';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -17,13 +18,13 @@ export const MemberSummaryScreen = () => {
   const styles = getStyles(colors);
 
   const DetailItem = ({ icon, label, value, half }: any) => (
-    <View style={[styles.detailItem, half && { flex: 1 }]}>
+    <View style={[styles.detailItem, half && { flex: 1, paddingRight: 8 }]}>
       <View style={styles.detailIcon}>
         <FontAwesome name={icon} size={14} color={colors.primary} />
       </View>
-      <View>
+      <View style={{ flex: 1 }}>
         <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value}</Text>
+        <Text style={styles.detailValue} numberOfLines={2} adjustsFontSizeToFit>{value}</Text>
       </View>
     </View>
   );
@@ -43,6 +44,7 @@ export const MemberSummaryScreen = () => {
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [businessType, setBusinessType] = useState('gym');
   const [editModalVisible, setEditModalVisible] = useState(false);
+
 
   useEffect(() => {
     const fetchMember = async () => {
@@ -171,7 +173,7 @@ export const MemberSummaryScreen = () => {
 
       <View style={styles.row}>
         <GlassCard style={styles.infoBox}>
-          <Text style={styles.infoLabel}>Days Remaining</Text>
+          <Text style={styles.infoLabel}>Days Left</Text>
           <Text style={[styles.infoValue, { color: daysRemaining < 5 ? colors.error : colors.text }]}>
             {daysRemaining > 0 ? daysRemaining : 0}
           </Text>

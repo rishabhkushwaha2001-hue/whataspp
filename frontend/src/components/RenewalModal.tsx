@@ -26,6 +26,7 @@ interface RenewalModalProps {
     allocatedSeat?: string,
     wifiDetails?: string
   ) => void;
+  businessType?: string;
 }
 
 export const RenewalModal = ({
@@ -33,6 +34,7 @@ export const RenewalModal = ({
   member,
   onClose,
   enableHours = false,
+  businessType = 'gym',
   onConfirm,
 }: RenewalModalProps) => {
   const { colors } = useTheme();
@@ -348,29 +350,25 @@ useEffect(() => {
             </View>
 
             {/* Date Range Selection (From & To) */}
-            <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: spacing.s }}>
-                <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
-                  <ModernInput
-                    label="From Date (Start) *"
-                    value={joiningDate.split('-').reverse().join('/')}
-                    editable={false}
-                    placeholder="Select Date"
-                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                  />
-                </TouchableOpacity>
-              </View>
-              <View style={{ flex: 1, marginLeft: spacing.s }}>
-                <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
-                  <ModernInput
-                    label="To Date (Expiry) *"
-                    value={expiryDate.split('-').reverse().join('/')}
-                    editable={false}
-                    placeholder="Select Date"
-                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                  />
-                </TouchableOpacity>
-              </View>
+            <View>
+              <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
+                <ModernInput
+                  label="Start Date *"
+                  value={joiningDate.split('-').reverse().join('/')}
+                  editable={false}
+                  placeholder="Select Date"
+                  icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
+                <ModernInput
+                  label="Expiry Date *"
+                  value={expiryDate.split('-').reverse().join('/')}
+                  editable={false}
+                  placeholder="Select Date"
+                  icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Presets */}
@@ -394,22 +392,25 @@ useEffect(() => {
               </Text>
             </View>
 
-            {/* Amount Field */}
-            <ModernInput
-              label="Renewal Amount (₹) *"
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="numeric"
-              placeholder="e.g. 1000"
-              icon={<FontAwesome name="money" size={16} color={colors.accent} />}
-            />
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <ModernInput
+                  label="Total Plan Amount (₹) *"
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="numeric"
+                  placeholder="e.g. 1000"
+                  icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
+                />
+              </View>
+            </View>
 
-            {/* ⏰ Hours + Timing — Library mode only */}
+            {/* ⏰ Hours + Timing */}
             {enableHours && (
               <View style={styles.hoursBox}>
                 <View style={styles.hoursHeader}>
                   <FontAwesome name="clock-o" size={14} color={colors.primary} />
-                  <Text style={styles.hoursTitle}>⏰ Study Hours & Timing</Text>
+                  <Text style={styles.hoursTitle}>⏰ {businessType === 'library' ? 'Study Hours & Timing' : 'Daily Hours & Timing'}</Text>
                 </View>
                 <View style={{ flexDirection: 'column', gap: 16 }}>
                   <View>
@@ -470,7 +471,7 @@ useEffect(() => {
               </View>
             )}
 
-            {enableHours && (
+            {businessType === 'library' && (
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: spacing.s }}>
                   <TouchableOpacity onPress={() => setShowSeatModal(true)}>
@@ -640,16 +641,16 @@ const getStyles = (colors: any) => StyleSheet.create({
   previewValue: { color: colors.text, fontSize: 14, fontWeight: '700' },
   presetsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 10,
+    paddingRight: 20,
     marginBottom: spacing.m,
     marginTop: spacing.xs,
   },
   presetBtn: {
-    flex: 1,
+    width: 60,
     backgroundColor: colors.surfaceLight,
     paddingVertical: 8,
     borderRadius: borderRadius.s,
-    marginHorizontal: 2,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,

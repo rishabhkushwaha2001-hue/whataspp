@@ -46,6 +46,8 @@ class PaymentBase(BaseModel):
 class PaymentInDB(PaymentBase):
     id: str = Field(alias="_id")
 
+
+
 class AttendanceBase(BaseModel):
     member_id: str
     check_in_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

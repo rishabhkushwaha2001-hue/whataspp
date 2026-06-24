@@ -161,7 +161,8 @@ export const RemindersScreen = () => {
     hours?: number,
     timing?: string,
     allocatedSeat?: string,
-    wifiDetails?: string
+    wifiDetails?: string,
+    amountPaid?: number
   ) => {
     setShowRenewModal(false);
     if (!renewingMember) return;
@@ -169,6 +170,7 @@ export const RemindersScreen = () => {
       const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths,
         amount: amount,
+        amount_paid: amountPaid,
         payment_mode: paymentMode,
         next_due_date: nextDueDate,
         joining_date: joiningDate,
@@ -187,7 +189,7 @@ export const RemindersScreen = () => {
           name: renewingMember.full_name,
           phone: renewingMember.phone,
           date: nextDue,
-          fees: amount,
+          fees: amountPaid ? amountPaid : amount,
           hours: hours ?? renewingMember.daily_hours,
           timing: timing ?? renewingMember.timing,
           gym: gymName,

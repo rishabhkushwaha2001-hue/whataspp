@@ -35,8 +35,7 @@ async def get_seats(db = Depends(get_database)):
     attendances = await att_cursor.to_list(length=2000)
     checked_in_members = {att["member_id"]: att["check_in_time"] for att in attendances}
 
-    now_local = datetime.now()
-    current_time_minutes = now_local.hour * 60 + now_local.minute
+    current_time_minutes = now_ist.hour * 60 + now_ist.minute
 
     # ── 3. ALL active assigned members — ONE single query ───────────────────
     # Build the set of seat numbers we have
@@ -59,12 +58,24 @@ async def get_seats(db = Depends(get_database)):
         try:
             parts = re.split(r'-|TO', timing_str.upper())
             if len(parts) == 2:
-                start_dt = datetime.strptime(parts[0].strip(), "%I:%M %p")
-                end_dt   = datetime.strptime(parts[1].strip(), "%I:%M %p")
+                def parse_time_part(t_str):
+                    # Normalize spacing: e.g. "7AM" -> "7 AM", "07:00PM" -> "07:00 PM"
+                    t_str = re.sub(r'(AM|PM)', r' \1', t_str.strip().replace(" ", ""))
+                    t_str = t_str.replace("  ", " ").strip()
+                    try:
+                        return datetime.strptime(t_str, "%I:%M %p")
+                    except ValueError:
+                        try:
+                            return datetime.strptime(t_str, "%I %p")
+                        except ValueError:
+                            return datetime.strptime(t_str, "%H:%M")
+                            
+                start_dt = parse_time_part(parts[0])
+                end_dt   = parse_time_part(parts[1])
                 return start_dt.hour * 60 + start_dt.minute, end_dt.hour * 60 + end_dt.minute
         except Exception:
             pass
-        return 0, 1440
+        return -1, -1
 
     # ── 5. Assemble response (pure Python, zero extra DB calls) ────────────
     for seat in seats:
@@ -82,10 +93,11 @@ async def get_seats(db = Depends(get_database)):
             start_min, end_min = parse_timing(timing)
 
             shift_active = False
-            if end_min < start_min:   # overnight shift
-                shift_active = current_time_minutes >= start_min or current_time_minutes < end_min
-            else:
-                shift_active = start_min <= current_time_minutes <= end_min
+            if start_min != -1 and end_min != -1:
+                if end_min < start_min:   # overnight shift
+                    shift_active = current_time_minutes >= start_min or current_time_minutes < end_min
+                else:
+                    shift_active = start_min <= current_time_minutes <= end_min
 
             if shift_active:
                 is_occupied_now = True

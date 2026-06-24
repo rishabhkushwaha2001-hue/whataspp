@@ -463,7 +463,7 @@ export const MessageScreen = () => {
           {enableHours && (
             <View>
               <ModernInput
-                label="Daily Hours ⏰"
+                label={businessType === 'library' ? "Study Hours ⏰" : "Daily Hours ⏰"}
                 value={dailyHours}
                 onChangeText={setDailyHours}
                 keyboardType="numeric"
@@ -552,29 +552,25 @@ export const MessageScreen = () => {
 
           <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile number" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
 
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: spacing.s }}>
-              <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
-                <ModernInput
-                  label="From Date (Joining) *"
-                  value={joiningDate.split('-').reverse().join('/')}
-                  editable={false}
-                  placeholder="Select Date"
-                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
-                />
-              </TouchableOpacity>
-            </View>
-            <View style={{ flex: 1, marginLeft: spacing.s }}>
-              <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
-                <ModernInput
-                  label="To Date (Expiry) *"
-                  value={expiryDate.split('-').reverse().join('/')}
-                  editable={false}
-                  placeholder="Select Date"
-                  icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
-                />
-              </TouchableOpacity>
-            </View>
+          <View>
+            <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
+              <ModernInput
+                label="Joining Date *"
+                value={joiningDate.split('-').reverse().join('/')}
+                editable={false}
+                placeholder="Select Date"
+                icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
+              <ModernInput
+                label="Expiry Date *"
+                value={expiryDate.split('-').reverse().join('/')}
+                editable={false}
+                placeholder="Select Date"
+                icon={<FontAwesome name="calendar" size={16} color={colors.primary} />}
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.datePresetsRow}>
@@ -635,14 +631,18 @@ export const MessageScreen = () => {
             title={datePickerType === 'joining' ? 'Select From Date' : 'Select To Date'}
           />
 
-          <ModernInput
-            label="Amount (₹) *"
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="numeric"
-            placeholder="0"
-            icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
-          />
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <ModernInput
+                label="Total Plan Amount (₹) *"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                placeholder="0"
+                icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
+              />
+            </View>
+          </View>
 
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: spacing.s }}>
@@ -663,7 +663,7 @@ export const MessageScreen = () => {
 
           <ModernInput label="Address" value={address} onChangeText={setAddress} placeholder="Area/City" icon={<FontAwesome name="map-marker" size={16} color={colors.textSecondary} />} />
 
-          <ModernInput label="Notes" value={notes} onChangeText={setNotes} placeholder="Medical conditions or goals" multiline numberOfLines={3} icon={<FontAwesome name="pencil" size={16} color={colors.textSecondary} />} />
+          <ModernInput label="Notes" value={notes} onChangeText={setNotes} placeholder="Any notes..." multiline numberOfLines={3} icon={<FontAwesome name="pencil" size={16} color={colors.textSecondary} />} />
 
           <View style={{ marginTop: spacing.l }}>
             <GradientButton title={isLoading ? "Processing..." : isManual ? "Add Manually" : "Enroll & Send Receipt"} onPress={handleEnroll} disabled={isLoading} />
@@ -741,11 +741,11 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   presetsBtnGroup: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 6,
+    gap: 10,
+    paddingRight: 20,
   },
   datePresetBtn: {
-    flex: 1,
+    width: 60,
     backgroundColor: colors.surfaceLight,
     paddingVertical: 8,
     borderRadius: borderRadius.s,

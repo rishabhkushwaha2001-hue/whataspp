@@ -263,6 +263,7 @@ export const DashboardScreen = () => {
           color={colors.primary} 
           subtitle="Current members"
         />
+
       </View>
 
       <Text style={styles.sectionTitle}>Overview Breakdown</Text>

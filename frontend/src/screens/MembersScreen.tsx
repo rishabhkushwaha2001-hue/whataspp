@@ -82,12 +82,12 @@ export const MembersScreen = () => {
   const confirmRenewal = async (
     durationMonths: number, amount: number, paymentMode: string,
     nextDueDate?: string, joiningDate?: string, hours?: number,
-    timing?: string, allocatedSeat?: string, wifiDetails?: string
+    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number
   ) => {
     if (!renewingMember) return;
     try {
       const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
-        plan_duration_months: durationMonths, amount, payment_mode: paymentMode,
+        plan_duration_months: durationMonths, amount, amount_paid: amountPaid, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
         daily_hours: hours, timing, allocated_seat: allocatedSeat,
       });
@@ -95,7 +95,7 @@ export const MembersScreen = () => {
       const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
       const msg = buildRenewalMessage(renewalTemplate, businessType, {
         name: renewingMember.full_name, phone: renewingMember.phone, date: nextDue,
-        fees: amount, hours: hours ?? renewingMember.daily_hours,
+        fees: amountPaid ? amountPaid : amount, hours: hours ?? renewingMember.daily_hours,
         timing: timing ?? renewingMember.timing, gym: gymName, durationMonths,
         seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
         wifi: wifiDetails || renewingMember.wifi_details || 'Not Provided',
@@ -170,6 +170,7 @@ export const MembersScreen = () => {
                 <Text style={[styles.chipText, { color: colors.textSecondary }]}>₹{item.monthly_fees}</Text>
               </View>
 
+
               <View style={[styles.chip, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6' }]}>
                 <FontAwesome name="calendar" size={10} color={isExpired ? colors.error : colors.primary} />
                 <Text style={[styles.chipText, { color: isExpired ? colors.error : colors.textSecondary }]}>
@@ -240,7 +241,7 @@ export const MembersScreen = () => {
         onConfirm={alertConfig.onConfirm}
       />
       <RenewalModal
-        visible={showRenewModal} member={renewingMember} enableHours={enableHours}
+        visible={showRenewModal} member={renewingMember} enableHours={enableHours} businessType={businessType}
         onClose={() => setShowRenewModal(false)} onConfirm={confirmRenewal}
       />
 
@@ -371,7 +372,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 4, borderRadius: borderRadius.s,
   },
-  chipText: { fontSize: 11, fontWeight: '500', maxWidth: 90 },
+  chipText: { fontSize: 11, fontWeight: '500' },
 
   divider: { height: 1, marginBottom: spacing.m },
 

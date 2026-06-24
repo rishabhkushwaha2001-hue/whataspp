@@ -34,13 +34,6 @@ export default function StudentProfile() {
         <Text style={[styles.role, { color: colors.textSecondary }]}>Student</Text>
       </GlassCard>
 
-      <TouchableOpacity style={[styles.actionBtn, { marginBottom: 15 }]} onPress={() => router.push('/scanner')}>
-        <View style={[styles.iconBox, { backgroundColor: `${colors.primary}20` }]}>
-          <FontAwesome name="qrcode" size={20} color={colors.primary} />
-        </View>
-        <Text style={[styles.actionText, { color: colors.primary }]}>Scan QR for Attendance</Text>
-      </TouchableOpacity>
-
       <TouchableOpacity style={styles.actionBtn} onPress={handleLogout}>
         <View style={[styles.iconBox, { backgroundColor: '#fee2e2' }]}>
           <FontAwesome name="sign-out" size={20} color="#ef4444" />
