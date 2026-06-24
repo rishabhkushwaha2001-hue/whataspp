@@ -7,7 +7,7 @@ import io
 import re
 from datetime import datetime, timezone, timedelta
 from dateutil.relativedelta import relativedelta
-from models.schemas import MemberCreate, MemberInDB, DashboardStats, MemberUpdate, ClearDuePayload
+from models.schemas import MemberCreate, MemberInDB, DashboardStats, MemberUpdate
 from database import get_database
 
 router = APIRouter()
