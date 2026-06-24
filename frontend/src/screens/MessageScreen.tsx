@@ -269,7 +269,9 @@ export const MessageScreen = () => {
       let timingStr = '';
       if (enableHours && dailyHours) {
         if (timingStartHour && timingEndHour) {
-          timingStr = `${timingStartHour}:00 ${timingStartAmPm} to ${timingEndHour}:00 ${timingEndAmPm}`;
+          const s = timingStartHour.includes(':') ? timingStartHour : `${timingStartHour}:00`;
+          const e = timingEndHour.includes(':') ? timingEndHour : `${timingEndHour}:00`;
+          timingStr = `${s} ${timingStartAmPm} to ${e} ${timingEndAmPm}`;
           
           // Conflict checking
           if (businessType === 'library' && allocatedSeat) {
