@@ -50,17 +50,38 @@ const fieldStyles = StyleSheet.create({
 const formatTimeInput = (text: string) => {
   let val = text.replace(/[^0-9:]/g, '');
   if (val === ':') return '';
-  const parts = val.split(':');
-  let h = parts[0];
-  let m = parts[1];
-  if (h.length === 2 && parseInt(h) > 12) val = h[0] + ':' + h[1] + (m || '');
-  const parts2 = val.split(':');
-  h = parts2[0]; m = parts2[1];
-  if (m !== undefined && m.length >= 2) {
-    m = parseInt(m.substring(0, 2)) > 59 ? '59' : m.substring(0, 2);
-    val = h + ':' + m;
-  } else if (h.length === 2 && parseInt(h) > 12) {
-    val = h[0] + ':' + h[1];
+
+  let parts = val.split(':');
+
+  if (parts.length === 1) {
+    let p = parts[0];
+    if (p.length >= 2) {
+      if (parseInt(p[0]) > 1) {
+        val = p[0] + ':' + p.substring(1);
+      } else if (p.length === 3) {
+        val = p.substring(0, 2) + ':' + p.substring(2);
+      } else if (p.length > 3) {
+        val = p.substring(0, 2) + ':' + p.substring(2, 4);
+      }
+    }
+  }
+
+  parts = val.split(':');
+  if (parts.length > 1) {
+    let h = parts[0];
+    let m = parts[1];
+
+    if (h.length === 2 && parseInt(h) > 12) val = h[0] + ':' + h[1] + m;
+
+    parts = val.split(':');
+    h = parts[0];
+    m = parts[1];
+
+    if (m && m.length >= 2) {
+      if (parseInt(m.substring(0, 2)) > 59) {
+        val = h + ':59';
+      }
+    }
   }
   return val;
 };
