@@ -98,8 +98,8 @@ export const MembersScreen = () => {
         name: renewingMember.full_name, phone: renewingMember.phone, date: nextDue,
         fees: amountPaid ? amountPaid : amount, hours: hours ?? renewingMember.daily_hours,
         timing: timing ?? renewingMember.timing, gym: gymName, durationMonths,
-        seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
-        wifi: wifiDetails || renewingMember.wifi_details || 'Not Provided',
+        seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
+        wifi: businessType === 'library' ? (wifiDetails || renewingMember.wifi_details || 'Not Provided') : undefined,
       });
       setAlertConfig({
         visible: true, title: "Success",

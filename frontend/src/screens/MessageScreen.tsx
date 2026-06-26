@@ -329,8 +329,8 @@ export const MessageScreen = () => {
             timing: timingStr,
             gym: gymName,
             durationDays,
-            seat: allocatedSeat,
-            wifi: wifiDetails,
+            seat: businessType === 'library' ? allocatedSeat : undefined,
+            wifi: businessType === 'library' ? wifiDetails : undefined,
           }
         );
       }

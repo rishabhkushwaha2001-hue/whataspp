@@ -190,8 +190,8 @@ export const RemindersScreen = () => {
         timing: timing ?? renewingMember.timing,
         gym: gymName,
         durationMonths,
-        seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
-        wifi: wifiDetails || 'Not Provided',
+        seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
+        wifi: businessType === 'library' ? (wifiDetails || 'Not Provided') : undefined,
       });
       setAlertConfig({
         visible: true,
@@ -220,6 +220,7 @@ export const RemindersScreen = () => {
         visible={showRenewModal}
         member={renewingMember}
         enableHours={enableHours}
+        businessType={businessType}
         onClose={() => setShowRenewModal(false)}
         onConfirm={confirmRenewal}
       />
