@@ -167,7 +167,7 @@ export const RemindersScreen = () => {
     setShowRenewModal(false);
     if (!renewingMember) return;
     try {
-      const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
+      await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths,
         amount: amount,
         amount_paid: amountPaid,
@@ -178,40 +178,32 @@ export const RemindersScreen = () => {
         timing: timing,
         allocated_seat: allocatedSeat,
       });
-      
       fetchDueMembers();
-      
-      const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
-      const msg = buildRenewalMessage(
-        renewalTemplate,
-        businessType,
-        {
-          name: renewingMember.full_name,
-          phone: renewingMember.phone,
-          date: nextDue,
-          fees: amountPaid ? amountPaid : amount,
-          hours: hours ?? renewingMember.daily_hours,
-          timing: timing ?? renewingMember.timing,
-          gym: gymName,
-          durationMonths,
-          seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
-          wifi: wifiDetails || 'Not Provided',
-        }
-      );
-      
+      // Use nextDueDate directly (already selected by user) — no API response needed
+      const nextDue = nextDueDate ? new Date(nextDueDate).toLocaleDateString() : 'N/A';
+      const msg = buildRenewalMessage(renewalTemplate, businessType, {
+        name: renewingMember.full_name,
+        phone: renewingMember.phone,
+        date: nextDue,
+        fees: amountPaid ? amountPaid : amount,
+        hours: hours ?? renewingMember.daily_hours,
+        timing: timing ?? renewingMember.timing,
+        gym: gymName,
+        durationMonths,
+        seat: allocatedSeat || renewingMember.allocated_seat || 'Unassigned',
+        wifi: wifiDetails || 'Not Provided',
+      });
       setAlertConfig({
-          visible: true, 
-          title: "Success", 
-          message: "Membership renewed successfully!", 
-          type: "success",
-          confirmText: "Send Receipt",
-          onConfirm: () => {
-            setAlertConfig({ visible: false });
-            setTimeout(async () => {
-              await sendWhatsAppMessage(renewingMember.phone, msg);
-            }, 100);
-          },
-          onClose: () => setAlertConfig({ visible: false })
+        visible: true,
+        title: "Success",
+        message: "Membership renewed successfully!",
+        type: "success",
+        confirmText: "Send Receipt",
+        onConfirm: () => {
+          setAlertConfig({ visible: false });
+          setTimeout(async () => { await sendWhatsAppMessage(renewingMember.phone, msg); }, 100);
+        },
+        onClose: () => setAlertConfig({ visible: false })
       });
     } catch (error) {
       setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });

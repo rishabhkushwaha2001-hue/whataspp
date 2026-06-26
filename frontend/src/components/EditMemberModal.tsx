@@ -114,10 +114,14 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   const [wifiDropdownVisible, setWifiDropdownVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [businessType, setBusinessType] = useState('gym');
+  const [enableHours, setEnableHours] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem('businessType').then(val => {
-      if (val) setBusinessType(val);
+    AsyncStorage.multiGet(['businessType', 'enableHours']).then(pairs => {
+      const bt = pairs[0][1];
+      const eh = pairs[1][1];
+      if (bt) setBusinessType(bt);
+      if (eh === 'true') setEnableHours(true);
     });
   }, []);
 
@@ -373,59 +377,58 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
               </>
             )}
 
-            {/* Daily Hours */}
-            <InputRow
-              colors={colors}
-              label="Daily Hours"
-              value={dailyHours}
-              onChangeText={setDailyHours}
-              keyboardType="numeric"
-              placeholder="e.g. 8"
-            />
-
-            {/* Timing Slot — same as RenewalModal */}
-            <View style={fieldStyles.inputGroup}>
-              <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>
-                Timing Slot 🌞 (e.g. 10:00 AM TO 06:00 PM)
-              </Text>
-              <View style={[styles.timingRow, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
-                {/* Start time */}
-                <TextInput
-                  style={[styles.timeInput, { color: colors.text }]}
-                  placeholder="10:00"
-                  placeholderTextColor={colors.textMuted}
+            {/* Daily Hours + Timing — shown when enableHours is ON (both gym & library) */}
+            {enableHours && (
+              <>
+                {/* Daily Hours */}
+                <InputRow
+                  colors={colors}
+                  label="Daily Hours"
+                  value={dailyHours}
+                  onChangeText={setDailyHours}
                   keyboardType="numeric"
-                  value={timingStartHour}
-                  onChangeText={(t) => setTimingStartHour(formatTimeInput(t))}
-                  blurOnSubmit={false}
+                  placeholder="e.g. 8"
                 />
-                <AmPmToggle value={timingStartAmPm} onChange={setTimingStartAmPm} colors={colors} />
 
-                <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '800', marginHorizontal: 8 }}>TO</Text>
-
-                {/* End time (auto-filled) */}
-                <TextInput
-                  style={[styles.timeInput, { color: colors.text }]}
-                  placeholder="06:00"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={timingEndHour}
-                  onChangeText={(t) => setTimingEndHour(formatTimeInput(t))}
-                  blurOnSubmit={false}
-                />
-                <AmPmToggle value={timingEndAmPm} onChange={setTimingEndAmPm} colors={colors} />
-              </View>
-
-              {/* Preview */}
-              {timingStartHour ? (
-                <View style={[styles.timingPreview, { backgroundColor: `${colors.primary}12` }]}>
-                  <FontAwesome name="clock-o" size={12} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
-                    {buildTimingString()}
+                {/* Timing Slot */}
+                <View style={fieldStyles.inputGroup}>
+                  <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>
+                    Timing Slot 🌞 (e.g. 10:00 AM TO 06:00 PM)
                   </Text>
+                  <View style={[styles.timingRow, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+                    <TextInput
+                      style={[styles.timeInput, { color: colors.text }]}
+                      placeholder="10:00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={timingStartHour}
+                      onChangeText={(t) => setTimingStartHour(formatTimeInput(t))}
+                      blurOnSubmit={false}
+                    />
+                    <AmPmToggle value={timingStartAmPm} onChange={setTimingStartAmPm} colors={colors} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '800', marginHorizontal: 8 }}>TO</Text>
+                    <TextInput
+                      style={[styles.timeInput, { color: colors.text }]}
+                      placeholder="06:00"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={timingEndHour}
+                      onChangeText={(t) => setTimingEndHour(formatTimeInput(t))}
+                      blurOnSubmit={false}
+                    />
+                    <AmPmToggle value={timingEndAmPm} onChange={setTimingEndAmPm} colors={colors} />
+                  </View>
+                  {timingStartHour ? (
+                    <View style={[styles.timingPreview, { backgroundColor: `${colors.primary}12` }]}>
+                      <FontAwesome name="clock-o" size={12} color={colors.primary} />
+                      <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+                        {buildTimingString()}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
-            </View>
+              </>
+            )}
 
             {/* WiFi — only dropdown, no manual edit */}
             {businessType === 'library' && (

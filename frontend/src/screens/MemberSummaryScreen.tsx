@@ -43,6 +43,7 @@ export const MemberSummaryScreen = () => {
   const [loading, setLoading] = useState(!name);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [businessType, setBusinessType] = useState('gym');
+  const [enableHours, setEnableHours] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
 
 
@@ -68,8 +69,11 @@ export const MemberSummaryScreen = () => {
     };
     fetchMember();
     
-    AsyncStorage.getItem('businessType').then(type => {
-      if (type) setBusinessType(type);
+    AsyncStorage.multiGet(['businessType', 'enableHours']).then(pairs => {
+      const bt = pairs[0][1];
+      const eh = pairs[1][1];
+      if (bt) setBusinessType(bt);
+      if (eh === 'true') setEnableHours(true);
     });
   }, [id]);
 
@@ -198,14 +202,14 @@ export const MemberSummaryScreen = () => {
           <DetailItem icon="birthday-cake" label="Age" value={member.age || 'N/A'} half />
           <DetailItem icon="balance-scale" label="Weight" value={member.weight ? `${member.weight} kg` : 'N/A'} half />
         </View>
-        {(member.daily_hours || member.timing) && (
+        {enableHours && (member.daily_hours || member.timing) && (
           <View style={styles.row}>
             {member.daily_hours && <DetailItem icon="clock-o" label="Daily Hours" value={`${member.daily_hours} Hrs`} half={true} />}
             {member.timing && <DetailItem icon="sun-o" label="Timing" value={member.timing} half={true} />}
           </View>
         )}
-        {/* Seat Info */}
-        {member.allocated_seat && (
+        {/* Seat Info - Library only */}
+        {businessType === 'library' && member.allocated_seat && (
           <View style={[styles.seatWifiBanner, { backgroundColor: `${colors.primary}12`, borderColor: `${colors.primary}30` }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={[styles.iconCircle, { backgroundColor: `${colors.primary}20` }]}>
@@ -218,8 +222,8 @@ export const MemberSummaryScreen = () => {
             </View>
           </View>
         )}
-        {/* WiFi Info */}
-        {member.wifi_details && (
+        {/* WiFi Info - Library only */}
+        {businessType === 'library' && member.wifi_details && (
           <View style={[styles.seatWifiBanner, { backgroundColor: `${colors.accent}10`, borderColor: `${colors.accent}30`, marginTop: spacing.s }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={[styles.iconCircle, { backgroundColor: `${colors.accent}20` }]}>

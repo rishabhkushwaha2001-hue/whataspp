@@ -86,13 +86,14 @@ export const MembersScreen = () => {
   ) => {
     if (!renewingMember) return;
     try {
-      const res = await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
+      await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths, amount, amount_paid: amountPaid, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
         daily_hours: hours, timing, allocated_seat: allocatedSeat,
       });
       fetchMembers();
-      const nextDue = new Date(res.data.new_due_date).toLocaleDateString();
+      // Use nextDueDate directly (already selected by user) — no API response needed
+      const nextDue = nextDueDate ? new Date(nextDueDate).toLocaleDateString() : 'N/A';
       const msg = buildRenewalMessage(renewalTemplate, businessType, {
         name: renewingMember.full_name, phone: renewingMember.phone, date: nextDue,
         fees: amountPaid ? amountPaid : amount, hours: hours ?? renewingMember.daily_hours,
@@ -178,14 +179,14 @@ export const MembersScreen = () => {
                 </Text>
               </View>
 
-              {item.allocated_seat && (
+              {businessType === 'library' && item.allocated_seat && (
                 <View style={[styles.chip, { backgroundColor: isDark ? '#2D1B69' : '#EDE9FE' }]}>
                   <FontAwesome name="map-pin" size={10} color="#8B5CF6" />
                   <Text style={[styles.chipText, { color: '#8B5CF6' }]}>{item.allocated_seat}</Text>
                 </View>
               )}
 
-              {item.timing && (
+              {enableHours && item.timing && (
                 <View style={[styles.chip, { backgroundColor: isDark ? '#2D1F07' : '#FEF3C7' }]}>
                   <FontAwesome name="clock-o" size={10} color="#D97706" />
                   <Text style={[styles.chipText, { color: '#D97706' }]} numberOfLines={1}>{item.timing}</Text>
