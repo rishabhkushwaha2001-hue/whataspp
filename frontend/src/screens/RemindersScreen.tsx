@@ -45,23 +45,16 @@ export const RemindersScreen = () => {
     try {
       const res = await api.get('/members/status/due?days_ahead=5');
       setMembers(res.data);
-      
-      // Apply filters locally on fresh data
-      let filtered = res.data;
-      if (search) {
-        filtered = res.data.filter((m: any) => 
-          m.full_name.toLowerCase().includes(search.toLowerCase()) || 
-          m.phone.includes(search) ||
-          m.member_id?.toLowerCase().includes(search.toLowerCase())
-        );
-      }
-      setFilteredMembers(filtered);
     } catch (error) {
       console.warn('Reminders fetch failed');
     } finally {
       setRefreshing(false);
     }
-  }, [search]);
+  }, []);
+
+  React.useEffect(() => {
+    applyFilters(members, search);
+  }, [members, search, applyFilters]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,7 +88,6 @@ export const RemindersScreen = () => {
 
   const handleSearch = (text: string) => {
     setSearch(text);
-    applyFilters(members, text);
   };
 
   const sendReminder = async (member: any) => {
@@ -224,27 +216,26 @@ export const RemindersScreen = () => {
         onClose={() => setShowRenewModal(false)}
         onConfirm={confirmRenewal}
       />
+      <View style={[styles.header, { paddingTop: 56 }]}>
+        <Text style={styles.title}>Due Reminders</Text>
+        <Text style={styles.subtitle}>Upcoming renewals within 5 days</Text>
+        <View style={[styles.searchBar, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+          <FontAwesome name="search" size={14} color={colors.textMuted} />
+          <TextInput
+            placeholder="Search name, phone or ID..."
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
+            value={search}
+            onChangeText={handleSearch}
+          />
+        </View>
+      </View>
       <FlatList
         data={filteredMembers}
         keyExtractor={(item) => item.id || item._id}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: 10 }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <Text style={styles.title}>Due Reminders</Text>
-            <Text style={styles.subtitle}>Upcoming renewals within 5 days</Text>
-            <View style={[styles.searchBar, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
-              <FontAwesome name="search" size={14} color={colors.textMuted} />
-              <TextInput
-                placeholder="Search name, phone or ID..."
-                placeholderTextColor={colors.textMuted}
-                style={[styles.searchInput, { color: colors.text }]}
-                value={search}
-                onChangeText={handleSearch}
-              />
-            </View>
-          </View>
-        }
         renderItem={({ item }) => {
           const isExpired = item.remaining_days <= 0;
           const initials = item.full_name.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();

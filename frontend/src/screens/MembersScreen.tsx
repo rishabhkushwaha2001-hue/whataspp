@@ -31,13 +31,16 @@ export const MembersScreen = () => {
     try {
       const res = await api.get('/members/');
       setMembers(res.data);
-      applyFilters(res.data, search, activeTab);
     } catch (error) {
       console.warn('Fetch members failed');
     } finally {
       setRefreshing(false);
     }
-  }, [search, activeTab]);
+  }, []);
+
+  React.useEffect(() => {
+    applyFilters(members, search, activeTab);
+  }, [members, search, activeTab]);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,8 +78,8 @@ export const MembersScreen = () => {
     setFilteredMembers(filtered);
   };
 
-  const handleSearch = (text: string) => { setSearch(text); applyFilters(members, text, activeTab); };
-  const handleTabChange = (tab: string) => { setActiveTab(tab); applyFilters(members, search, tab); };
+  const handleSearch = (text: string) => { setSearch(text); };
+  const handleTabChange = (tab: string) => { setActiveTab(tab); };
   const handleRenew = (member: any) => { setRenewingMember(member); setShowRenewModal(true); };
 
   const confirmRenewal = async (

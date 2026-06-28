@@ -359,105 +359,103 @@ export const SuperAdminScreen = () => {
         </View>
       </View>
 
-      {/* Main FlatList Container */}
+      <View style={{ paddingTop: 10 }}>
+        {/* Stats Panel */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
+          <GlassCard style={styles.statsCard}>
+            <Text style={styles.statsNum}>{stats.total}</Text>
+            <Text style={styles.statsLabel}>Total Gyms</Text>
+          </GlassCard>
+
+          <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.accent, borderLeftWidth: 3 }}>
+            <Text style={[styles.statsNum, { color: colors.accent }]}>{stats.active}</Text>
+            <Text style={styles.statsLabel}>Active</Text>
+          </GlassCard>
+
+          <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.error, borderLeftWidth: 3 }}>
+            <Text style={[styles.statsNum, { color: colors.error }]}>{stats.inactive}</Text>
+            <Text style={styles.statsLabel}>Inactive / Suspended</Text>
+          </GlassCard>
+
+          <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.warning, borderLeftWidth: 3 }}>
+            <Text style={[styles.statsNum, { color: colors.warning }]}>{stats.expiring}</Text>
+            <Text style={styles.statsLabel}>Expiring Soon</Text>
+          </GlassCard>
+
+          <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.primary, borderLeftWidth: 3 }}>
+            <Text style={[styles.statsNum, { color: colors.primary }]}>₹{stats.revenue}</Text>
+            <Text style={styles.statsLabel}>Total Billings</Text>
+          </GlassCard>
+        </ScrollView>
+
+        <View style={styles.actionBar}>
+          <View style={styles.searchBar}>
+            <FontAwesome name="search" size={14} color={colors.textMuted} style={{ marginRight: 8 }} />
+            <TextInput
+              placeholder="Search Business, Owner, Phone..."
+              placeholderTextColor={colors.textMuted}
+              style={styles.searchInput}
+              value={search}
+              onChangeText={handleSearch}
+            />
+          </View>
+          <TouchableOpacity style={styles.registerBtn} onPress={() => { setPlanExpiry(''); setRegisterModal(true); }}>
+            <FontAwesome name="plus" size={14} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.registerBtnText}>Add Business</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Business Type Breakdown chips */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+          style={{ marginBottom: 12 }}
+        >
+          <TouchableOpacity
+            onPress={() => setFilteredGyms(gyms)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+          >
+            <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700' }}>All {stats.total}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setFilteredGyms(gyms.filter(g => g.is_expired || (g.days_remaining >= 0 && g.days_remaining <= 7)))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EF444415', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#EF444430' }}
+          >
+            <Text style={{ fontSize: 10 }}>⚠️</Text>
+            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700' }}>Renewal Due {(stats as any).needsRenewal}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setFilteredGyms(gyms.filter(g => (g.business_type || 'gym') === 'gym'))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98115', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#10B98130' }}
+          >
+            <Text style={{ fontSize: 10 }}>🏋️</Text>
+            <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700' }}>Gym {typeBreakdown?.gym || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'library'))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#8B5CF615', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#8B5CF630' }}
+          >
+            <Text style={{ fontSize: 10 }}>📚</Text>
+            <Text style={{ color: '#8B5CF6', fontSize: 11, fontWeight: '700' }}>Library {typeBreakdown?.library || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'general'))}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F59E0B15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#F59E0B30' }}
+          >
+            <Text style={{ fontSize: 10 }}>🏠</Text>
+            <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '700' }}>General {typeBreakdown?.general || 0}</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        <Text style={[styles.sectionTitle, { paddingHorizontal: 16, paddingBottom: 10 }]}>Registered Business Partners</Text>
+      </View>
       <FlatList
         data={filteredGyms}
         keyExtractor={(item) => item.gym_id}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: 0 }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchGyms} tintColor={colors.primary} />}
-        ListHeaderComponent={
-          <View>
-            {/* Stats Panel */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
-              <GlassCard style={styles.statsCard}>
-                <Text style={styles.statsNum}>{stats.total}</Text>
-                <Text style={styles.statsLabel}>Total Gyms</Text>
-              </GlassCard>
-
-              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.accent, borderLeftWidth: 3 }}>
-                <Text style={[styles.statsNum, { color: colors.accent }]}>{stats.active}</Text>
-                <Text style={styles.statsLabel}>Active</Text>
-              </GlassCard>
-
-              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.error, borderLeftWidth: 3 }}>
-                <Text style={[styles.statsNum, { color: colors.error }]}>{stats.inactive}</Text>
-                <Text style={styles.statsLabel}>Inactive / Suspended</Text>
-              </GlassCard>
-
-              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.warning, borderLeftWidth: 3 }}>
-                <Text style={[styles.statsNum, { color: colors.warning }]}>{stats.expiring}</Text>
-                <Text style={styles.statsLabel}>Expiring Soon</Text>
-              </GlassCard>
-
-              <GlassCard style={{ ...styles.statsCard, borderLeftColor: colors.primary, borderLeftWidth: 3 }}>
-                <Text style={[styles.statsNum, { color: colors.primary }]}>₹{stats.revenue}</Text>
-                <Text style={styles.statsLabel}>Total Billings</Text>
-              </GlassCard>
-            </ScrollView>
-
-            <View style={styles.actionBar}>
-              <View style={styles.searchBar}>
-                <FontAwesome name="search" size={14} color={colors.textMuted} style={{ marginRight: 8 }} />
-                <TextInput
-                  placeholder="Search Business, Owner, Phone..."
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.searchInput}
-                  value={search}
-                  onChangeText={handleSearch}
-                />
-              </View>
-              <TouchableOpacity style={styles.registerBtn} onPress={() => { setPlanExpiry(''); setRegisterModal(true); }}>
-                <FontAwesome name="plus" size={14} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.registerBtnText}>Add Business</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Business Type Breakdown chips */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
-              style={{ marginBottom: 12 }}
-            >
-              <TouchableOpacity
-                onPress={() => setFilteredGyms(gyms)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surfaceLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
-              >
-                <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700' }}>All {stats.total}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setFilteredGyms(gyms.filter(g => g.is_expired || (g.days_remaining >= 0 && g.days_remaining <= 7)))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#EF444415', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#EF444430' }}
-              >
-                <Text style={{ fontSize: 10 }}>⚠️</Text>
-                <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700' }}>Renewal Due {(stats as any).needsRenewal}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setFilteredGyms(gyms.filter(g => (g.business_type || 'gym') === 'gym'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#10B98115', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#10B98130' }}
-              >
-                <Text style={{ fontSize: 10 }}>🏋️</Text>
-                <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700' }}>Gym {typeBreakdown?.gym || 0}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'library'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#8B5CF615', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#8B5CF630' }}
-              >
-                <Text style={{ fontSize: 10 }}>📚</Text>
-                <Text style={{ color: '#8B5CF6', fontSize: 11, fontWeight: '700' }}>Library {typeBreakdown?.library || 0}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setFilteredGyms(gyms.filter(g => g.business_type === 'general'))}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F59E0B15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#F59E0B30' }}
-              >
-                <Text style={{ fontSize: 10 }}>🏠</Text>
-                <Text style={{ color: '#F59E0B', fontSize: 11, fontWeight: '700' }}>General {typeBreakdown?.general || 0}</Text>
-              </TouchableOpacity>
-            </ScrollView>
-
-            <Text style={styles.sectionTitle}>Registered Business Partners</Text>
-          </View>
-        }
         renderItem={({ item }) => {
           const isExp = item.is_expired;
           const statusColor = item.status === 'active' && !isExp ? colors.accent : colors.error;
