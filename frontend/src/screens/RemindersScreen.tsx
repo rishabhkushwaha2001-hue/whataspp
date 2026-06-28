@@ -229,7 +229,7 @@ export const RemindersScreen = () => {
         keyExtractor={(item) => item.id || item._id}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
-        ListHeaderComponent={() => (
+        ListHeaderComponent={
           <View style={styles.header}>
             <Text style={styles.title}>Due Reminders</Text>
             <Text style={styles.subtitle}>Upcoming renewals within 5 days</Text>
@@ -244,7 +244,7 @@ export const RemindersScreen = () => {
               />
             </View>
           </View>
-        )}
+        }
         renderItem={({ item }) => {
           const isExpired = item.remaining_days <= 0;
           const initials = item.full_name.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();

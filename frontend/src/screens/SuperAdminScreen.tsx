@@ -365,7 +365,7 @@ export const SuperAdminScreen = () => {
         keyExtractor={(item) => item.gym_id}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchGyms} tintColor={colors.primary} />}
-        ListHeaderComponent={() => (
+        ListHeaderComponent={
           <View>
             {/* Stats Panel */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
@@ -457,7 +457,7 @@ export const SuperAdminScreen = () => {
 
             <Text style={styles.sectionTitle}>Registered Business Partners</Text>
           </View>
-        )}
+        }
         renderItem={({ item }) => {
           const isExp = item.is_expired;
           const statusColor = item.status === 'active' && !isExp ? colors.accent : colors.error;
