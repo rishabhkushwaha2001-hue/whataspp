@@ -7,9 +7,11 @@ import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { EditMemberModal } from '../components/EditMemberModal';
+import { EditPaymentModal } from '../components/EditPaymentModal';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
+import { invalidateCache } from '../hooks/useDataStore';
 
 const { width } = Dimensions.get('window');
 
@@ -44,7 +46,30 @@ export const MemberSummaryScreen = () => {
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [businessType, setBusinessType] = useState('gym');
   const [enableHours, setEnableHours] = useState(false);
+  const [gymName, setGymName] = useState('Gym');
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editPaymentState, setEditPaymentState] = useState<{ visible: boolean; payment: any }>({ visible: false, payment: null });
+
+  // Helper: convert days to "X Months Y Days" display
+  const formatDuration = (days: number) => {
+    if (!days || days <= 0) return '0 Days';
+    const months = Math.floor(days / 30);
+    const rem = days % 30;
+    if (months === 0) return `${days} Days`;
+    if (rem === 0) return `${days} Days (${months} Month${months > 1 ? 's' : ''})`;
+    return `${days} Days (${months} Month${months > 1 ? 's' : ''} ${rem} Day${rem > 1 ? 's' : ''})`;
+  };
+
+  const refreshMember = async () => {
+    const cleanId = Array.isArray(id) ? id[0] : id;
+    if (!cleanId || cleanId === 'undefined') return;
+    try {
+      const res = await api.get(`/members/${cleanId}`);
+      setMember(res.data);
+    } catch (e) {
+      console.warn('Refresh failed');
+    }
+  };
 
 
   useEffect(() => {
@@ -69,11 +94,13 @@ export const MemberSummaryScreen = () => {
     };
     fetchMember();
     
-    AsyncStorage.multiGet(['businessType', 'enableHours']).then(pairs => {
+    AsyncStorage.multiGet(['businessType', 'enableHours', 'gymName']).then(pairs => {
       const bt = pairs[0][1];
       const eh = pairs[1][1];
+      const gn = pairs[2][1];
       if (bt) setBusinessType(bt);
       if (eh === 'true') setEnableHours(true);
+      if (gn) setGymName(gn);
     });
   }, [id]);
 
@@ -100,6 +127,7 @@ export const MemberSummaryScreen = () => {
         setAlertConfig({ visible: false });
         try {
           await api.delete(`/members/${member._id}`);
+          invalidateCache('members', 'dashboard_month', 'dashboard_all');
           setTimeout(() => {
             setAlertConfig({ 
               visible: true, title: "Deleted", message: "Member has been deleted.", type: "success", 
@@ -161,9 +189,37 @@ export const MemberSummaryScreen = () => {
 
         <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: spacing.l, paddingTop: spacing.m, borderTopWidth: 1, borderTopColor: colors.border }}>
           <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Joining Date</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Plan Start</Text>
             <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>
-              {member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'N/A'}
+              {(() => {
+                // Priority 1: Calculate from next_due_date - plan_duration_months
+                // This is always accurate for CURRENT plan, even for old/renewed members
+                if (member.next_due_date && member.plan_duration_months) {
+                  try {
+                    const expiry = new Date(member.next_due_date);
+                    expiry.setMonth(expiry.getMonth() - member.plan_duration_months);
+                    return expiry.toLocaleDateString();
+                  } catch { /* fall through */ }
+                }
+                // Priority 2: Latest payment's start_date (sorted newest first)
+                const history = Array.isArray(member.payment_history) ? member.payment_history : [];
+                const sorted = [...history].sort((a: any, b: any) => {
+                  return new Date(b.start_date || b.date || 0).getTime() -
+                         new Date(a.start_date || a.date || 0).getTime();
+                });
+                const latest = sorted[0];
+                const planStart = latest?.start_date || latest?.date;
+                if (planStart) {
+                  try { return new Date(planStart).toLocaleDateString(); }
+                  catch { /* fall through */ }
+                }
+                // Priority 3: Original joining date (last resort)
+                if (member.joining_date) {
+                  try { return new Date(member.joining_date).toLocaleDateString(); }
+                  catch { return 'N/A'; }
+                }
+                return 'N/A';
+              })()}
             </Text>
           </View>
           <View style={{ alignItems: 'center' }}>
@@ -193,6 +249,9 @@ export const MemberSummaryScreen = () => {
       <Text style={styles.sectionTitle}>Personal Details</Text>
       <GlassCard style={styles.detailsCard}>
         <DetailItem icon="phone" label="Phone" value={member.phone || 'N/A'} />
+        {member.aadhaar_number ? (
+          <DetailItem icon="id-card" label="Aadhaar" value={member.aadhaar_number} />
+        ) : null}
         <DetailItem icon="map-marker" label="Address" value={member.address || 'N/A'} />
         <DetailItem icon="calendar" label="Joining Date" value={member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'N/A'} />
         {businessType !== 'library' && (
@@ -240,18 +299,117 @@ export const MemberSummaryScreen = () => {
 
       <Text style={styles.sectionTitle}>Payment History</Text>
       <View style={styles.timeline}>
-        {member.payment_history?.slice().reverse().map((payment: any, index: number) => (
-          <View key={index} style={styles.timelineItem}>
-            <View style={styles.timelineDot} />
-            <GlassCard style={styles.timelineCard}>
-              <View style={styles.timelineHeader}>
-                <Text style={styles.timelineAmount}>₹{payment.amount}</Text>
-                <Text style={styles.timelineDate}>{new Date(payment.date).toLocaleDateString()}</Text>
-              </View>
-              <Text style={styles.timelineText}>{payment.plan_months} Month Plan • {payment.payment_mode}</Text>
-            </GlassCard>
-          </View>
-        ))}
+        {member.payment_history?.slice().reverse().map((payment: any, index: number) => {
+          // Calculate days from start to end date
+          const payDays = (payment.start_date && payment.end_date)
+            ? Math.max(0, Math.ceil((new Date(payment.end_date).getTime() - new Date(payment.start_date).getTime()) / 86400000))
+            : 0;
+
+          // Partial payment info
+          const amt = Number(payment.amount) || 0;
+          const amtPaid = payment.amount_paid != null ? Number(payment.amount_paid) : amt;
+          const isPartial = payment.amount_paid != null && amtPaid < amt;
+          const remaining = Math.max(0, amt - amtPaid);
+
+          return (
+            <View key={index} style={styles.timelineItem}>
+              <View style={styles.timelineDot} />
+              <GlassCard style={styles.timelineCard}>
+                {/* Header: Amount + Badges on Left, Type + Mode on Right */}
+                <View style={styles.timelineHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.timelineAmount}>₹{payment.amount}</Text>
+                    {isPartial ? (
+                      <View style={[styles.statusBadge, { backgroundColor: `${colors.warning || '#F59E0B'}15`, borderColor: `${colors.warning || '#F59E0B'}30` }]}>
+                        <FontAwesome name="exclamation-circle" size={10} color={colors.warning || '#F59E0B'} />
+                        <Text style={[styles.statusBadgeText, { color: colors.warning || '#F59E0B' }]}>Partial</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.statusBadge, { backgroundColor: `${colors.success}15`, borderColor: `${colors.success}30` }]}>
+                        <FontAwesome name="check-circle" size={10} color={colors.success} />
+                        <Text style={[styles.statusBadgeText, { color: colors.success }]}>Paid</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.paymentModeText}>{payment.payment_mode}</Text>
+                    <Text style={styles.paymentTypeText}>{payment.type || 'Payment'}</Text>
+                  </View>
+                </View>
+
+                {/* Duration Badge */}
+                {payDays > 0 && (
+                  <View style={[styles.durationChip, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}20` }]}>
+                    <FontAwesome name="clock-o" size={11} color={colors.primary} />
+                    <Text style={[styles.durationText, { color: colors.primary }]}>
+                      {formatDuration(payDays)}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Dates Box - sleek row layout */}
+                <View style={[styles.datesBox, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+                  <View style={styles.dateCol}>
+                    <Text style={styles.dateLabel}>Paid On</Text>
+                    <Text style={[styles.dateValue, { color: colors.textSecondary }]}>
+                      {payment.date ? new Date(payment.date).toLocaleDateString() : 'N/A'}
+                    </Text>
+                  </View>
+                  <View style={[styles.dateDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.dateCol}>
+                    <Text style={styles.dateLabel}>Started</Text>
+                    <Text style={[styles.dateValue, { color: colors.primary }]}>
+                      {payment.start_date ? new Date(payment.start_date).toLocaleDateString() : (payment.date ? new Date(payment.date).toLocaleDateString() : 'N/A')}
+                    </Text>
+                  </View>
+                  <View style={[styles.dateDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.dateCol}>
+                    <Text style={styles.dateLabel}>Expiry</Text>
+                    <Text style={[styles.dateValue, { color: colors.error }]}>
+                      {(() => {
+                          if (payment.end_date) return new Date(payment.end_date).toLocaleDateString();
+                          const startDate = payment.start_date || payment.date;
+                          if (startDate) {
+                            const d = new Date(startDate);
+                            d.setMonth(d.getMonth() + (payment.plan_months || 1));
+                            return d.toLocaleDateString();
+                          }
+                          return 'N/A';
+                      })()}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Partial Payment Breakdown */}
+                {isPartial && (
+                  <View style={[styles.partialBox, { backgroundColor: `${colors.error}08`, borderColor: `${colors.error}20` }]}>
+                    <View style={styles.partialRow}>
+                      <Text style={styles.partialLabel}>Total Amount</Text>
+                      <Text style={[styles.partialValue, { color: colors.text }]}>₹{amt}</Text>
+                    </View>
+                    <View style={styles.partialRow}>
+                      <Text style={styles.partialLabel}>Paid So Far</Text>
+                      <Text style={[styles.partialValue, { color: colors.success }]}>₹{amtPaid}</Text>
+                    </View>
+                    <View style={[styles.partialRow, { borderTopWidth: 1, borderTopColor: `${colors.error}20`, paddingTop: 4, marginTop: 2 }]}>
+                      <Text style={[styles.partialLabel, { fontWeight: '700' }]}>Remaining Due</Text>
+                      <Text style={[styles.partialValue, { color: colors.error, fontWeight: '800' }]}>₹{remaining.toFixed(0)}</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Edit Button */}
+                <TouchableOpacity
+                  style={[styles.editPayBtn, { borderColor: `${colors.primary}30`, backgroundColor: `${colors.primary}08` }]}
+                  onPress={() => setEditPaymentState({ visible: true, payment })}
+                >
+                  <FontAwesome name="pencil" size={11} color={colors.primary} />
+                  <Text style={[styles.editPayText, { color: colors.primary }]}>Edit Payment</Text>
+                </TouchableOpacity>
+              </GlassCard>
+            </View>
+          );
+        })}
       </View>
 
       <View style={{ height: 50 }} />
@@ -265,6 +423,58 @@ export const MemberSummaryScreen = () => {
       onSaved={(updated) => {
         setMember({ ...member, ...updated });
         setEditModalVisible(false);
+        invalidateCache('members', 'dashboard_month', 'dashboard_all');
+      }}
+    />
+
+    {/* Edit Payment Modal */}
+    <EditPaymentModal
+      visible={editPaymentState.visible}
+      payment={editPaymentState.payment}
+      memberId={member?._id || ''}
+      onClose={() => setEditPaymentState({ visible: false, payment: null })}
+      onSaved={(updatedPaymentData) => {
+        const oldPayment = editPaymentState.payment;
+        setEditPaymentState({ visible: false, payment: null });
+        invalidateCache('members', 'dashboard_month', 'dashboard_all');
+        refreshMember();
+        
+        if (updatedPaymentData && oldPayment) {
+          const oldPaid = oldPayment.amount_paid != null ? oldPayment.amount_paid : (oldPayment.amount || 0);
+          const newPaid = updatedPaymentData.amount_paid != null ? updatedPaymentData.amount_paid : (updatedPaymentData.amount || 0);
+          
+          if (oldPaid !== newPaid) {
+            const total = updatedPaymentData.amount || 0;
+            const remaining = Math.max(0, total - newPaid);
+            const gymUp = (member?.business_type === 'library' || businessType === 'library' ? 'Library' : 'Gym').toUpperCase();
+            const finalGymName = gymName || gymUp;
+            
+            const receiptMsg = 
+              `*${finalGymName} - PAYMENT UPDATED ✅*\n\n` +
+              `Hello *${member?.full_name}*,\n\n` +
+              `Your payment record has been updated.\n\n` +
+              `💰 *Total Amount:* ₹${total}\n` +
+              `✅ *Paid So Far:* ₹${newPaid}\n` +
+              (remaining > 0 ? `⚠️ *Remaining Due:* ₹${remaining}\n` : `🎉 *All dues cleared!*\n`) +
+              `\nThank you! 🙏`;
+              
+            setTimeout(() => {
+              setAlertConfig({
+                visible: true,
+                title: "Payment Updated",
+                message: "Payment saved successfully! Do you want to send a WhatsApp receipt to the member?",
+                type: "success",
+                showCancel: true,
+                confirmText: "Send WhatsApp",
+                cancelText: "No, Thanks",
+                onConfirm: () => {
+                   setAlertConfig({ visible: false });
+                   sendWhatsAppMessage(member?.phone || '', receiptMsg);
+                },
+              });
+            }, 600); // Wait for modal closing animation
+          }
+        }
       }}
     />
     </View>
@@ -299,11 +509,91 @@ const getStyles = (colors: any) => StyleSheet.create({
   timelineItem: { flexDirection: 'row', marginBottom: spacing.m },
   timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.primary, marginTop: 20, marginRight: 16, zIndex: 1 },
   timelineCard: { flex: 1, padding: spacing.m },
-  timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  timelineAmount: { fontSize: 16, fontWeight: '800', color: colors.text },
-  timelineDate: { fontSize: 12, color: colors.textSecondary },
-  timelineText: { fontSize: 13, color: colors.textMuted },
-  text: { color: colors.text, textAlign: 'center', marginTop: 100 },
+  timelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  timelineAmount: { fontSize: 22, fontWeight: '800', color: colors.text },
+  paymentModeText: { fontSize: 13, fontWeight: '700', color: colors.text },
+  paymentTypeText: { fontSize: 11, color: colors.textMuted, textTransform: 'uppercase' },
+  
+  // Status Badge
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusBadgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+
+  // Dates Box
+  datesBox: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  dateCol: { flex: 1, alignItems: 'center' },
+  dateLabel: { fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', marginBottom: 2, fontWeight: '600' },
+  dateValue: { fontSize: 12, fontWeight: '700' },
+  dateDivider: { width: 1, height: 24, opacity: 0.5 },
+
+  // Duration chip
+  durationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  durationText: { fontSize: 11, fontWeight: '700' },
+  // Partial payment badge
+  partialBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 3,
+  },
+  partialBadgeText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  // Partial breakdown box
+  partialBox: {
+    borderRadius: borderRadius.s,
+    borderWidth: 1,
+    padding: spacing.s,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  partialRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 },
+  partialLabel: { fontSize: 12, color: colors.textSecondary },
+  partialValue: { fontSize: 12, fontWeight: '600' },
+  // Edit payment button
+  editPayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.s,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 8,
+  },
+  editPayText: { fontSize: 11, fontWeight: '700' },
   seatWifiBanner: {
     borderRadius: borderRadius.m,
     borderWidth: 1,

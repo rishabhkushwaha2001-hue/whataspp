@@ -24,7 +24,8 @@ interface RenewalModalProps {
     hours?: number,
     timing?: string,
     allocatedSeat?: string,
-    wifiDetails?: string
+    wifiDetails?: string,
+    amountPaid?: number
   ) => void;
   businessType?: string;
 }
@@ -49,6 +50,7 @@ export const RenewalModal = ({
   const [joiningDate, setJoiningDate] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [amount, setAmount] = useState('0');
+  const [amountPaid, setAmountPaid] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [dailyHours, setDailyHours] = useState('');
   const [timingStartHour, setTimingStartHour] = useState('');
@@ -178,13 +180,21 @@ export const RenewalModal = ({
 useEffect(() => {
     if (visible && member) {
       setAmount(member.monthly_fees ? member.monthly_fees.toString() : '0');
+      setAmountPaid('');
       
       const nowStr = new Date().toISOString().split('T')[0];
-      const nextDue = member.next_due_date ? new Date(member.next_due_date).toISOString().split('T')[0] : nowStr;
       
+      // Agar current plan active hai (next_due_date future me hai), to renewal
+      // naye plan ki start = current plan ki expiry date se — overlap nahi hoga
       let baseStart = nowStr;
-      if (new Date(nextDue) > new Date()) {
-        baseStart = nextDue;
+      if (member.next_due_date) {
+        const dueDate = new Date(member.next_due_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        if (dueDate > today) {
+          // Plan abhi active hai — nayi start = current expiry
+          baseStart = dueDate.toISOString().split('T')[0];
+        }
       }
       
       setJoiningDate(baseStart);
@@ -223,6 +233,16 @@ useEffect(() => {
   };
 
   const durationDays = getDurationInDays();
+
+  // Convert days to months + remaining days
+  const getDurationFormatted = () => {
+    if (durationDays <= 0) return '0 Days';
+    const months = Math.floor(durationDays / 30);
+    const remainingDays = durationDays % 30;
+    if (months === 0) return `${durationDays} Days`;
+    if (remainingDays === 0) return `${durationDays} Days (${months} Month${months > 1 ? 's' : ''})`;
+    return `${durationDays} Days (${months} Month${months > 1 ? 's' : ''} ${remainingDays} Day${remainingDays > 1 ? 's' : ''})`;
+  };
 
   
   const formatTo24Hour = (hour: string, amPm: string) => {
@@ -311,7 +331,8 @@ useEffect(() => {
       parsedHours,
       parsedTiming,
       allocatedSeat,
-      wifiDetails
+      wifiDetails,
+      amountPaid ? parseFloat(amountPaid) : undefined
     );
   };
 
@@ -350,25 +371,29 @@ useEffect(() => {
             </View>
 
             {/* Date Range Selection (From & To) */}
-            <View>
-              <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
-                <ModernInput
-                  label="Start Date *"
-                  value={joiningDate.split('-').reverse().join('/')}
-                  editable={false}
-                  placeholder="Select Date"
-                  icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
-                <ModernInput
-                  label="Expiry Date *"
-                  value={expiryDate.split('-').reverse().join('/')}
-                  editable={false}
-                  placeholder="Select Date"
-                  icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                />
-              </TouchableOpacity>
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: spacing.s }}>
+                <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
+                  <ModernInput
+                    label="Start Date *"
+                    value={joiningDate.split('-').reverse().join('/')}
+                    editable={false}
+                    placeholder="Select Date"
+                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View style={{ flex: 1, marginLeft: spacing.s }}>
+                <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
+                  <ModernInput
+                    label="Expiry Date *"
+                    value={expiryDate.split('-').reverse().join('/')}
+                    editable={false}
+                    placeholder="Select Date"
+                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Presets */}
@@ -388,7 +413,7 @@ useEffect(() => {
             <View style={styles.durationDisplay}>
               <FontAwesome name="info-circle" size={14} color={colors.primary} style={{ marginRight: 6 }} />
               <Text style={styles.durationDisplayText}>
-                Renewal Duration: <Text style={{ color: colors.primary, fontWeight: '800' }}>{durationDays} Days</Text>
+                Renewal Duration: <Text style={{ color: colors.primary, fontWeight: '800' }}>{getDurationFormatted()}</Text>
               </Text>
             </View>
 
@@ -403,6 +428,35 @@ useEffect(() => {
                   icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
                 />
               </View>
+            </View>
+
+            {/* Partial Payment Field */}
+            <View style={[styles.partialPayBox, { borderColor: `${colors.accent}30`, backgroundColor: `${colors.accent}08` }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <FontAwesome name="money" size={13} color={colors.accent} />
+                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>Partial Payment (Optional)</Text>
+              </View>
+              <ModernInput
+                label="Amount Paid Now (₹)"
+                value={amountPaid}
+                onChangeText={setAmountPaid}
+                keyboardType="numeric"
+                placeholder={`Leave blank if full ₹${amount} paid`}
+                icon={<FontAwesome name="rupee" size={14} color={colors.accent} />}
+              />
+              {amountPaid && parseFloat(amountPaid) > 0 && parseFloat(amount) > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    Total: <Text style={{ fontWeight: '700', color: colors.text }}>₹{amount}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    Paid: <Text style={{ fontWeight: '700', color: colors.success }}>₹{amountPaid}</Text>
+                  </Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                    Due: <Text style={{ fontWeight: '700', color: colors.error }}>₹{Math.max(0, parseFloat(amount) - parseFloat(amountPaid)).toFixed(0)}</Text>
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* ⏰ Hours + Timing */}
@@ -561,10 +615,10 @@ useEffect(() => {
           {/* Footer Actions */}
           <View style={styles.buttonRow}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText} adjustsFontSizeToFit numberOfLines={1}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-              <Text style={styles.confirmBtnText}>Confirm Renew ✓</Text>
+              <Text style={styles.confirmBtnText} adjustsFontSizeToFit numberOfLines={1}>Renew Member</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -733,4 +787,10 @@ const getStyles = (colors: any) => StyleSheet.create({
     marginBottom: spacing.m,
   },
   durationDisplayText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+  partialPayBox: {
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    padding: spacing.m,
+    marginBottom: spacing.m,
+  },
 });

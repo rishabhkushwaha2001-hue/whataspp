@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, spacing, borderRadius } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
+import { invalidateCache } from '../hooks/useDataStore';
 import { ModernInput } from '../components/ModernInput';
 import { GradientButton } from '../components/GradientButton';
 import { api } from '../services/api';
@@ -179,6 +180,7 @@ export const SettingsScreen = () => {
         },
       });
 
+      invalidateCache('members', 'dashboard_month', 'dashboard_all');
       showSuccess('Import Success', response.data.message);
     } catch (error: any) {
       console.error('Import Error:', error.response?.data || error.message);
@@ -384,14 +386,14 @@ export const SettingsScreen = () => {
               style={[styles.actionButton, { backgroundColor: `${colors.accent}15`, borderColor: `${colors.accent}30` }]} 
               onPress={handleExport}
             >
-              <Text style={[styles.actionButtonText, { color: colors.accent }]}>Export Excel (CSV)</Text>
+              <Text style={[styles.actionButtonText, { color: colors.accent }]} adjustsFontSizeToFit numberOfLines={1}>Export Excel (CSV)</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={[styles.actionButton, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]} 
               onPress={handleImport}
             >
-              <Text style={[styles.actionButtonText, { color: colors.primary }]}>Restore / Import</Text>
+              <Text style={[styles.actionButtonText, { color: colors.primary }]} adjustsFontSizeToFit numberOfLines={1}>Restore / Import</Text>
             </TouchableOpacity>
           </View>
 
@@ -408,7 +410,7 @@ export const SettingsScreen = () => {
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               <FontAwesome name="envelope" size={16} color="white" style={{ marginRight: 8 }} />
-              <Text style={[styles.actionButtonText, { color: 'white' }]}>Manage Custom Messages</Text>
+              <Text style={[styles.actionButtonText, { color: 'white' }]} adjustsFontSizeToFit numberOfLines={1}>Manage Custom Messages</Text>
             </View>
           </TouchableOpacity>
 
@@ -429,7 +431,7 @@ export const SettingsScreen = () => {
               );
             }}
           >
-            <Text style={[styles.actionButtonText, { color: colors.error }]}>Disconnect Business Session 🔌</Text>
+            <Text style={[styles.actionButtonText, { color: colors.error }]} adjustsFontSizeToFit numberOfLines={1}>Disconnect Business Session 🔌</Text>
           </TouchableOpacity>
         </GlassCard>
 

@@ -382,21 +382,18 @@ async def renew_gym_plan(gym_id: str, payload: GymRenew) -> Any:
         raise HTTPException(status_code=404, detail="Gym not found")
         
     now = datetime.now(timezone.utc)
+    current_expiry = gym.get("plan_expiry")
+    if current_expiry and current_expiry.tzinfo is None:
+        current_expiry = current_expiry.replace(tzinfo=timezone.utc)
+    base_date = current_expiry if current_expiry and current_expiry > now else now
+
     if payload.plan_expiry:
         try:
             # Parse 'YYYY-MM-DD'
             new_expiry = datetime.strptime(payload.plan_expiry, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
-            current_expiry = gym.get("plan_expiry")
-            if current_expiry and current_expiry.tzinfo is None:
-                current_expiry = current_expiry.replace(tzinfo=timezone.utc)
-            base_date = current_expiry if current_expiry and current_expiry > now else now
             new_expiry = base_date + relativedelta(months=payload.plan_duration_months)
     else:
-        current_expiry = gym.get("plan_expiry")
-        if current_expiry and current_expiry.tzinfo is None:
-            current_expiry = current_expiry.replace(tzinfo=timezone.utc)
-        base_date = current_expiry if current_expiry and current_expiry > now else now
         new_expiry = base_date + relativedelta(months=payload.plan_duration_months)
     
     await super_admin_db["gyms"].update_one(
@@ -417,9 +414,10 @@ async def renew_gym_plan(gym_id: str, payload: GymRenew) -> Any:
         f"Hi *{gym['owner_name']}* 🎉,\n"
         f"Your software subscription for *{gym['gym_name']}* has been successfully renewed!\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"📅 *New Expiry Date:* {new_expiry.strftime('%d %B %Y')}\n"
+        f"📅 *Renewed From:* {base_date.strftime('%d %B %Y')}\n"
         f"⏱️ *Duration:* {payload.plan_duration_months} Month(s)\n"
         f"💳 *Price:* ₹{payload.plan_price}\n"
+        f"📅 *New Expiry Date:* {new_expiry.strftime('%d %B %Y')}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"Thank you for your business! Let's continue growing! 🏢"
     )

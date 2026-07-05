@@ -69,7 +69,7 @@ export const CustomAlert = ({
           <View style={styles.buttonRow}>
             {showCancel && (
               <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-                <Text style={styles.cancelBtnText}>{cancelText}</Text>
+                <Text style={styles.cancelBtnText} adjustsFontSizeToFit numberOfLines={1}>{cancelText}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity 
@@ -79,7 +79,7 @@ export const CustomAlert = ({
                 else onClose();
               }}
             >
-              <Text style={styles.confirmBtnText}>{confirmText}</Text>
+              <Text style={styles.confirmBtnText} adjustsFontSizeToFit numberOfLines={1}>{confirmText}</Text>
             </TouchableOpacity>
           </View>
         </View>

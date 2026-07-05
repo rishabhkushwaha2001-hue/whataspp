@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Linking, Alert, Modal, Image } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,6 +9,7 @@ import { CustomAlert } from '../components/CustomAlert';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { useCachedParallelFetch, invalidateCache } from '../hooks/useDataStore';
 
 const { width } = Dimensions.get('window');
 
@@ -49,47 +50,41 @@ export const DashboardScreen = () => {
   const [recentMessages, setRecentMessages] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [gymSettings, setGymSettings] = useState<any>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hideRevenue, setHideRevenue] = useState(false);
   const [revealedOnce, setRevealedOnce] = useState(false);
 
-  const fetchDashboardData = useCallback(async (currentPeriod = period) => {
-    setRefreshing(true);
-    try {
-      const [statsRes, attendanceRes, historyRes, settingsRes] = await Promise.all([
-        api.get(`/members/stats/dashboard?period=${currentPeriod}`).catch(e => { console.warn('Stats fetch failed', e); return null; }),
-        api.get('/members/attendance/today').catch(e => { console.warn('Attendance fetch failed', e); return null; }),
-        api.get('/messages/history?limit=4').catch(e => { console.warn('History fetch failed', e); return null; }),
-        api.get('/settings/').catch(e => { console.warn('Settings fetch failed', e); return null; })
-      ]);
-      
-      if (statsRes) setStats(statsRes.data);
-      if (attendanceRes) setAttendance(attendanceRes.data);
-      if (historyRes) setRecentMessages(historyRes.data);
-      if (settingsRes) setGymSettings(settingsRes.data);
-    } catch (error) {
-      console.warn('Dashboard parallel fetch error', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [period]);
+  // ✅ Cached parallel fetch — only hits API when data is stale or missing
+  const { results, refreshing, refresh: refreshDashboard } = useCachedParallelFetch([
+    { key: `dashboard_${period}`, endpoint: `/members/stats/dashboard?period=${period}` },
+    { key: 'dashboard_attendance', endpoint: '/members/attendance/today' },
+    { key: 'dashboard_messages', endpoint: '/messages/history?limit=4' },
+    { key: 'dashboard_settings', endpoint: '/settings/' },
+  ]);
 
+  // Sync results into local state whenever cache data updates
+  useEffect(() => {
+    if (results[`dashboard_${period}`]) setStats(results[`dashboard_${period}`]);
+    if (results['dashboard_attendance']) setAttendance(results['dashboard_attendance']);
+    if (results['dashboard_messages']) setRecentMessages(results['dashboard_messages']);
+    if (results['dashboard_settings']) setGymSettings(results['dashboard_settings']);
+  }, [results, period]);
+
+  // Reload revenue preference on focus (local pref — no API needed)
   useFocusEffect(
     useCallback(() => {
-      fetchDashboardData();
-      // Reload revenue visibility preference each time screen is focused
       AsyncStorage.getItem('hideRevenue').then(val => {
         setHideRevenue(val === 'true');
-        setRevealedOnce(false); // reset reveal on each focus
+        setRevealedOnce(false);
       });
-    }, [fetchDashboardData])
+    }, [])
   );
 
   const handlePeriodChange = (newPeriod: 'month' | 'prev_month' | 'year' | 'all') => {
+    // Invalidate old period key so fresh data is fetched
+    invalidateCache(`dashboard_${newPeriod}`);
     setPeriod(newPeriod);
-    fetchDashboardData(newPeriod);
   };
 
   const renderProgress = (label: string, value: number, total: number, color: string, icon?: string) => {
@@ -163,7 +158,8 @@ export const DashboardScreen = () => {
                 setTimeout(() => {
                   setAlertConfig({ visible: true, title: "Cleared", message: "Database has been cleared.", type: "success", showCancel: false, confirmText: "OK", onConfirm: undefined });
                 }, 500);
-                fetchDashboardData();
+                invalidateCache('members', `dashboard_${period}`, 'dashboard_attendance', 'dashboard_messages');
+                refreshDashboard();
               } catch (error: any) {
                 const errMsg = error.response?.data?.detail || error.message;
                 setTimeout(() => {
@@ -181,7 +177,7 @@ export const DashboardScreen = () => {
     <ScrollView 
       style={styles.container} 
       contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchDashboardData()} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshDashboard()} tintColor={colors.primary} />}
     >
       <CustomAlert 
         visible={alertConfig.visible}

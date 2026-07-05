@@ -124,11 +124,16 @@ async def create_member(member_in: MemberCreate) -> Any:
     result = await db["members"].insert_one(member_dict)
     
     # Log initial payment with joining_date
+    total_amount = member_dict.get("monthly_fees", 0.0)
+    amount_paid_val = member_dict.get("amount_paid", None)  # Partial payment support
     payment_log = {
         "member_id": str(result.inserted_id),
-        "amount": member_dict.get("monthly_fees", 0.0),
+        "amount": total_amount,
+        "amount_paid": amount_paid_val,  # None = full payment
         "plan_duration": member_dict.get("plan_duration_months", 1),
-        "payment_date": joining_date,
+        "payment_date": datetime.now(timezone.utc),
+        "start_date": joining_date,
+        "end_date": next_due_date,
         "payment_method": member_dict.get("payment_mode", "Cash"),
         "type": "New Enrollment"
     }
@@ -143,8 +148,36 @@ async def get_all_members() -> Any:
     db = get_database()
     cursor = db["members"].find().sort("created_at", -1)
     members = await cursor.to_list(length=1000)
+    
+    # Efficiently fetch pending amounts for all members in one query
+    member_ids = [str(m["_id"]) for m in members]
+    
+    # Get the latest payment per member that has a partial amount_paid
+    # We look at all payments with amount_paid set and compute pending
+    payments_cursor = db["payments"].find(
+        {"member_id": {"$in": member_ids}},
+        {"member_id": 1, "amount": 1, "amount_paid": 1, "payment_date": 1}
+    ).sort("payment_date", -1)
+    all_payments = await payments_cursor.to_list(length=5000)
+    
+    # Build a map: member_id -> latest payment's pending amount
+    seen_members: set = set()
+    pending_map: dict = {}
+    for p in all_payments:
+        mid = p.get("member_id")
+        if mid and mid not in seen_members:
+            seen_members.add(mid)
+            amt = float(p.get("amount") or 0)
+            amt_paid = p.get("amount_paid")
+            if amt_paid is not None:
+                amt_paid = float(amt_paid)
+                pending = max(0, amt - amt_paid)
+                if pending > 0:
+                    pending_map[mid] = pending
+    
     for m in members:
         m["_id"] = str(m["_id"])
+        m["pending_amount"] = pending_map.get(m["_id"], 0)
     return members
 
 @router.get("/status/due", response_model=List[Any])
@@ -155,10 +188,34 @@ async def get_due_members(days_ahead: int = 7) -> Any:
     query = {"status": "active", "next_due_date": {"$lte": threshold}}
     cursor = db["members"].find(query).sort("next_due_date", 1)
     members = await cursor.to_list(length=100)
+    
+    pending_map = {}
+    if members:
+        member_ids = [str(m["_id"]) for m in members]
+        payments_cursor = db["payments"].find(
+            {"member_id": {"$in": member_ids}},
+            {"member_id": 1, "amount": 1, "amount_paid": 1, "payment_date": 1}
+        ).sort("payment_date", -1)
+        all_payments = await payments_cursor.to_list(length=5000)
+        
+        seen_members = set()
+        for p in all_payments:
+            mid = p.get("member_id")
+            if mid and mid not in seen_members:
+                seen_members.add(mid)
+                amt = float(p.get("amount") or 0)
+                amt_paid = p.get("amount_paid")
+                if amt_paid is not None:
+                    amt_paid = float(amt_paid)
+                    pending = max(0, amt - amt_paid)
+                    if pending > 0:
+                        pending_map[mid] = pending
+
     for m in members:
         m["_id"] = str(m["_id"])
         expiry = m["next_due_date"].replace(tzinfo=timezone.utc)
         m["remaining_days"] = (expiry - now).days
+        m["pending_amount"] = pending_map.get(m["_id"], 0)
     return members
 
 @router.get("/stats/dashboard", response_model=Any)
@@ -414,8 +471,12 @@ async def get_member_summary(member_id: str) -> Any:
     formatted_payments = []
     for p in payments:
         formatted_payments.append({
+            "id": str(p["_id"]),  # For editing
             "amount": p.get("amount", 0),
+            "amount_paid": p.get("amount_paid", None),  # None = full payment
             "date": p.get("payment_date"),
+            "start_date": p.get("start_date"),
+            "end_date": p.get("end_date"),
             "plan_months": p.get("plan_duration", 1),
             "payment_mode": p.get("payment_method", "Cash"),
             "type": p.get("type", "Payment")
@@ -456,6 +517,7 @@ class EditMemberPayload(BaseModel):
     wifi_details: Optional[str] = None
     trainer_assigned: Optional[str] = None
     notes: Optional[str] = None
+    aadhaar_number: Optional[str] = None
 
 @router.put("/{member_id}")
 async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
@@ -503,6 +565,7 @@ async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
 class RenewPayload(BaseModel):
     plan_duration_months: int = 1
     amount: float
+    amount_paid: Optional[float] = None  # Partial payment — None = full amount paid
     payment_mode: str = "Cash"
     next_due_date: Optional[datetime] = None
     joining_date: Optional[datetime] = None
@@ -585,8 +648,11 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     payment_log = {
         "member_id": str(member["_id"]),
         "amount": payload.amount,
+        "amount_paid": payload.amount_paid,  # None = full payment
         "plan_duration": payload.plan_duration_months,
-        "payment_date": renewal_start_date,
+        "payment_date": now,
+        "start_date": renewal_start_date,
+        "end_date": new_due_date,
         "payment_method": payload.payment_mode,
         "type": "Renewal"
     }
@@ -595,6 +661,65 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     updated_member = await db["members"].find_one({"_id": member["_id"]})
     updated_member["_id"] = str(updated_member["_id"])
     return updated_member
+
+class EditPaymentPayload(BaseModel):
+    amount_paid: Optional[float] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+
+@router.put("/{member_id}/payments/{payment_id}")
+async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayload) -> Any:
+    """Edit a specific payment record — update dates or paid amount (for partial payments)."""
+    db = get_database()
+    
+    # Locate the member
+    member = None
+    if len(member_id) == 24:
+        try:
+            member = await db["members"].find_one({"_id": ObjectId(member_id)})
+        except: pass
+    if not member:
+        member = await db["members"].find_one({"member_id": member_id})
+    if not member:
+        member = await db["members"].find_one({"_id": member_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    
+    actual_member_id = str(member["_id"])
+    
+    # Locate the payment
+    try:
+        payment = await db["payments"].find_one({"_id": ObjectId(payment_id), "member_id": actual_member_id})
+    except:
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
+    
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    # Build update fields
+    update_fields = {}
+    if payload.amount_paid is not None:
+        update_fields["amount_paid"] = payload.amount_paid
+    if payload.start_date is not None:
+        start = payload.start_date
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        update_fields["start_date"] = start
+        update_fields["payment_date"] = start  # Keep payment_date in sync with start
+    if payload.end_date is not None:
+        end = payload.end_date
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        update_fields["end_date"] = end
+    
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    
+    await db["payments"].update_one({"_id": ObjectId(payment_id)}, {"$set": update_fields})
+    
+    updated = await db["payments"].find_one({"_id": ObjectId(payment_id)})
+    updated["_id"] = str(updated["_id"])
+    return updated
 
 @router.get("/{member_id}/payments")
 async def get_member_payments(member_id: str) -> Any:

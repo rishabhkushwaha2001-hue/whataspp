@@ -38,7 +38,7 @@ export const GradientButton: React.FC<GradientButtonProps> = ({
         {isLoading ? (
           <ActivityIndicator color={colors.text} />
         ) : (
-          <Text style={styles.text}>{title}</Text>
+          <Text style={styles.text} adjustsFontSizeToFit numberOfLines={1}>{title}</Text>
         )}
       </LinearGradient>
     </TouchableOpacity>

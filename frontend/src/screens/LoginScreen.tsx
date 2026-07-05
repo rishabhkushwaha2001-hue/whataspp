@@ -58,7 +58,8 @@ export const LoginScreen = () => {
     }
     setLoading(true);
     try {
-      const res = await api.post('/auth/activate', { phone: phone.trim(), activation_code: activationCode.trim() });
+      const finalCode = isAdminSession ? activationCode.trim() : activationCode.trim().toUpperCase();
+      const res = await api.post('/auth/activate', { phone: phone.trim(), activation_code: finalCode });
       await AsyncStorage.clear();
       
       if (res.data.is_admin === true) {
@@ -174,7 +175,7 @@ export const LoginScreen = () => {
                     <Text style={styles.label}>{isAdminSession ? 'SUPER ADMIN ID' : 'ACTIVATION CODE'}</Text>
                     <View style={styles.inputWrapper}>
                       <FontAwesome name="key" size={16} color={colors.textMuted} style={styles.inputIcon} />
-                      <TextInput style={styles.input} placeholder="e.g. KGM-ACT-92X7" placeholderTextColor={colors.textMuted} secureTextEntry={!showPassword} autoCapitalize="characters" value={activationCode} onChangeText={setActivationCode} />
+                      <TextInput style={styles.input} placeholder="e.g. KGM-ACT-92X7" placeholderTextColor={colors.textMuted} secureTextEntry={!showPassword} value={activationCode} onChangeText={setActivationCode} />
                       <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 8 }}>
                         <FontAwesome name={showPassword ? "eye" : "eye-slash"} size={16} color={colors.textMuted} />
                       </TouchableOpacity>

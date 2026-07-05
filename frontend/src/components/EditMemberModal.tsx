@@ -19,7 +19,7 @@ interface EditMemberModalProps {
 
 const InputRow = ({
   label, value, onChangeText, keyboardType = 'default' as any,
-  placeholder = '', colors, editable = true
+  placeholder = '', colors, editable = true, maxLength
 }: any) => (
   <View style={fieldStyles.inputGroup}>
     <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>{label}</Text>
@@ -36,6 +36,7 @@ const InputRow = ({
       autoCorrect={false}
       blurOnSubmit={false}
       editable={editable}
+      maxLength={maxLength}
     />
   </View>
 );
@@ -93,6 +94,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [dailyHours, setDailyHours] = useState('');
   const [allocatedSeat, setAllocatedSeat] = useState('');
   const [wifiDetails, setWifiDetails] = useState('');
@@ -175,6 +177,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       setFullName(member.full_name || '');
       setPhone(member.phone || '');
       setAddress(member.address || '');
+      setAadhaarNumber(member.aadhaar_number || '');
       setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
       setAllocatedSeat(member.allocated_seat || '');
       setWifiDetails(member.wifi_details || '');
@@ -235,6 +238,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         full_name: fullName.trim(),
         phone: phone.trim(),
         address: address.trim(),
+        aadhaar_number: aadhaarNumber.trim(),
       };
       if (timingStr) payload.timing = timingStr;
       if (dailyHours) payload.daily_hours = parseInt(dailyHours);
@@ -303,7 +307,8 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
             {/* Basic Info */}
             <Text style={[styles.section, { color: colors.text }]}>👤 Basic Info</Text>
             <InputRow colors={colors} label="Full Name" value={fullName} onChangeText={setFullName} />
-            <InputRow colors={colors} label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={false} />
+            <InputRow colors={colors} label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={false} maxLength={10} />
+            <InputRow colors={colors} label="Aadhaar Number (Optional)" value={aadhaarNumber} onChangeText={setAadhaarNumber} keyboardType="numeric" maxLength={12} />
             <InputRow colors={colors} label="Address" value={address} onChangeText={setAddress} />
             <View style={styles.row}>
               <View style={{ flex: 1 }}>

@@ -13,6 +13,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DropdownModal } from '../components/DropdownModal';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { fetchMessageTemplates, buildJoiningMessage, getDefaultTemplates } from '../services/messageTemplates';
+import { invalidateCache } from '../hooks/useDataStore';
 
 const getHoursDifference = (startH: string, startAmPm: string, endH: string, endAmPm: string) => {
   const parseTime = (timeStr: string, amPm: string) => {
@@ -96,12 +97,14 @@ export const MessageScreen = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [amount, setAmount] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
   const [gender, setGender] = useState('Male');
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
   const [trainer, setTrainer] = useState('General');
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [address, setAddress] = useState('');
+  const [aadhaar, setAadhaar] = useState('');
   const [notes, setNotes] = useState('');
   const [dailyHours, setDailyHours] = useState('');
   const [timingStartHour, setTimingStartHour] = useState('');
@@ -316,6 +319,7 @@ export const MessageScreen = () => {
         const joiningDateStr = new Date(joiningDate).toLocaleDateString();
         const hoursVal = (enableHours && dailyHours) ? parseInt(dailyHours) : undefined;
 
+        const parsedAmountPaid = amountPaid && parseFloat(amountPaid) > 0 ? parseFloat(amountPaid) : undefined;
         welcomeMsg = buildJoiningMessage(
           joiningMsgTemplate,
           businessType,
@@ -325,6 +329,7 @@ export const MessageScreen = () => {
             date: finalExpiryStr,
             joining_date: joiningDateStr,
             fees: amount,
+            amountPaid: parsedAmountPaid,
             hours: hoursVal,
             timing: timingStr,
             gym: gymName,
@@ -348,6 +353,7 @@ export const MessageScreen = () => {
         weight: weight && !isNaN(parseFloat(weight)) ? parseFloat(weight) : undefined,
         trainer_assigned: trainer,
         payment_mode: paymentMode,
+        amount_paid: amountPaid && parseFloat(amountPaid) > 0 ? parseFloat(amountPaid) : null,
         notes: notes || '',
         category: isManual ? "Manual" : "New",
         daily_hours: (enableHours && dailyHours) ? parseInt(dailyHours) : undefined,
@@ -357,6 +363,9 @@ export const MessageScreen = () => {
       };
 
       const response = await api.post('/members/', enrollmentData);
+
+      // Invalidate cache immediately so MembersScreen and Dashboard refresh on focus
+      invalidateCache('members', 'dashboard_month', 'dashboard_all');
 
       if (!isManual) {
         try {
@@ -397,8 +406,8 @@ export const MessageScreen = () => {
   };
 
   const clearForm = () => {
-    setName(''); setPhone(''); setAmount(''); setAge(''); setWeight('');
-    setAddress(''); setNotes(''); setTrainer('General'); setDailyHours(''); setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
+    setName(''); setPhone(''); setAmount(''); setAmountPaid(''); setAge(''); setWeight('');
+    setAddress(''); setAadhaar(''); setNotes(''); setTrainer('General'); setDailyHours(''); setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
     setAllocatedSeat(''); setWifiDetails('');
     setGender('Male');
     setPaymentMode('Cash');
@@ -420,7 +429,7 @@ export const MessageScreen = () => {
               onPress={() => onSelect(typeof opt === 'string' ? opt : opt.value)}
               style={[styles.selectorBtn, isSelected && styles.selectorBtnActive]}
             >
-              <Text style={[styles.selectorText, isSelected && styles.selectorTextActive]}>
+              <Text style={[styles.selectorText, isSelected && styles.selectorTextActive]} adjustsFontSizeToFit numberOfLines={1}>
                 {typeof opt === 'string' ? opt : opt.label}
               </Text>
             </TouchableOpacity>
@@ -646,6 +655,35 @@ export const MessageScreen = () => {
             </View>
           </View>
 
+          {/* Partial Payment Box */}
+          <View style={[styles.partialPayBox, { borderColor: `${colors.accent}30`, backgroundColor: `${colors.accent}08` }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <FontAwesome name="money" size={13} color={colors.accent} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>Partial Payment (Optional)</Text>
+            </View>
+            <ModernInput
+              label="Amount Paid Now (₹)"
+              value={amountPaid}
+              onChangeText={setAmountPaid}
+              keyboardType="numeric"
+              placeholder={amount ? `Leave blank if full ₹${amount} paid` : 'Enter total amount first'}
+              icon={<FontAwesome name="rupee" size={14} color={colors.accent} />}
+            />
+            {amountPaid && parseFloat(amountPaid) > 0 && parseFloat(amount) > 0 && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                  Total: <Text style={{ fontWeight: '700', color: colors.text }}>₹{amount}</Text>
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                  Paid: <Text style={{ fontWeight: '700', color: colors.success }}>₹{amountPaid}</Text>
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                  Due: <Text style={{ fontWeight: '700', color: colors.error }}>₹{Math.max(0, parseFloat(amount) - parseFloat(amountPaid)).toFixed(0)}</Text>
+                </Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: spacing.s }}>
               <ModernInput label="Age" value={age} onChangeText={setAge} keyboardType="numeric" placeholder="25" />
@@ -664,6 +702,7 @@ export const MessageScreen = () => {
           )}
 
           <ModernInput label="Address" value={address} onChangeText={setAddress} placeholder="Area/City" icon={<FontAwesome name="map-marker" size={16} color={colors.textSecondary} />} />
+          <ModernInput label="Aadhaar Number (Optional)" value={aadhaar} onChangeText={setAadhaar} keyboardType="numeric" placeholder="12 digit Aadhaar number" maxLength={12} icon={<FontAwesome name="id-card" size={16} color={colors.textSecondary} />} />
 
           <ModernInput label="Notes" value={notes} onChangeText={setNotes} placeholder="Any notes..." multiline numberOfLines={3} icon={<FontAwesome name="pencil" size={16} color={colors.textSecondary} />} />
 
@@ -774,5 +813,11 @@ const getStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  partialPayBox: {
+    borderRadius: borderRadius.m,
+    borderWidth: 1,
+    padding: spacing.m,
+    marginBottom: spacing.m,
   },
 });

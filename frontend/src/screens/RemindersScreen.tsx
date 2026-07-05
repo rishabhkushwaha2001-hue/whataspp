@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
+import { invalidateCache } from '../hooks/useDataStore';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
@@ -170,6 +171,7 @@ export const RemindersScreen = () => {
         timing: timing,
         allocated_seat: allocatedSeat,
       });
+      invalidateCache('members', 'dashboard_month', 'dashboard_all');
       fetchDueMembers();
       // Use nextDueDate directly (already selected by user) — no API response needed
       const nextDue = nextDueDate ? new Date(nextDueDate).toLocaleDateString() : 'N/A';
@@ -177,7 +179,10 @@ export const RemindersScreen = () => {
         name: renewingMember.full_name,
         phone: renewingMember.phone,
         date: nextDue,
-        fees: amountPaid ? amountPaid : amount,
+        joining_date: joiningDate ? new Date(joiningDate).toLocaleDateString() : 'N/A',
+        paid_date: new Date().toLocaleDateString(),
+        fees: amount,
+        amountPaid: amountPaid,
         hours: hours ?? renewingMember.daily_hours,
         timing: timing ?? renewingMember.timing,
         gym: gymName,
@@ -254,10 +259,17 @@ export const RemindersScreen = () => {
                       <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>{item.full_name}</Text>
                       <Text style={[styles.memberPhone, { color: colors.textMuted }]}>{item.phone}</Text>
                     </View>
-                    <View style={[styles.badge, { backgroundColor: isExpired ? `${colors.error}15` : `${colors.warning}15` }]}>
-                      <Text style={[styles.badgeText, { color: isExpired ? colors.error : colors.warning }]}>
-                        {isExpired ? 'EXPIRED' : `${item.remaining_days}d left`}
-                      </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {item.pending_amount > 0 && (
+                        <View style={[styles.badge, { backgroundColor: `${colors.error}15` }]}>
+                          <Text style={[styles.badgeText, { color: colors.error }]}>Partial</Text>
+                        </View>
+                      )}
+                      <View style={[styles.badge, { backgroundColor: isExpired ? `${colors.error}15` : `${colors.warning}15` }]}>
+                        <Text style={[styles.badgeText, { color: isExpired ? colors.error : colors.warning }]}>
+                          {isExpired ? 'EXPIRED' : `${item.remaining_days}d left`}
+                        </Text>
+                      </View>
                     </View>
                   </View>
 

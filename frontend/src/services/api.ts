@@ -10,7 +10,7 @@ const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 const LOCAL_URL = 'http://192.168.1.34:8000/api/v1';
 
 // ⚠️ PRODUCTION: Keep false. Set to true ONLY for local dev testing.
-const USE_LOCAL = false; // 🚀 PRODUCTION MODE
+const USE_LOCAL = true; // 🚀 PRODUCTION MODE
 
 const API_URL = USE_LOCAL ? LOCAL_URL : RENDER_URL;
 

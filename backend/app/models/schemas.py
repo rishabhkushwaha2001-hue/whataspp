@@ -23,6 +23,8 @@ class MemberCreate(BaseModel):
     timing: Optional[str] = None        # Library-specific: study timing (e.g. 9 AM - 5 PM)
     allocated_seat: Optional[str] = None # Library-specific: Assigned seat (e.g. A-12)
     wifi_details: Optional[str] = None   # Library-specific: Wi-Fi credentials
+    amount_paid: Optional[float] = None  # Partial payment support
+    aadhaar_number: Optional[str] = None
 
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -34,12 +36,16 @@ class MemberUpdate(BaseModel):
     allocated_seat: Optional[str] = None
     wifi_details: Optional[str] = None
     timing: Optional[str] = None
+    aadhaar_number: Optional[str] = None
 
 class PaymentBase(BaseModel):
     member_id: str
     amount: float
+    amount_paid: Optional[float] = None  # Partial payment support — None means full payment
     plan_duration: int
     payment_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     payment_method: str = "Cash"
     notes: Optional[str] = None
 
@@ -64,6 +70,7 @@ class MemberInDB(MemberCreate):
     status: str
     remaining_days: Optional[int] = None
     created_at: Optional[datetime] = None
+    pending_amount: Optional[float] = 0.0
 
 class DashboardStats(BaseModel):
     total_members: int

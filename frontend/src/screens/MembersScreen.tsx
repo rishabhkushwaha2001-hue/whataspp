@@ -9,15 +9,14 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { RenewalModal } from '../components/RenewalModal';
 import { fetchMessageTemplates, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
+import { useCachedFetch, invalidateCache } from '../hooks/useDataStore';
 
 export const MembersScreen = () => {
   const { colors, theme } = useTheme();
   const router = useRouter();
-  const [members, setMembers] = useState<any[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('All');
-  const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [renewingMember, setRenewingMember] = useState<any>(null);
   const [showRenewModal, setShowRenewModal] = useState(false);
@@ -26,17 +25,13 @@ export const MembersScreen = () => {
   const [enableHours, setEnableHours] = useState(false);
   const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
 
-  const fetchMembers = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const res = await api.get('/members/');
-      setMembers(res.data);
-    } catch (error) {
-      console.warn('Fetch members failed');
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
+  // ✅ Cached fetch — won't re-hit API on every tab switch (stale after 5 min)
+  const { data: membersRaw, refreshing, refresh: refreshMembers } = useCachedFetch<any[]>(
+    'members',
+    '/members/'
+  );
+  // Guard: membersRaw is null while loading — always use safe array
+  const members: any[] = Array.isArray(membersRaw) ? membersRaw : [];
 
   React.useEffect(() => {
     applyFilters(members, search, activeTab);
@@ -44,7 +39,7 @@ export const MembersScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      fetchMembers();
+      // Load settings once — also cached via AsyncStorage
       const loadSettings = async () => {
         try {
           const templates = await fetchMessageTemplates();
@@ -60,20 +55,23 @@ export const MembersScreen = () => {
         }
       };
       loadSettings();
-    }, [fetchMembers])
+    }, [])
   );
 
   const applyFilters = (data: any[], searchText: string, tab: string) => {
-    let filtered = data;
+    // Guard against null/undefined data during initial load
+    const safeData = Array.isArray(data) ? data : [];
+    let filtered = safeData;
     if (searchText) {
       filtered = filtered.filter(m =>
-        m.full_name.toLowerCase().includes(searchText.toLowerCase()) ||
-        m.phone.includes(searchText) ||
+        m.full_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        m.phone?.includes(searchText) ||
         m.member_id?.toLowerCase().includes(searchText.toLowerCase())
       );
     }
     if (tab === 'Active') filtered = filtered.filter(m => m.status === 'active' && new Date(m.next_due_date) > new Date());
     else if (tab === 'Expired') filtered = filtered.filter(m => m.status === 'expired' || new Date(m.next_due_date) < new Date());
+    else if (tab === 'Partial') filtered = filtered.filter(m => m.pending_amount > 0);
     else if (tab === 'Manual') filtered = filtered.filter(m => m.category === 'Manual');
     setFilteredMembers(filtered);
   };
@@ -90,16 +88,22 @@ export const MembersScreen = () => {
     if (!renewingMember) return;
     try {
       await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
-        plan_duration_months: durationMonths, amount, amount_paid: amountPaid, payment_mode: paymentMode,
+        plan_duration_months: durationMonths, amount, amount_paid: amountPaid ?? null, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
         daily_hours: hours, timing, allocated_seat: allocatedSeat,
       });
-      fetchMembers();
+      // Invalidate cache so fresh data loads on next focus
+      invalidateCache('members', 'dashboard_month', 'dashboard_all');
+      refreshMembers();
       // Use nextDueDate directly (already selected by user) — no API response needed
       const nextDue = nextDueDate ? new Date(nextDueDate).toLocaleDateString() : 'N/A';
       const msg = buildRenewalMessage(renewalTemplate, businessType, {
         name: renewingMember.full_name, phone: renewingMember.phone, date: nextDue,
-        fees: amountPaid ? amountPaid : amount, hours: hours ?? renewingMember.daily_hours,
+        joining_date: joiningDate ? new Date(joiningDate).toLocaleDateString() : 'N/A',
+        paid_date: new Date().toLocaleDateString(),
+        fees: amount,
+        amountPaid: amountPaid ?? undefined,
+        hours: hours ?? renewingMember.daily_hours,
         timing: timing ?? renewingMember.timing, gym: gymName, durationMonths,
         seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || renewingMember.wifi_details || 'Not Provided') : undefined,
@@ -110,9 +114,13 @@ export const MembersScreen = () => {
         confirmText: "Send Receipt",
         onConfirm: () => {
           setAlertConfig({ visible: false });
+          setShowRenewModal(false);
           setTimeout(async () => { await sendWhatsAppMessage(renewingMember.phone, msg); }, 100);
         },
-        onClose: () => setAlertConfig({ visible: false })
+        onClose: () => {
+          setAlertConfig({ visible: false });
+          setShowRenewModal(false);
+        }
       });
     } catch (error) {
       setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
@@ -173,6 +181,13 @@ export const MembersScreen = () => {
                 <FontAwesome name="money" size={10} color={colors.accent} />
                 <Text style={[styles.chipText, { color: colors.textSecondary }]}>₹{item.monthly_fees}</Text>
               </View>
+
+              {item.pending_amount > 0 && (
+                <View style={[styles.chip, { backgroundColor: `${colors.warning || '#F59E0B'}15` }]}>
+                  <FontAwesome name="exclamation-circle" size={10} color={colors.warning || '#F59E0B'} />
+                  <Text style={[styles.chipText, { color: colors.warning || '#F59E0B' }]}>₹{item.pending_amount} Due</Text>
+                </View>
+              )}
 
 
               <View style={[styles.chip, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6' }]}>
@@ -277,7 +292,7 @@ export const MembersScreen = () => {
 
         {/* Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.s }}>
-          {['All', 'Active', 'Expired', 'Manual'].map(tab => (
+          {['All', 'Active', 'Expired', 'Partial', 'Manual'].map(tab => (
             <TouchableOpacity
               key={tab}
               style={[styles.tab, activeTab === tab && { backgroundColor: colors.primary }]}
@@ -294,7 +309,7 @@ export const MembersScreen = () => {
         renderItem={renderMember}
         keyExtractor={item => item.id || item._id}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchMembers} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshMembers} tintColor={colors.primary} />}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <View style={[styles.emptyIcon, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6' }]}>
