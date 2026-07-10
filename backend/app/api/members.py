@@ -218,7 +218,34 @@ async def get_due_members(days_ahead: int = 7) -> Any:
         m["pending_amount"] = pending_map.get(m["_id"], 0)
     return members
 
+
+@router.get("/payments/all", response_model=Any)
+async def get_all_payments(limit: int = 500) -> Any:
+    """Return all payments across all members, sorted by date desc, with member name attached."""
+    db = get_database()
+    cursor = db["payments"].find({}).sort("payment_date", -1).limit(limit)
+    payments = await cursor.to_list(length=limit)
+
+    # Collect member IDs to fetch names
+    member_ids = list({p.get("member_id") for p in payments if p.get("member_id")})
+    members_cursor = db["members"].find(
+        {"_id": {"$in": [ObjectId(mid) for mid in member_ids if len(mid) == 24]}},
+        {"_id": 1, "full_name": 1}
+    )
+    members_list = await members_cursor.to_list(length=len(member_ids) + 1)
+    name_map = {str(m["_id"]): m.get("full_name", "Member") for m in members_list}
+
+    result = []
+    for p in payments:
+        p["_id"] = str(p["_id"])
+        p["member_name"] = name_map.get(p.get("member_id", ""), "Member")
+        result.append(p)
+
+    return result
+
+
 @router.get("/stats/dashboard", response_model=Any)
+
 async def get_dashboard_stats(period: str = 'all') -> Any:
     db = get_database()
     now = datetime.now(timezone.utc)
@@ -518,6 +545,9 @@ class EditMemberPayload(BaseModel):
     trainer_assigned: Optional[str] = None
     notes: Optional[str] = None
     aadhaar_number: Optional[str] = None
+    joining_date: Optional[datetime] = None
+    next_due_date: Optional[datetime] = None
+    photo_url: Optional[str] = None
 
 @router.put("/{member_id}")
 async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
@@ -556,6 +586,40 @@ async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    # Validate Plan Dates overlap if they are being updated
+    if payload.joining_date or payload.next_due_date:
+        j_date = payload.joining_date or member.get("joining_date")
+        n_date = payload.next_due_date or member.get("next_due_date")
+        
+        def safe_date(dt):
+            if not dt: return None
+            if isinstance(dt, str):
+                try: dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+                except: return None
+            if hasattr(dt, "tzinfo") and dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
+
+        j_date = safe_date(j_date)
+        n_date = safe_date(n_date)
+
+        if j_date and n_date:
+            existing_payments = await db["payments"].find({"member_id": str(member["_id"])}).sort("start_date", -1).to_list(length=500)
+            
+            # Exclude the latest payment since they are presumably editing the current plan
+            if existing_payments:
+                existing_payments = existing_payments[1:]
+                
+            for p in existing_payments:
+                p_start = safe_date(p.get("start_date"))
+                p_end = safe_date(p.get("end_date"))
+                if p_start and p_end:
+                    if j_date < p_end and n_date > p_start:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Is date ki payment already ho chuki hai."
+                        )
+
     await db["members"].update_one({"_id": member["_id"]}, {"$set": update_fields})
 
     updated = await db["members"].find_one({"_id": member["_id"]})
@@ -589,6 +653,16 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
         
+    # 1. Validation: Prevent renewal if there is a pending partial payment
+    actual_member_id = str(member["_id"])
+    partial_payment = await db["payments"].find_one({
+        "member_id": actual_member_id,
+        "amount_paid": {"$ne": None},
+        "$expr": {"$lt": ["$amount_paid", "$amount"]}
+    })
+    if partial_payment:
+        raise HTTPException(status_code=400, detail="Please complete the previous partial payment before renewing.")
+        
     # Seat Overlap Check
     new_seat = payload.allocated_seat if payload.allocated_seat is not None else member.get("allocated_seat")
     new_timing = payload.timing if payload.timing is not None else member.get("timing")
@@ -620,7 +694,24 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
             base_date = now
             
         new_due_date = base_date + relativedelta(months=payload.plan_duration_months)
-        renewal_start_date = now
+        renewal_start_date = base_date  # Fix: start date of renewal should be base_date
+        
+    # 2. Validation: Prevent overlapping payment dates
+    existing_payments = await db["payments"].find({"member_id": actual_member_id}).to_list(length=500)
+    for p in existing_payments:
+        p_start = p.get("start_date")
+        p_end = p.get("end_date")
+        if p_start and p_end:
+            if p_start.tzinfo is None: p_start = p_start.replace(tzinfo=timezone.utc)
+            if p_end.tzinfo is None: p_end = p_end.replace(tzinfo=timezone.utc)
+            
+            # Check overlap: (StartA < EndB) and (EndA > StartB)
+            # We use strictly less/greater to allow adjacent plans (e.g., plan1 ends 1 Aug, plan2 starts 1 Aug)
+            if renewal_start_date < p_end and new_due_date > p_start:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Cannot renew with these dates. An active payment already covers the period from {p_start.strftime('%d %b %Y')} to {p_end.strftime('%d %b %Y')}."
+                )
     
     # Update member — also update plan_duration_months and monthly_fees
     # so profile shows correct plan and next renewal amount is calculated correctly
@@ -705,18 +796,75 @@ async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayl
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         update_fields["start_date"] = start
-        update_fields["payment_date"] = start  # Keep payment_date in sync with start
     if payload.end_date is not None:
         end = payload.end_date
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         update_fields["end_date"] = end
+        
+    # Recalculate plan_duration if we have start and end
+    current_start = update_fields.get("start_date", payment.get("start_date"))
+    current_end = update_fields.get("end_date", payment.get("end_date"))
+    if current_start and current_end:
+        if current_start.tzinfo is None: current_start = current_start.replace(tzinfo=timezone.utc)
+        if current_end.tzinfo is None: current_end = current_end.replace(tzinfo=timezone.utc)
+        
+        # Overlap Validation (Exclude the current payment being edited)
+        existing_payments = await db["payments"].find({"member_id": actual_member_id}).to_list(length=500)
+        for p in existing_payments:
+            if str(p["_id"]) == str(payment["_id"]):
+                continue  # Skip checking against itself
+            
+            p_start = p.get("start_date")
+            p_end = p.get("end_date")
+            if p_start and p_end:
+                if p_start.tzinfo is None: p_start = p_start.replace(tzinfo=timezone.utc)
+                if p_end.tzinfo is None: p_end = p_end.replace(tzinfo=timezone.utc)
+                
+                # Check overlap
+                if current_start < p_end and current_end > p_start:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Cannot update with these dates. Another payment already covers the period from {p_start.strftime('%d %b %Y')} to {p_end.strftime('%d %b %Y')}."
+                    )
+        
+        duration_days = (current_end - current_start).days
+        months = max(1, round(duration_days / 30.0))
+        update_fields["plan_duration"] = months
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     
     await db["payments"].update_one({"_id": ObjectId(payment_id)}, {"$set": update_fields})
     
+    # Sync member's joining_date and next_due_date based on updated payments
+    all_member_payments = await db["payments"].find({"member_id": actual_member_id}).to_list(length=500)
+    if all_member_payments:
+        def make_aware(dt):
+            if dt and dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
+
+        valid_starts = [make_aware(p.get("start_date")) for p in all_member_payments if p.get("start_date")]
+        if not valid_starts:
+            valid_starts = [make_aware(p.get("payment_date")) for p in all_member_payments if p.get("payment_date")]
+        
+        valid_ends = [make_aware(p.get("end_date")) for p in all_member_payments if p.get("end_date")]
+        
+        member_update = {}
+        if valid_starts:
+            member_update["joining_date"] = min(valid_starts)
+        if valid_ends:
+            member_update["next_due_date"] = max(valid_ends)
+            
+        # Also sync the overall plan_duration_months from the latest payment
+        latest_payment = max(all_member_payments, key=lambda p: make_aware(p.get("start_date") or p.get("payment_date") or datetime.min.replace(tzinfo=timezone.utc)))
+        if latest_payment and "plan_duration" in latest_payment:
+            member_update["plan_duration_months"] = latest_payment["plan_duration"]
+            
+        if member_update:
+            await db["members"].update_one({"_id": member["_id"]}, {"$set": member_update})
+
     updated = await db["payments"].find_one({"_id": ObjectId(payment_id)})
     updated["_id"] = str(updated["_id"])
     return updated
