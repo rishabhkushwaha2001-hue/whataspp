@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from api.members import router as members_router
 from api.messages import router as messages_router
 from api.settings import router as settings_router
+from api.plans import router as plans_router
 from api.super_admin import router as super_admin_router
 from api.auth import router as auth_router
 from api.seats import router as seats_router
@@ -113,6 +114,7 @@ async def shutdown_db_client():
 app.include_router(members_router, prefix="/api/v1/members", tags=["members"])
 app.include_router(messages_router, prefix="/api/v1/messages", tags=["messages"])
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["settings"])
+app.include_router(plans_router, prefix="/api/v1/plans", tags=["plans"])
 app.include_router(super_admin_router, prefix="/api/v1/super-admin", tags=["super-admin"])
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(seats_router, prefix="/api/v1/seats", tags=["seats"])

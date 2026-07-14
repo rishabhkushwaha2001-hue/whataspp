@@ -26,6 +26,7 @@ class MemberCreate(BaseModel):
     amount_paid: Optional[float] = None  # Partial payment support
     aadhaar_number: Optional[str] = None
 
+
 class MemberUpdate(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
@@ -37,6 +38,8 @@ class MemberUpdate(BaseModel):
     wifi_details: Optional[str] = None
     timing: Optional[str] = None
     aadhaar_number: Optional[str] = None
+    photo_url: Optional[str] = None
+
 
 class PaymentBase(BaseModel):
     member_id: str
@@ -109,6 +112,8 @@ class GymSettings(BaseModel):
     renewal_msg_template: Optional[str] = None
     reminder_msg_template: Optional[str] = None
     wifi_networks: Optional[list] = []
+    plan_expiry_date: Optional[str] = None
+    plan_days_left: Optional[int] = None
 
 class SettingsUpdate(BaseModel):
     business_type: Optional[str] = None
@@ -161,4 +166,19 @@ class FeedbackBase(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class FeedbackInDB(FeedbackBase):
+    id: str = Field(alias="_id")
+class MembershipPlan(BaseModel):
+    name: str
+    description: Optional[str] = None
+    type: str = "Individual"  # Individual or Corporate
+    duration_days: int
+    price: float
+    actual_price: Optional[float] = None
+    icon: str = "crown"
+    color: str = "#FFB020"
+    features: List[str] = []
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MembershipPlanInDB(MembershipPlan):
     id: str = Field(alias="_id")

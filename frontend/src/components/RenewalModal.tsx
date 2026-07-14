@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Dimensions, TextInput } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView,
+  Dimensions, TextInput, Platform, KeyboardAvoidingView, SafeAreaView, Linking
+} from 'react-native';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { ModernInput } from './ModernInput';
 import { DatePickerModal } from './DatePickerModal';
-import { api } from '../services/api';
 import { DropdownModal } from './DropdownModal';
-import { useAppAlert } from '../hooks/useAppAlert';
+import { api } from '../services/api';
+import { LinearGradient } from 'expo-linear-gradient';
+import { sendWhatsAppMessage } from '../services/whatsapp';
 
-const { height } = Dimensions.get('window');
+const { height, width } = Dimensions.get('window');
 
 interface RenewalModalProps {
   visible: boolean;
   member: any;
   onClose: () => void;
-  enableHours?: boolean; // Show daily hours & timing fields (library mode)
+  enableHours?: boolean;
   onConfirm: (
     durationMonths: number,
     amount: number,
@@ -26,771 +29,473 @@ interface RenewalModalProps {
     allocatedSeat?: string,
     wifiDetails?: string,
     amountPaid?: number
-  ) => void;
+  ) => Promise<{ success: boolean, message?: string } | void> | void;
   businessType?: string;
 }
 
 export const RenewalModal = ({
-  visible,
-  member,
-  onClose,
-  enableHours = false,
-  businessType = 'gym',
-  onConfirm,
+  visible, member, onClose, enableHours = false, businessType = 'gym', onConfirm,
 }: RenewalModalProps) => {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
-  const { showError, AlertModal } = useAppAlert();
-  const getNextMonthDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    d.setMonth(d.getMonth() + 1);
-    return d.toISOString().split('T')[0];
-  };
+  const { colors, theme } = useTheme();
+  const isDark = theme === 'dark';
+  const styles = getStyles(colors, isDark);
 
-  const [joiningDate, setJoiningDate] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
-  const [amount, setAmount] = useState('0');
+  // States
+  const [step, setStep] = useState<'edit' | 'review' | 'success'>('edit');
+  const [isSaving, setIsSaving] = useState(false);
+  const [whatsappMsg, setWhatsappMsg] = useState('');
+
+  const [renewalStartDate, setRenewalStartDate] = useState('');
+  const [renewalEndDate, setRenewalEndDate] = useState('');
+  const [datePickerType, setDatePickerType] = useState<'start'|'end'>('start');
+  const [amount, setAmount] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'partial' | 'pending'>('paid');
   const [amountPaid, setAmountPaid] = useState('');
   const [paymentMode, setPaymentMode] = useState('Cash');
+
+  // Library/Advanced States
   const [dailyHours, setDailyHours] = useState('');
-  const [timingStartHour, setTimingStartHour] = useState('');
-  const [timingStartAmPm, setTimingStartAmPm] = useState('AM');
-  const [timingEndHour, setTimingEndHour] = useState('');
-  const [timingEndAmPm, setTimingEndAmPm] = useState('PM');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry'>('joining');
+  const [timing, setTiming] = useState('');
   const [allocatedSeat, setAllocatedSeat] = useState('');
   const [wifiDetails, setWifiDetails] = useState('');
-  const [availableSeats, setAvailableSeats] = useState<any[]>([]);
-  const [wifiOptions, setWifiOptions] = useState<any[]>([]);
+  
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showSeatModal, setShowSeatModal] = useState(false);
   const [showWifiModal, setShowWifiModal] = useState(false);
-
-
-  
-  useEffect(() => {
-    if (enableHours && visible) {
-      api.get('/settings/').then(res => {
-        setWifiOptions(res.data.wifi_networks || []);
-      }).catch(() => {});
-      api.get('/seats/').then(res => {
-        setAvailableSeats(Array.isArray(res.data) ? res.data : res.data?.seats || []);
-      }).catch(() => {});
-    }
-  }, [enableHours, visible]);
+  const [availableSeats, setAvailableSeats] = useState<any[]>([]);
+  const [wifiOptions, setWifiOptions] = useState<any[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
-    if (dailyHours && timingStartHour && timingStartAmPm) {
-      const hours = parseInt(dailyHours);
-      if (!isNaN(hours) && hours > 0) {
-        let startH = parseInt(timingStartHour.split(':')[0] || timingStartHour);
-        if (isNaN(startH)) return;
-        if (timingStartAmPm === 'PM' && startH !== 12) startH += 12;
-        if (timingStartAmPm === 'AM' && startH === 12) startH = 0;
-        let endH = startH + hours;
-        endH = endH % 24;
-        let endAmPm = 'AM';
-        let formattedEndH = endH;
-        if (endH >= 12) {
-          endAmPm = 'PM';
-          if (endH > 12) formattedEndH = endH - 12;
-        } else if (endH === 0) {
-          formattedEndH = 12;
-        }
-        let minPart = timingStartHour.includes(':') 
-          ? ':' + (timingStartHour.split(':')[1] || '').padEnd(2, '0') 
-          : ':00';
-        setTimingEndHour(`${formattedEndH.toString().padStart(2, '0')}${minPart}`);
-        setTimingEndAmPm(endAmPm);
-      }
-    }
-  }, [dailyHours, timingStartHour, timingStartAmPm]);
-
-  const getHoursDifference = (startH: string, startAmPm: string, endH: string, endAmPm: string) => {
-    const parseTime = (timeStr: string, amPm: string) => {
-      let [hStr, mStr] = timeStr.split(':');
-      let h = parseInt(hStr || '0');
-      let m = parseInt(mStr || '0');
-      if (isNaN(h)) h = 0;
-      if (isNaN(m)) m = 0;
-
-      if (amPm === 'PM' && h !== 12) h += 12;
-      if (amPm === 'AM' && h === 12) h = 0;
-
-      return h + (m / 60);
-    };
-
-    let s = parseTime(startH, startAmPm);
-    let e = parseTime(endH, endAmPm);
-
-    let diff = e - s;
-    if (diff < 0) diff += 24;
-    return diff;
-  };
-
-  const formatTimeInput = (text: string) => {
-    let val = text.replace(/[^0-9:]/g, '');
-    if (val === ':') return '';
-
-    let parts = val.split(':');
-    
-    if (parts.length === 1) {
-      let p = parts[0];
-      if (p.length >= 2) {
-        if (parseInt(p[0]) > 1) {
-          val = p[0] + ':' + p.substring(1);
-        } else if (p.length === 3) {
-          val = p.substring(0, 2) + ':' + p.substring(2);
-        } else if (p.length > 3) {
-          val = p.substring(0, 2) + ':' + p.substring(2, 4);
-        }
-      }
-    }
-
-    parts = val.split(':');
-    if (parts.length > 1) {
-      let h = parts[0];
-      let m = parts[1];
-      
-      if (h.length === 2 && parseInt(h) > 12) val = h[0] + ':' + h[1] + m;
-      
-      parts = val.split(':');
-      h = parts[0];
-      m = parts[1];
-
-      if (m && m.length >= 2) {
-        if (parseInt(m.substring(0, 2)) > 59) {
-          m = '59';
-        } else {
-          m = m.substring(0, 2);
-        }
-      }
-      val = h + ':' + m;
-    } else {
-      let h = parts[0];
-      if (h.length === 2 && parseInt(h) > 12) {
-        val = h[0] + ':' + h[1];
-      }
-    }
-    
-    return val;
-  };
-
-  // Reset/Initialize state when member or visibility changes
-useEffect(() => {
     if (visible && member) {
-      setAmount(member.monthly_fees ? member.monthly_fees.toString() : '0');
-      setAmountPaid('');
+      setStep('edit');
+      setIsSaving(false);
+      setWhatsappMsg('');
+      setAmount(member.monthly_fees ? String(member.monthly_fees) : (member.plan_fee ? String(member.plan_fee) : ''));
+      const oldExp = member.next_due_date || new Date().toISOString();
+      const isExp = new Date(oldExp) < new Date();
+      let startD = new Date();
+      if (!isExp) startD = new Date(oldExp);
       
-      const nowStr = new Date().toISOString().split('T')[0];
+      const startStr = startD.toISOString().split('T')[0];
+      setRenewalStartDate(startStr);
       
-      // Agar current plan active hai (next_due_date future me hai), to renewal
-      // naye plan ki start = current plan ki expiry date se — overlap nahi hoga
-      let baseStart = nowStr;
-      if (member.next_due_date) {
-        const dueDate = new Date(member.next_due_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        if (dueDate > today) {
-          // Plan abhi active hai — nayi start = current expiry
-          baseStart = dueDate.toISOString().split('T')[0];
-        }
-      }
-      
-      setJoiningDate(baseStart);
-      const planMonths = member.plan_duration_months || 1;
-      const baseD = new Date(baseStart);
-      baseD.setMonth(baseD.getMonth() + planMonths);
-      setExpiryDate(baseD.toISOString().split('T')[0]);
-      
-      setDailyHours(member.daily_hours ? member.daily_hours.toString() : '');
+      const endD = new Date(startD);
+      endD.setMonth(endD.getMonth() + 1);
+      setRenewalEndDate(endD.toISOString().split('T')[0]);
+      setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
+      setTiming(member.timing || '');
       setAllocatedSeat(member.allocated_seat || '');
-      setWifiDetails('');
-      
-      if (member.timing) {
-        const parts = member.timing.split('to');
-        if (parts.length === 2) {
-          const startMatch = parts[0].trim().match(/(AM|PM)/i);
-          const endMatch = parts[1].trim().match(/(AM|PM)/i);
-          if (startMatch) setTimingStartAmPm(startMatch[0].toUpperCase());
-          setTimingStartHour(parts[0].replace(/(AM|PM)/i, '').trim());
-          if (endMatch) setTimingEndAmPm(endMatch[0].toUpperCase());
-          setTimingEndHour(parts[1].replace(/(AM|PM)/i, '').trim());
-        }
-      } else {
-        setTimingStartHour(''); setTimingStartAmPm('AM');
-        setTimingEndHour(''); setTimingEndAmPm('PM');
+      setWifiDetails(member.wifi_details || '');
+
+      if (enableHours) {
+        api.get('/settings/').then(res => setWifiOptions(res.data.wifi_networks || [])).catch(() => {});
+        api.get('/seats/').then(res => setAvailableSeats(Array.isArray(res.data) ? res.data : res.data?.seats || [])).catch(() => {});
       }
     }
-  }, [visible, member]);
+  }, [visible, member, enableHours]);
 
-  const getDurationInDays = () => {
-    if (!joiningDate || !expiryDate) return 0;
-    const s = new Date(joiningDate);
-    const e = new Date(expiryDate);
-    const diff = e.getTime() - s.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 3600 * 24)));
-  };
+  const durationDays = renewalStartDate && renewalEndDate ? Math.round((new Date(renewalEndDate).getTime() - new Date(renewalStartDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
 
-  const durationDays = getDurationInDays();
+  let finalAmount = parseFloat(amount) || 0;
+  let finalAmountPaid = finalAmount;
+  if (paymentStatus === 'pending') finalAmountPaid = 0;
+  if (paymentStatus === 'partial') finalAmountPaid = parseFloat(amountPaid) || 0;
 
-  // Convert days to months + remaining days
-  const getDurationFormatted = () => {
-    if (durationDays <= 0) return '0 Days';
-    const months = Math.floor(durationDays / 30);
-    const remainingDays = durationDays % 30;
-    if (months === 0) return `${durationDays} Days`;
-    if (remainingDays === 0) return `${durationDays} Days (${months} Month${months > 1 ? 's' : ''})`;
-    return `${durationDays} Days (${months} Month${months > 1 ? 's' : ''} ${remainingDays} Day${remainingDays > 1 ? 's' : ''})`;
-  };
-
-  
-  const formatTo24Hour = (hour: string, amPm: string) => {
-    if (!hour) return null;
-    let h = parseInt(hour, 10);
-    if (amPm === 'PM' && h !== 12) h += 12;
-    if (amPm === 'AM' && h === 12) h = 0;
-    return `${h.toString().padStart(2, '0')}:00`;
-  };
-
-  const checkTimeOverlap = (start1: string, end1: string, start2: string, end2: string) => {
-    const timeToMins = (t: string) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const s1 = timeToMins(start1), e1 = timeToMins(end1);
-    const s2 = timeToMins(start2), e2 = timeToMins(end2);
-    let _e1 = e1, _e2 = e2;
-    if (_e1 <= s1) _e1 += 24 * 60;
-    if (_e2 <= s2) _e2 += 24 * 60;
-    return Math.max(s1, s2) < Math.min(_e1, _e2);
-  };
-
-  const handleConfirm = () => {
-    if (expiryDate < joiningDate) {
-      showError('Invalid Expiry Date', 'To Date cannot be before From Date.');
+  const handleReview = () => {
+    if (!renewalStartDate || !renewalEndDate) {
+      alert("Please select both start and end dates.");
       return;
     }
-    const parsedAmount = parseFloat(amount) || 0;
-    const planMonths = Math.max(1, Math.round(durationDays / 30.0));
-    const parsedHours = (enableHours && dailyHours && !isNaN(parseInt(dailyHours)))
-      ? parseInt(dailyHours)
-      : undefined;
-      
-
-    let parsedTiming = undefined;
-    if (enableHours && parsedHours && timingStartHour && timingEndHour) {
-      const diff = getHoursDifference(timingStartHour, timingStartAmPm, timingEndHour, timingEndAmPm);
-      if (diff !== parsedHours) {
-        showError('Invalid Timing Slot', `You are renewing a ${parsedHours}-hour plan, but the timing slot is ${diff} hours long. It must be exactly ${parsedHours} hours.`);
-        return;
-      }
-      parsedTiming = `${timingStartHour.trim()} ${timingStartAmPm} - ${timingEndHour.trim()} ${timingEndAmPm}`;
-      
-      // Conflict checking
-      if (allocatedSeat) {
-        const seatObj = availableSeats.find(s => s.seat_number === allocatedSeat);
-        if (seatObj && seatObj.allotted_members) {
-          const newStart = formatTo24Hour(timingStartHour, timingStartAmPm);
-          const newEnd = formatTo24Hour(timingEndHour, timingEndAmPm);
-          
-          if (newStart && newEnd) {
-            const overlappingMember = seatObj.allotted_members.find((am: any) => {
-              if (am.timing && String(am.member_id) !== String(member.member_id) && String(am.member_id) !== String(member._id)) {
-                const parts = am.timing.split(' to ');
-                if (parts.length === 2) {
-                  const [t1, amPm1] = parts[0].trim().split(' ');
-                  const [t2, amPm2] = parts[1].trim().split(' ');
-                  if (t1 && amPm1 && t2 && amPm2) {
-                    const existingStart = formatTo24Hour(t1.split(':')[0], amPm1);
-                    const existingEnd = formatTo24Hour(t2.split(':')[0], amPm2);
-                    if (existingStart && existingEnd) {
-                      return checkTimeOverlap(newStart, newEnd, existingStart, existingEnd);
-                    }
-                  }
-                }
-              }
-              return false;
-            });
-            
-            if (overlappingMember) {
-              showError('Seat Unavailable', `Seat ${allocatedSeat} is already occupied by ${overlappingMember.name} during this time (${overlappingMember.timing})!`);
-              return;
-            }
-          }
-        }
-      }
+    if (new Date(renewalEndDate) <= new Date(renewalStartDate)) {
+      alert("End date must be after the start date.");
+      return;
     }
+    setStep('review');
+  };
 
-    onConfirm(
-      planMonths,
-      parsedAmount,
-      paymentMode,
-      new Date(expiryDate).toISOString(),
-      new Date(joiningDate).toISOString(),
-      parsedHours,
-      parsedTiming,
-      allocatedSeat,
-      wifiDetails,
-      amountPaid ? parseFloat(amountPaid) : undefined
+  const handleConfirmAction = async () => {
+    setIsSaving(true);
+    let durationMonths = Math.max(1, Math.round(durationDays / 30.0));
+
+    const res = await onConfirm(
+      durationMonths, finalAmount, paymentMode, renewalEndDate, renewalStartDate,
+      parseInt(dailyHours) || undefined, timing, allocatedSeat, wifiDetails, finalAmountPaid
+    );
+    
+    if (res && res.success) {
+      if (res.message) setWhatsappMsg(res.message);
+      setStep('success');
+    } else if (res && !res.success) {
+      alert("Failed to update membership.");
+      setStep('edit');
+    } else {
+      // Fallback if no promise returned
+      setStep('success');
+    }
+    setIsSaving(false);
+  };
+
+  const handleSendReceipt = async () => {
+    if (whatsappMsg && member?.phone) {
+      await sendWhatsAppMessage(member.phone, whatsappMsg);
+    }
+    onClose();
+  };
+
+  // Components
+
+
+  const PaymentStatusPill = ({ id, label }: { id: any, label: string }) => {
+    const active = paymentStatus === id;
+    const activeColor = id === 'paid' ? colors.success : id === 'partial' ? '#F59E0B' : colors.error;
+    return (
+      <TouchableOpacity
+        style={[styles.statusRadio, active && { borderColor: activeColor, backgroundColor: `${activeColor}10` }]}
+        onPress={() => setPaymentStatus(id)}
+      >
+        <View style={[styles.radioCircle, active && { borderColor: activeColor }]}>
+          {active && <View style={[styles.radioInner, { backgroundColor: activeColor }]} />}
+        </View>
+        <Text style={[styles.statusRadioText, { color: active ? activeColor : colors.text }]}>{label}</Text>
+      </TouchableOpacity>
     );
   };
 
-  const handlePresetSelect = (monthsVal: number) => {
-    const d = new Date(joiningDate);
-    d.setMonth(d.getMonth() + monthsVal);
-    setExpiryDate(d.toISOString().split('T')[0]);
-  };
-
-  if (!visible || !member) return null;
-
   return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.alertBox}>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.titleContainer}>
-              <Text style={styles.title}>Renew Membership</Text>
-              <Text style={styles.subtitle}>{member.full_name}</Text>
-            </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <FontAwesome name="times" size={18} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-            {/* Live Preview */}
-            <View style={styles.previewContainer}>
-              <View style={styles.previewRow}>
-                <Text style={styles.previewLabel}>Current Due Date:</Text>
-                <Text style={styles.previewValue}>
-                  {member.next_due_date ? new Date(member.next_due_date).toLocaleDateString() : 'N/A'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Date Range Selection (From & To) */}
-            <View style={styles.row}>
-              <View style={{ flex: 1, marginRight: spacing.s }}>
-                <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
-                  <ModernInput
-                    label="Start Date *"
-                    value={joiningDate.split('-').reverse().join('/')}
-                    editable={false}
-                    placeholder="Select Date"
-                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                  />
+    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBg}>
+        <SafeAreaView style={{ flex: 1 }}>
+          
+          {step === 'edit' && (
+            <>
+              <View style={styles.header}>
+                <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+                  <FontAwesome name="arrow-left" size={18} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Renew Membership</Text>
+                <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+                  <FontAwesome name="times" size={18} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
-              <View style={{ flex: 1, marginLeft: spacing.s }}>
-                <TouchableOpacity onPress={() => { setDatePickerType('expiry'); setShowDatePicker(true); }}>
-                  <ModernInput
-                    label="Expiry Date *"
-                    value={expiryDate.split('-').reverse().join('/')}
-                    editable={false}
-                    placeholder="Select Date"
-                    icon={<FontAwesome name="calendar" size={14} color={colors.primary} />}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
 
-            {/* Presets */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetsRow}>
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((val) => (
-                <TouchableOpacity
-                  key={`preset-${val}`}
-                  onPress={() => handlePresetSelect(val)}
-                  style={styles.presetBtn}
-                >
-                  <Text style={styles.presetText}>{val}M</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Real-time Duration Display */}
-            <View style={styles.durationDisplay}>
-              <FontAwesome name="info-circle" size={14} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.durationDisplayText}>
-                Renewal Duration: <Text style={{ color: colors.primary, fontWeight: '800' }}>{getDurationFormatted()}</Text>
-              </Text>
-            </View>
-
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <ModernInput
-                  label="Total Plan Amount (₹) *"
-                  value={amount}
-                  onChangeText={setAmount}
-                  keyboardType="numeric"
-                  placeholder="e.g. 1000"
-                  icon={<FontAwesome name="money" size={16} color={colors.textSecondary} />}
-                />
-              </View>
-            </View>
-
-            {/* Partial Payment Field */}
-            <View style={[styles.partialPayBox, { borderColor: `${colors.accent}30`, backgroundColor: `${colors.accent}08` }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <FontAwesome name="money" size={13} color={colors.accent} />
-                <Text style={{ fontSize: 13, fontWeight: '700', color: colors.accent }}>Partial Payment (Optional)</Text>
-              </View>
-              <ModernInput
-                label="Amount Paid Now (₹)"
-                value={amountPaid}
-                onChangeText={setAmountPaid}
-                keyboardType="numeric"
-                placeholder={`Leave blank if full ₹${amount} paid`}
-                icon={<FontAwesome name="rupee" size={14} color={colors.accent} />}
-              />
-              {amountPaid && parseFloat(amountPaid) > 0 && parseFloat(amount) > 0 && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    Total: <Text style={{ fontWeight: '700', color: colors.text }}>₹{amount}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    Paid: <Text style={{ fontWeight: '700', color: colors.success }}>₹{amountPaid}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                    Due: <Text style={{ fontWeight: '700', color: colors.error }}>₹{Math.max(0, parseFloat(amount) - parseFloat(amountPaid)).toFixed(0)}</Text>
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* ⏰ Hours + Timing */}
-            {enableHours && (
-              <View style={styles.hoursBox}>
-                <View style={styles.hoursHeader}>
-                  <FontAwesome name="clock-o" size={14} color={colors.primary} />
-                  <Text style={styles.hoursTitle}>⏰ {businessType === 'library' ? 'Study Hours & Timing' : 'Daily Hours & Timing'}</Text>
-                </View>
-                <View style={{ flexDirection: 'column', gap: 16 }}>
-                  <View>
-                    <ModernInput
-                      label="Daily Hours"
-                      value={dailyHours}
-                      onChangeText={setDailyHours}
-                      keyboardType="numeric"
-                      placeholder="e.g. 8"
-                      icon={<FontAwesome name="clock-o" size={14} color={colors.primary} />}
-                    />
+              <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                {/* Member Info */}
+                <View style={styles.memberInfoRow}>
+                  <View style={[styles.avatarSm, { backgroundColor: `${colors.primary}20` }]}>
+                    <Text style={[styles.avatarSmText, { color: colors.primary }]}>{member?.full_name?.charAt(0) || 'M'}</Text>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8, fontWeight: '600' }}>Timing Slot 🌞 (e.g. 10:00 AM TO 06:00 PM)</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', height: 48, backgroundColor: colors.surfaceLight, borderRadius: 8, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 }}>
-                      <TextInput 
-                        style={{ flex: 1, color: colors.text, fontSize: 14 }} 
-                        placeholder="10:00" 
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric" 
-                        value={timingStartHour} 
-                        onChangeText={(t) => setTimingStartHour(formatTimeInput(t))} 
-                      />
-                      <TouchableOpacity 
-                        style={{ backgroundColor: timingStartAmPm === 'AM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 4, marginRight: 4 }} 
-                        onPress={() => setTimingStartAmPm('AM')}>
-                        <Text style={{ color: timingStartAmPm === 'AM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>AM</Text>
+                    <Text style={styles.memberName}>{member?.full_name}</Text>
+                    <Text style={styles.memberId}>{member?.member_id || member?.phone}</Text>
+                  </View>
+                </View>
+
+                {/* Duration */}
+                <Text style={styles.sectionTitle}>1. Membership Duration</Text>
+                <View style={styles.card}>
+                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Start Date</Text>
+                      <TouchableOpacity style={styles.dateInputBox} onPress={() => { setDatePickerType('start'); setShowDatePicker(true); }}>
+                        <FontAwesome name="calendar" size={14} color={colors.primary} style={{ marginRight: 8 }} />
+                        <Text style={styles.dateInputText}>{renewalStartDate ? renewalStartDate.split('-').reverse().join('/') : 'Select Date'}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={{ backgroundColor: timingStartAmPm === 'PM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 4, marginRight: 8 }} 
-                        onPress={() => setTimingStartAmPm('PM')}>
-                        <Text style={{ color: timingStartAmPm === 'PM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>PM</Text>
-                      </TouchableOpacity>
-                      
-                      <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '800', marginHorizontal: 8 }}>TO</Text>
-                      
-                      <TextInput 
-                        style={{ flex: 1, color: colors.text, fontSize: 14, marginLeft: 8 }} 
-                        placeholder="05:00" 
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric" 
-                        value={timingEndHour} 
-                        onChangeText={(t) => setTimingEndHour(formatTimeInput(t))} 
-                      />
-                      <TouchableOpacity 
-                        style={{ backgroundColor: timingEndAmPm === 'AM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 4, marginRight: 4 }} 
-                        onPress={() => setTimingEndAmPm('AM')}>
-                        <Text style={{ color: timingEndAmPm === 'AM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>AM</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={{ backgroundColor: timingEndAmPm === 'PM' ? colors.primary : 'transparent', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 4 }} 
-                        onPress={() => setTimingEndAmPm('PM')}>
-                        <Text style={{ color: timingEndAmPm === 'PM' ? '#fff' : colors.textSecondary, fontSize: 11, fontWeight: '700' }}>PM</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>End Date</Text>
+                      <TouchableOpacity style={styles.dateInputBox} onPress={() => { setDatePickerType('end'); setShowDatePicker(true); }}>
+                        <FontAwesome name="calendar-check-o" size={14} color={colors.primary} style={{ marginRight: 8 }} />
+                        <Text style={styles.dateInputText}>{renewalEndDate ? renewalEndDate.split('-').reverse().join('/') : 'Select Date'}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
-                </View>
-              </View>
-            )}
 
-            {businessType === 'library' && (
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: spacing.s }}>
-                  <TouchableOpacity onPress={() => setShowSeatModal(true)}>
-                    <ModernInput
-                      label="Allocated Seat"
-                      value={allocatedSeat}
-                      editable={false}
-                      placeholder="Select Seat"
-                      icon={<FontAwesome name="desktop" size={14} color={colors.primary} />}
-                    />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ flex: 1, marginLeft: spacing.s }}>
-                  <TouchableOpacity onPress={() => setShowWifiModal(true)}>
-                    <ModernInput
-                      label="WiFi Network"
-                      value={wifiDetails}
-                      editable={false}
-                      placeholder="Select WiFi"
-                      icon={<FontAwesome name="wifi" size={14} color={colors.primary} />}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+                  <Text style={[styles.inputLabel, { marginTop: 4 }]}>QUICK PRESETS (DAYS)</Text>
+                  <View style={styles.pillRow}>
+                    {[30, 90, 180].map((val) => (
+                      <TouchableOpacity key={`preset-days-${val}`} style={[styles.pill, { borderColor: colors.border }]} onPress={() => { const d = new Date(renewalStartDate); d.setDate(d.getDate() + val); setRenewalEndDate(d.toISOString().split('T')[0]); }}>
+                        <Text style={[styles.pillText, { color: colors.text }]}>+{val} Days</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
 
-            {/* Payment Mode Selector */}
-            <View style={styles.selectorContainer}>
-              <Text style={styles.selectorLabel}>Payment Mode</Text>
-              <View style={styles.selectorRow}>
-                {['Cash', 'UPI', 'Card'].map((mode) => {
-                  const isSelected = paymentMode === mode;
-                  return (
-                    <TouchableOpacity
-                      key={mode}
-                      onPress={() => setPaymentMode(mode)}
-                      style={[styles.selectorBtn, isSelected && styles.selectorBtnActive]}
-                    >
-                      <Text style={[styles.selectorText, isSelected && styles.selectorTextActive]}>
-                        {mode}
+                  <Text style={[styles.inputLabel, { marginTop: 12 }]}>QUICK PRESETS (MONTHS)</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8, gap: 8 }}>
+                    {[1, 2, 3, 4, 5, 6, 12].map((val) => (
+                      <TouchableOpacity key={`preset-months-${val}`} style={[styles.pill, { borderColor: colors.border }]} onPress={() => { const d = new Date(renewalStartDate); d.setMonth(d.getMonth() + val); setRenewalEndDate(d.toISOString().split('T')[0]); }}>
+                        <Text style={[styles.pillText, { color: colors.text }]}>{val}M</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <View style={[styles.expiryVisualizer, { marginTop: 12 }]}>
+                    <FontAwesome name="info-circle" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                    <Text style={[styles.expiryLabel, { color: colors.text, marginBottom: 0 }]}>Calculated Duration: <Text style={{ fontWeight: '800' }}>{durationDays} Days</Text></Text>
+                  </View>
+                </View>
+
+                {/* Fee */}
+                <Text style={styles.sectionTitle}>2. Membership Fee</Text>
+                <View style={styles.card}>
+                  <Text style={styles.inputLabel}>Final Amount (₹)</Text>
+                  <TextInput
+                    style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                    keyboardType="numeric"
+                    value={amount}
+                    onChangeText={setAmount}
+                    placeholder="Enter amount"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+
+                {/* Status */}
+                <Text style={styles.sectionTitle}>3. Payment Status</Text>
+                <View style={styles.card}>
+                  <View style={styles.paymentStatusRow}>
+                    <PaymentStatusPill id="paid" label="Paid" />
+                    <PaymentStatusPill id="partial" label="Partial" />
+                    <PaymentStatusPill id="pending" label="Pending" />
+                  </View>
+                  {paymentStatus === 'partial' && (
+                    <View style={{ marginTop: spacing.m }}>
+                      <Text style={styles.inputLabel}>Amount Paid So Far (₹)</Text>
+                      <TextInput
+                        style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                        keyboardType="numeric"
+                        value={amountPaid}
+                        onChangeText={setAmountPaid}
+                        placeholder="Enter paid amount"
+                        placeholderTextColor={colors.textMuted}
+                      />
+                      <Text style={{ fontSize: 11, color: colors.error, marginTop: 4 }}>
+                        Remaining Due: ₹{Math.max(0, (parseFloat(amount) || 0) - (parseFloat(amountPaid) || 0))}
                       </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                    </View>
+                  )}
+                  {paymentStatus !== 'pending' && (
+                    <View style={{ marginTop: spacing.m }}>
+                      <Text style={styles.inputLabel}>Payment Mode</Text>
+                      <View style={styles.pillRow}>
+                        {['Cash', 'UPI', 'Card'].map(mode => (
+                          <TouchableOpacity
+                            key={mode}
+                            style={[styles.pill, paymentMode === mode ? { backgroundColor: colors.primary, borderColor: colors.primary } : { borderColor: colors.border }]}
+                            onPress={() => setPaymentMode(mode)}
+                          >
+                            <Text style={[styles.pillText, paymentMode === mode ? { color: '#fff' } : { color: colors.text }]}>{mode}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                <View style={{ height: 100 }} />
+              </ScrollView>
+
+              <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+                <TouchableOpacity onPress={handleReview}>
+                  <LinearGradient colors={[colors.primary, colors.secondary || colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.confirmBtn}>
+                    <Text style={styles.confirmBtnText}>Review Renewal</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {step === 'review' && (
+            <View style={styles.reviewContainer}>
+              <View style={styles.header}>
+                <TouchableOpacity onPress={() => setStep('edit')} style={styles.backBtn}>
+                  <FontAwesome name="arrow-left" size={18} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Confirm Renewal</Text>
+                <TouchableOpacity onPress={onClose} style={styles.backBtn}>
+                  <FontAwesome name="times" size={18} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentContainerStyle={styles.reviewScroll}>
+                <View style={styles.shieldIconContainer}>
+                  <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.shieldIcon}>
+                    <FontAwesome name="shield" size={40} color="#fff" />
+                  </LinearGradient>
+                  <Text style={styles.reviewMainTitle}>Renew Membership?</Text>
+                </View>
+
+                <View style={styles.reviewCard}>
+                  <View style={[styles.memberInfoRow, { marginBottom: 24 }]}>
+                    <View style={[styles.avatarSm, { backgroundColor: `${colors.primary}20` }]}>
+                      <Text style={[styles.avatarSmText, { color: colors.primary }]}>{member?.full_name?.charAt(0) || 'M'}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.memberName}>{member?.full_name}</Text>
+                      <Text style={styles.memberId}>{member?.member_id || member?.phone}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.reviewDivider} />
+
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewRowLabel}>New Expiry Date</Text>
+                    <Text style={styles.reviewRowValue}>
+                      {new Date(renewalEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric'})}
+                    </Text>
+                  </View>
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewRowLabel}>Final Amount</Text>
+                    <Text style={styles.reviewRowValue}>₹{finalAmount}</Text>
+                  </View>
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewRowLabel}>Payment Status</Text>
+                    <Text style={[styles.reviewRowValue, { color: paymentStatus === 'paid' ? colors.success : paymentStatus === 'partial' ? '#F59E0B' : colors.error }]}>
+                      {paymentStatus === 'paid' ? 'Paid' : paymentStatus === 'partial' ? `₹${finalAmountPaid} Paid` : 'Pending'}
+                    </Text>
+                  </View>
+                  {paymentStatus !== 'pending' && (
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewRowLabel}>Payment Mode</Text>
+                      <Text style={styles.reviewRowValue}>{paymentMode}</Text>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+
+              <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border, flexDirection: 'row', gap: 12 }]}>
+                <TouchableOpacity onPress={() => setStep('edit')} style={[styles.cancelBtn, { borderColor: colors.border }]}>
+                  <Text style={[styles.cancelBtnText, { color: colors.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleConfirmAction} style={{ flex: 1 }} disabled={isSaving}>
+                  <LinearGradient colors={[colors.primary, colors.secondary || colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.confirmBtn, { opacity: isSaving ? 0.7 : 1 }]}>
+                    <Text style={styles.confirmBtnText}>{isSaving ? 'Renewing...' : 'Confirm Renewal'}</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
+          )}
 
-          {/* Date Picker Modal */}
-          <DatePickerModal
-            visible={showDatePicker}
-            onClose={() => setShowDatePicker(false)}
-            onSelect={(date) => {
-              if (datePickerType === 'joining') {
-                const currentDue = member.next_due_date ? new Date(member.next_due_date) : null;
-                let minDateStr = '';
-                if (currentDue && !isNaN(currentDue.getTime())) {
-                  const y = currentDue.getFullYear();
-                  const mo = String(currentDue.getMonth() + 1).padStart(2, '0');
-                  const d = String(currentDue.getDate()).padStart(2, '0');
-                  minDateStr = `${y}-${mo}-${d}`;
-                } else {
-                  const today = new Date();
-                  minDateStr = today.toISOString().split('T')[0];
-                }
-                if (date < minDateStr) {
-                  const [y, mo, d] = minDateStr.split('-');
-                  showError('Invalid Date', `Start date cannot be before ${d}/${mo}/${y}.`);
-                } else {
-                  setJoiningDate(date);
-                  const nd = new Date(date);
-                  nd.setMonth(nd.getMonth() + 1);
-                  setExpiryDate(nd.toISOString().split('T')[0]);
-                }
-              } else {
-                if (date < joiningDate) {
-                  showError('Invalid Date', 'Expiry date cannot be before start date.');
-                } else {
-                  setExpiryDate(date);
-                }
-              }
-            }}
-            initialDate={datePickerType === 'joining' ? joiningDate : expiryDate}
-            title={datePickerType === 'joining' ? 'Select Start Date' : 'Select Expiry Date'}
-          />
+          {step === 'success' && (
+            <View style={styles.successContainer}>
+              <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 20 }}>
+                {/* Simulated Sparkles */}
+                <View style={styles.successIconWrapper}>
+                  <FontAwesome name="check-circle" size={80} color={colors.success} />
+                </View>
+                <Text style={styles.successMainTitle}>Membership Renewed!</Text>
+                <Text style={styles.successSubTitle}>Successfully renewed membership for</Text>
+                <Text style={[styles.successSubTitle, { color: colors.primary, fontWeight: '700' }]}>{member?.full_name}</Text>
+              </View>
 
-          {/* Footer Actions */}
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText} adjustsFontSizeToFit numberOfLines={1}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-              <Text style={styles.confirmBtnText} adjustsFontSizeToFit numberOfLines={1}>Renew Member</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    
-      <DropdownModal
-        visible={showSeatModal}
-        title="Select Seat"
-        items={availableSeats.map(s => ({
-          label: s.status === 'Available' ? `${s.seat_number} (Available)` : s.status === 'Reserved' ? `${s.seat_number} (Reserved)` : `${s.seat_number} (Occupied: ${s.allotted_members?.map((m:any) => m.name).join(', ') || 'Unknown'})`,
-          value: s.seat_number
-        }))}
-        onSelect={(val) => setAllocatedSeat(val.value)}
-        onClose={() => setShowSeatModal(false)}
-      />
-      <DropdownModal
-        visible={showWifiModal}
-        title="Select WiFi Network"
-        items={wifiOptions.map(w => ({
-          label: `${w.name} (Pass: ${w.password})`,
-          value: w.name
-        }))}
-        onSelect={(val) => setWifiDetails(val.value)}
-        onClose={() => setShowWifiModal(false)}
-      />
+              <View style={styles.successChecklist}>
+                <View style={styles.checkRow}>
+                  <View style={[styles.checkCircle, { backgroundColor: colors.success }]}><FontAwesome name="check" size={10} color="#fff" /></View>
+                  <Text style={styles.checkText}>Expiry Date Updated</Text>
+                  <Text style={styles.checkValue}>
+                    {new Date(renewalEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric'})}
+                  </Text>
+                </View>
+                <View style={styles.checkRow}>
+                  <View style={[styles.checkCircle, { backgroundColor: colors.success }]}><FontAwesome name="check" size={10} color="#fff" /></View>
+                  <Text style={styles.checkText}>Amount Collected</Text>
+                  <Text style={styles.checkValue}>₹{finalAmountPaid}</Text>
+                </View>
+                <View style={styles.checkRow}>
+                  <View style={[styles.checkCircle, { backgroundColor: colors.success }]}><FontAwesome name="check" size={10} color="#fff" /></View>
+                  <Text style={styles.checkText}>Database Synced</Text>
+                </View>
+              </View>
 
-      <AlertModal />
+              <View style={styles.successFooter}>
+                <TouchableOpacity onPress={handleSendReceipt}>
+                  <LinearGradient colors={['#25D366', '#128C7E']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.confirmBtn}>
+                    <FontAwesome name="whatsapp" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.confirmBtnText}>Send WhatsApp Receipt</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onClose} style={styles.doneBtnGhost}>
+                  <Text style={[styles.doneBtnGhostText, { color: colors.textMuted }]}>Done (Close)</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <DatePickerModal visible={showDatePicker} initialDate={datePickerType === 'start' ? renewalStartDate : renewalEndDate} onSelect={(d) => { if (datePickerType === 'start') setRenewalStartDate(d); else setRenewalEndDate(d); setShowDatePicker(false); }} onClose={() => setShowDatePicker(false)} />
+          <DropdownModal visible={showSeatModal} items={availableSeats.map(s => s.seat_number)} onSelect={(val) => { setAllocatedSeat(val); setShowSeatModal(false); }} onClose={() => setShowSeatModal(false)} title="Select Seat" />
+          <DropdownModal visible={showWifiModal} items={wifiOptions} onSelect={(val) => { setWifiDetails(val); setShowWifiModal(false); }} onClose={() => setShowWifiModal(false)} title="Select WiFi" />
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.m,
-  },
-  alertBox: {
-    backgroundColor: colors.surface,
-    padding: spacing.l,
-    borderRadius: borderRadius.l,
-    width: '100%',
-    maxHeight: height * 0.88,
-    ...shadows.premium,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.m,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingBottom: spacing.s,
-  },
-  titleContainer: { flex: 1 },
-  title: { color: colors.text, fontSize: 22, fontWeight: '800', letterSpacing: -0.5 },
-  subtitle: { color: colors.textSecondary, fontSize: 14, marginTop: 2 },
-  closeBtn: { padding: 4 },
-  scrollContainer: { marginBottom: spacing.m },
-  previewContainer: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: borderRadius.m,
-    padding: spacing.m,
-    marginBottom: spacing.m,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  previewLabel: { color: colors.textSecondary, fontSize: 13 },
-  previewValue: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  presetsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingRight: 20,
-    marginBottom: spacing.m,
-    marginTop: spacing.xs,
-  },
-  presetBtn: {
-    width: 60,
-    backgroundColor: colors.surfaceLight,
-    paddingVertical: 8,
-    borderRadius: borderRadius.s,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  presetText: { color: colors.textSecondary, fontSize: 12, fontWeight: '700' },
-  // Hours Box
-  hoursBox: {
-    backgroundColor: `${colors.primary}08`,
-    borderRadius: borderRadius.m,
-    borderWidth: 1,
-    borderColor: `${colors.primary}25`,
-    padding: spacing.m,
-    marginBottom: spacing.m,
-  },
-  hoursHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: spacing.s,
-  },
-  hoursTitle: {
-    color: colors.primary,
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  selectorContainer: { marginBottom: spacing.m },
-  selectorLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    letterSpacing: 0.5,
-  },
-  selectorRow: { flexDirection: 'row', gap: 8 },
-  selectorBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceLight,
-    borderRadius: borderRadius.m,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  selectorBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  selectorText: { color: colors.textSecondary, fontWeight: '600', fontSize: 14 },
-  selectorTextActive: { color: 'white' },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.m,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.m,
-  },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: borderRadius.m,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cancelBtnText: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
-  confirmBtn: {
-    flex: 2,
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: borderRadius.m,
-    alignItems: 'center',
-  },
-  confirmBtnText: { color: 'white', fontSize: 15, fontWeight: '700' },
-  row: { flexDirection: 'row' },
-  durationDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.05)',
-    padding: 10,
-    borderRadius: borderRadius.s,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.15)',
-    marginBottom: spacing.m,
-  },
-  durationDisplayText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
-  partialPayBox: {
-    borderRadius: borderRadius.m,
-    borderWidth: 1,
-    padding: spacing.m,
-    marginBottom: spacing.m,
-  },
+const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
+  modalBg: { flex: 1, backgroundColor: colors.background },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.l, paddingTop: Platform.OS === 'android' ? 40 : 16, paddingBottom: 16, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  backBtn: { padding: 8 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  scroll: { flex: 1 },
+  scrollContent: { padding: spacing.l },
+
+  memberInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.l },
+  avatarSm: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  avatarSmText: { fontSize: 18, fontWeight: '700' },
+  memberName: { fontSize: 16, fontWeight: '700', color: colors.text },
+  memberId: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: spacing.s, marginLeft: 4 },
+  card: { backgroundColor: colors.surface, borderRadius: borderRadius.l, padding: spacing.l, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.l, ...shadows.card },
+  
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.m },
+  pill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: borderRadius.full, borderWidth: 1 },
+  pillText: { fontSize: 13, fontWeight: '600' },
+
+  dateInputBox: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.m, padding: 12, backgroundColor: colors.background },
+  dateInputText: { fontSize: 14, color: colors.text, fontWeight: '500' },
+  
+  expiryVisualizer: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1F2937' : '#F9FAFB', padding: spacing.m, borderRadius: borderRadius.m },
+  expiryBox: { flex: 1 },
+  expiryLabel: { fontSize: 11, color: colors.textMuted, marginBottom: 4 },
+  expiryDateText: { fontSize: 14, fontWeight: '700', color: colors.text },
+
+  inputLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: borderRadius.m, padding: 12, fontSize: 15 },
+  
+  paymentStatusRow: { flexDirection: 'row', gap: 12 },
+  statusRadio: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 8, borderRadius: borderRadius.m, borderWidth: 1, borderColor: colors.border },
+  radioCircle: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: colors.textMuted, alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 8, height: 8, borderRadius: 4 },
+  statusRadioText: { fontSize: 13, fontWeight: '600' },
+
+  footer: { padding: spacing.l, paddingBottom: Platform.OS === 'ios' ? 34 : spacing.l, borderTopWidth: 1 },
+  confirmBtn: { paddingVertical: 16, borderRadius: borderRadius.l, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' },
+  confirmBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // Review Screen
+  reviewContainer: { flex: 1, backgroundColor: colors.background },
+  reviewScroll: { padding: spacing.xl, alignItems: 'center' },
+  shieldIconContainer: { alignItems: 'center', marginBottom: 32, marginTop: 20 },
+  shieldIcon: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  reviewMainTitle: { fontSize: 22, fontWeight: '800', color: colors.text },
+  reviewCard: { width: '100%', backgroundColor: colors.surface, borderRadius: borderRadius.l, padding: spacing.xl, borderWidth: 1, borderColor: colors.border, ...shadows.card },
+  reviewDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.l },
+  reviewRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.m },
+  reviewRowLabel: { fontSize: 14, color: colors.textMuted },
+  reviewRowValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+  cancelBtn: { flex: 1, paddingVertical: 16, borderRadius: borderRadius.l, alignItems: 'center', borderWidth: 1, backgroundColor: colors.surface },
+  cancelBtnText: { fontSize: 16, fontWeight: '600' },
+
+  // Success Screen
+  successContainer: { flex: 1, backgroundColor: colors.background, padding: spacing.xl },
+  successIconWrapper: { width: 100, height: 100, borderRadius: 50, backgroundColor: `${colors.success}15`, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  successMainTitle: { fontSize: 24, fontWeight: '800', color: colors.text, marginBottom: 8 },
+  successSubTitle: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
+  successChecklist: { backgroundColor: colors.surface, borderRadius: borderRadius.l, padding: spacing.xl, borderWidth: 1, borderColor: colors.border, marginTop: 32, ...shadows.card },
+  checkRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  checkCircle: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  checkText: { flex: 1, fontSize: 14, color: colors.textSecondary },
+  checkValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+  successFooter: { marginTop: 'auto', marginBottom: Platform.OS === 'ios' ? 20 : 0 },
+  doneBtnGhost: { paddingVertical: 16, alignItems: 'center', marginTop: 12 },
+  doneBtnGhostText: { fontSize: 15, fontWeight: '600' }
 });

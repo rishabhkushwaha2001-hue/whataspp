@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { GlassCard } from '../components/GlassCard';
 import { CustomAlert } from '../components/CustomAlert';
@@ -13,8 +14,9 @@ import { RenewalModal } from '../components/RenewalModal';
 import { fetchMessageTemplates, buildReminderMessage, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
 
 export const RemindersScreen = () => {
-  const { colors } = useTheme();
-  const styles = getStyles(colors);
+  const { theme, colors } = useTheme();
+  const isDark = theme === 'dark';
+  const styles = getStyles(colors, isDark);
   const [members, setMembers] = useState<any[]>([]);
   const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
@@ -242,70 +244,126 @@ export const RemindersScreen = () => {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
         renderItem={({ item }) => {
-          const isExpired = item.remaining_days <= 0;
-          const initials = item.full_name.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();
+          const now = new Date();
+          const dueDate = new Date(item.next_due_date);
+          const isExpired = dueDate < now;
+          const daysLeft = item.remaining_days;
+          const isDueSoon = !isExpired && daysLeft <= 7;
+          const memberId = item.id || item._id;
+
+          const initials = item.full_name
+            .split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();
           const avatarColors = ['#8B5CF6','#EC4899','#10B981','#F59E0B','#3B82F6'];
           const avatarColor = avatarColors[item.full_name.charCodeAt(0) % avatarColors.length];
+
+          const statusLabel = isExpired ? 'Expired' : isDueSoon ? 'Due Soon' : 'Active';
+          const statusColor = isExpired ? colors.error : isDueSoon ? (colors.warning || '#F59E0B') : colors.success;
+
+          const joiningDateStr = item.joining_date
+            ? new Date(item.joining_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : null;
+          const dueDateStr = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
           return (
-            <TouchableOpacity activeOpacity={0.75} onPress={() => router.push(`/members/${item.id || item._id}`)}>
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.accentBar, { backgroundColor: isExpired ? colors.error : colors.warning }]} />
-                <View style={styles.cardInner}>
-                  <View style={styles.topRow}>
-                    <View style={[styles.avatar, { backgroundColor: `${avatarColor}20` }]}>
-                      <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => router.push(`/members/${memberId}`)}
+              style={styles.cardWrapper}
+            >
+              <View style={styles.card}>
+                {/* Avatar */}
+                <View style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40` }]}>
+                  <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+                </View>
+
+                {/* Main content */}
+                <View style={styles.cardBody}>
+                  {/* Row 1: Name + Status pill */}
+                  <View style={styles.cardRow}>
+                    <Text style={styles.memberName} numberOfLines={1}>{item.full_name}</Text>
+                    <View style={[styles.statusPill, { backgroundColor: `${statusColor}18` }]}>
+                      <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                      <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
                     </View>
-                    <View style={styles.nameBlock}>
-                      <Text style={[styles.memberName, { color: colors.text }]} numberOfLines={1}>{item.full_name}</Text>
-                      <Text style={[styles.memberPhone, { color: colors.textMuted }]}>{item.phone}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {item.pending_amount > 0 && (
-                        <View style={[styles.badge, { backgroundColor: `${colors.error}15` }]}>
-                          <Text style={[styles.badgeText, { color: colors.error }]}>Partial</Text>
-                        </View>
-                      )}
-                      <View style={[styles.badge, { backgroundColor: isExpired ? `${colors.error}15` : `${colors.warning}15` }]}>
-                        <Text style={[styles.badgeText, { color: isExpired ? colors.error : colors.warning }]}>
-                          {isExpired ? 'EXPIRED' : `${item.remaining_days}d left`}
+                  </View>
+
+                  {/* Row 2: Member ID + Plan */}
+                  <View style={styles.cardRow2}>
+                    <Text style={styles.memberId}>{item.member_id || item.phone}</Text>
+                    {item.plan_name || item.plan_duration_months ? (
+                      <View style={styles.planBadge}>
+                        <FontAwesome name="star" size={9} color={colors.primary} />
+                        <Text style={[styles.planText, { color: colors.primary }]}>
+                          {item.plan_name || `${item.plan_duration_months}M Plan`}
                         </Text>
                       </View>
-                    </View>
+                    ) : null}
                   </View>
 
-                  <View style={styles.infoRow}>
-                    <View style={styles.infoChip}>
-                      <FontAwesome name="calendar" size={10} color={colors.textMuted} />
-                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                        {new Date(item.next_due_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short' })}
+                  {/* Row 3: Dates */}
+                  {joiningDateStr && (
+                    <Text style={styles.dateRange}>
+                      {joiningDateStr} – {dueDateStr}
+                    </Text>
+                  )}
+
+                  {/* Row 4: Fee + Days */}
+                  <View style={styles.cardRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.feeText}>₹{item.monthly_fees || item.plan_fee || 0}</Text>
+                      {item.pending_amount > 0 ? (
+                        <View style={[styles.dueBadge, { backgroundColor: `${colors.error}15` }]}>
+                          <Text style={[styles.dueText, { color: colors.error }]}>Partial</Text>
+                        </View>
+                      ) : (
+                        <Text style={[styles.paidLabel, { color: colors.success }]}>Paid</Text>
+                      )}
+                    </View>
+                    <View style={styles.daysBox}>
+                      <Text style={[styles.daysNum, { color: isExpired ? colors.error : daysLeft <= 7 ? (colors.warning || '#F59E0B') : colors.text }]}>
+                        {Math.abs(daysLeft)}
                       </Text>
-                    </View>
-                    <View style={styles.infoChip}>
-                      <FontAwesome name="money" size={10} color={colors.accent} />
-                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>₹{item.monthly_fees}</Text>
-                    </View>
-                    <View style={styles.infoChip}>
-                      <FontAwesome name="clock-o" size={10} color={colors.primary} />
-                      <Text style={[styles.infoText, { color: colors.textSecondary }]}>{item.plan_duration_months}M Plan</Text>
+                      <Text style={styles.daysLabel}>{isExpired ? 'ago' : 'Days Left'}</Text>
                     </View>
                   </View>
 
+                  {/* Divider */}
                   <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
+                  {/* Action buttons */}
                   <View style={styles.actionsRow}>
                     <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: '#25D36615', borderColor: '#25D36630' }]}
+                      style={[styles.actionBtn, { borderColor: colors.border }]}
+                      onPress={() => {
+                        const callPhone = item.phone?.length > 10 && item.phone.startsWith('91')
+                          ? item.phone.substring(2) : item.phone;
+                        Linking.openURL(`tel:${callPhone}`);
+                      }}
+                    >
+                      <FontAwesome name="phone" size={13} color={colors.primary} />
+                      <Text style={[styles.actionText, { color: colors.textSecondary }]}>Call</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { borderColor: colors.border }]}
                       onPress={() => sendReminder(item)}
                     >
-                      <FontAwesome name="whatsapp" size={14} color="#25D366" />
-                      <Text style={[styles.actionText, { color: '#25D366' }]}>Remind</Text>
+                      <FontAwesome name="whatsapp" size={13} color="#25D366" />
+                      <Text style={[styles.actionText, { color: colors.textSecondary }]}>Remind</Text>
                     </TouchableOpacity>
+
                     <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]}
+                      style={styles.renewBtn}
                       onPress={() => handleRenew(item)}
                     >
-                      <FontAwesome name="refresh" size={14} color={colors.primary} />
-                      <Text style={[styles.actionText, { color: colors.primary }]}>Renew</Text>
+                      <LinearGradient
+                        colors={[colors.primary, colors.secondary || colors.primary]}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={styles.renewGradient}
+                      >
+                        <FontAwesome name="refresh" size={12} color="#fff" />
+                        <Text style={styles.renewText}>Renewal</Text>
+                      </LinearGradient>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -315,11 +373,11 @@ export const RemindersScreen = () => {
         }}
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIcon, { backgroundColor: `${colors.accent}15` }]}>
-              <FontAwesome name="check-circle" size={32} color={colors.accent} />
+            <View style={styles.emptyIcon}>
+              <FontAwesome name="check-circle" size={48} color={colors.success} />
             </View>
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up!</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>No renewals due in the next 5 days</Text>
+            <Text style={styles.emptyTitle}>All caught up!</Text>
+            <Text style={styles.emptySubtitle}>No renewals due in the next 5 days</Text>
           </View>
         )}
       />
@@ -327,7 +385,7 @@ export const RemindersScreen = () => {
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
+const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.m, paddingTop: 56, paddingBottom: 100 },
   header: { marginBottom: spacing.l, paddingHorizontal: spacing.s },
@@ -341,43 +399,80 @@ const getStyles = (colors: any) => StyleSheet.create({
   searchInput: { flex: 1, fontSize: 14 },
 
   // Card
+  cardWrapper: { marginBottom: spacing.m },
   card: {
-    flexDirection: 'row', borderRadius: borderRadius.l,
-    marginBottom: spacing.m, borderWidth: 1, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.xl,
+    padding: spacing.m,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
-  accentBar: { width: 4 },
-  cardInner: { flex: 1, padding: spacing.m },
-  topRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.s },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  avatarText: { fontSize: 14, fontWeight: '800' },
-  nameBlock: { flex: 1, marginRight: 8 },
-  memberName: { fontSize: 15, fontWeight: '700' },
-  memberPhone: { fontSize: 12, marginTop: 1 },
-  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: borderRadius.full },
-  badgeText: { fontSize: 10, fontWeight: '800' },
 
-  infoRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.s },
-  infoChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  infoText: { fontSize: 12 },
-  divider: { height: 1, marginBottom: spacing.s },
+  // Avatar
+  avatar: {
+    width: 52, height: 52, borderRadius: 26,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.m, borderWidth: 1.5,
+    alignSelf: 'flex-start', marginTop: 2,
+  },
+  avatarText: { fontSize: 18, fontWeight: '800' },
 
-  actionsRow: { flexDirection: 'row', gap: 8 },
+  // Card Body
+  cardBody: { flex: 1 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  cardRow2: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+
+  memberName: { fontSize: 15, fontWeight: '700', color: colors.text, flex: 1, letterSpacing: -0.2 },
+  memberId: { fontSize: 11, color: colors.textMuted, fontWeight: '500' },
+
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: borderRadius.full,
+  },
+  statusDot: { width: 5, height: 5, borderRadius: 3 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+
+  planBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: borderRadius.s,
+    backgroundColor: `${colors.primary}12`,
+  },
+  planText: { fontSize: 10, fontWeight: '700' },
+
+  dateRange: { fontSize: 10, color: colors.textMuted, marginBottom: 6 },
+
+  feeText: { fontSize: 14, fontWeight: '800', color: colors.text },
+  paidLabel: { fontSize: 10, fontWeight: '600' },
+  dueBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  dueText: { fontSize: 10, fontWeight: '700' },
+
+  daysBox: { alignItems: 'center' },
+  daysNum: { fontSize: 22, fontWeight: '800', lineHeight: 24 },
+  daysLabel: { fontSize: 9, color: colors.textMuted, fontWeight: '600' },
+
+  divider: { height: 1, marginVertical: spacing.s },
+
+  // Actions
+  actionsRow: { flexDirection: 'row', gap: 6 },
   actionBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 8, borderRadius: borderRadius.m, borderWidth: 1,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 8, borderRadius: borderRadius.m,
+    borderWidth: 1,
+    backgroundColor: isDark ? '#111827' : '#F9FAFB',
   },
-  actionText: { fontSize: 12, fontWeight: '700' },
+  actionText: { fontSize: 11, fontWeight: '600' },
+  renewBtn: { flex: 1.2, borderRadius: borderRadius.m, overflow: 'hidden' },
+  renewGradient: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingVertical: 8, paddingHorizontal: 10,
+  },
+  renewText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
-  emptyContainer: { marginTop: 80, alignItems: 'center', gap: 10 },
-  emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
-  emptyTitle: { fontSize: 17, fontWeight: '700' },
-  emptySubtitle: { fontSize: 13 },
-
-  // legacy (kept for safety)
-  infoContainer: { flex: 1 },
-  mainInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' },
-  dueRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  memberDue: { fontSize: 12, color: colors.textMuted },
+  emptyContainer: { marginTop: 80, alignItems: 'center', gap: 12 },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
+  emptySubtitle: { fontSize: 14, color: colors.textMuted },
 });

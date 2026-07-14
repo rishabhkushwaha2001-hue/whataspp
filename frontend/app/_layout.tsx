@@ -9,6 +9,7 @@ export default function RootLayout() {
         <Stack.Screen name="super-admin" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="members/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="revenue" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

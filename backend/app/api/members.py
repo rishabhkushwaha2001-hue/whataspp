@@ -244,22 +244,38 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     if period == 'year':
         start_of_period = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         end_of_period = now + timedelta(days=366)
+        prev_start = start_of_period.replace(year=start_of_period.year - 1)
+        prev_end = start_of_period
+        compare_label = "vs Last Year"
     elif period == 'prev_month':
         first_day_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_of_period = first_day_this_month
         start_of_period = (first_day_this_month - timedelta(days=1)).replace(day=1)
+        prev_end = start_of_period
+        prev_start = (start_of_period - timedelta(days=1)).replace(day=1)
+        compare_label = "vs Month Before"
     elif period == 'all':
         start_of_period = now.replace(year=2000, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         end_of_period = now + timedelta(days=3660) # Far future
+        prev_start = start_of_period
+        prev_end = start_of_period
+        compare_label = ""
     else: # Default to month
         start_of_period = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         end_of_period = now + timedelta(days=32)
+        prev_end = start_of_period
+        prev_start = (start_of_period - timedelta(days=1)).replace(day=1)
+        compare_label = "vs Last Month"
     
     # Revenue based on period
     period_payments_cursor = db["payments"].find({"payment_date": {"$gte": start_of_period, "$lt": end_of_period}})
     period_payments = await period_payments_cursor.to_list(length=5000)
     monthly_revenue = sum(float(p.get("amount", 0)) for p in period_payments)
     
+    prev_payments_cursor = db["payments"].find({"payment_date": {"$gte": prev_start, "$lt": prev_end}})
+    prev_payments = await prev_payments_cursor.to_list(length=5000)
+    prev_revenue = sum(float(p.get("amount", 0)) for p in prev_payments)
+
     # Today's Collections (Always today)
     today_payments_cursor = db["payments"].find({"payment_date": {"$gte": start_of_today}})
     today_payments = await today_payments_cursor.to_list(length=1000)
@@ -270,7 +286,27 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     renewal_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Renewal"})
     manual_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Manual"})
     
+    # Prev Total Members
+    prev_total_members = await db["members"].count_documents({"created_at": {"$lt": prev_end}})
+    
+    # Prev Active/Expired (Approximation)
+    prev_active_members = await db["members"].count_documents({
+        "created_at": {"$lt": prev_end},
+        "next_due_date": {"$gt": prev_end}
+    })
+    prev_expired_members = prev_total_members - prev_active_members
 
+    # Yesterday's Attendance
+    now_ist = now + timedelta(hours=5, minutes=30)
+    today_start_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday_start_ist = today_start_ist - timedelta(days=1)
+    
+    today_start_utc = today_start_ist - timedelta(hours=5, minutes=30)
+    yesterday_start_utc = yesterday_start_ist - timedelta(hours=5, minutes=30)
+    
+    yesterday_attendance_count = await db["attendance"].count_documents({
+        "check_in_time": {"$gte": yesterday_start_utc, "$lt": today_start_utc}
+    })
 
     return {
         "total_members": total_members,
@@ -283,7 +319,13 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
         "todays_collections": todays_collections,
         "new_members_count": new_members,
         "renewal_members_count": renewal_members,
-        "manual_members_count": manual_members
+        "manual_members_count": manual_members,
+        "prev_revenue": prev_revenue,
+        "prev_total_members": prev_total_members,
+        "prev_active_members": prev_active_members,
+        "prev_expired_members": prev_expired_members,
+        "compare_label": compare_label,
+        "yesterday_attendance_count": yesterday_attendance_count
     }
 
 @router.get("/attendance/today")

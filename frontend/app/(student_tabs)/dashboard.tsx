@@ -102,8 +102,24 @@ export default function StudentDashboard() {
         <View style={styles.row}>
           <FontAwesome name="calendar" size={24} color="#f59e0b" />
           <View style={styles.textWrap}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>Plan Expiry</Text>
-            <Text style={{ color: colors.textSecondary }}>Valid till: {memberData?.next_due_date ? new Date(memberData.next_due_date).toLocaleDateString() : 'N/A'}</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Membership Plan</Text>
+            {(() => {
+              const history = Array.isArray(memberData?.payment_history) ? memberData.payment_history : [];
+              const sorted = [...history].sort((a: any, b: any) => {
+                return new Date(b.start_date || b.date || 0).getTime() -
+                       new Date(a.start_date || a.date || 0).getTime();
+              });
+              const latest = sorted[0];
+              const planStart = latest?.start_date || latest?.date;
+              const startDateStr = planStart ? new Date(planStart).toLocaleDateString() : (memberData?.joining_date ? new Date(memberData.joining_date).toLocaleDateString() : 'N/A');
+              const expiryDateStr = memberData?.next_due_date ? new Date(memberData.next_due_date).toLocaleDateString() : 'N/A';
+              
+              return (
+                <Text style={{ color: colors.textSecondary }}>
+                  {startDateStr} - {expiryDateStr}
+                </Text>
+              );
+            })()}
           </View>
         </View>
       </GlassCard>

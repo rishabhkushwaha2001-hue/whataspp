@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Modal, ScrollView,
-  StyleSheet, ActivityIndicator
+  StyleSheet, ActivityIndicator, Alert, Image, Platform
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius } from '../theme/theme';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DropdownModal } from './DropdownModal';
+import { DatePickerModal } from './DatePickerModal';
 import { useAppAlert } from '../hooks/useAppAlert';
+
 
 interface EditMemberModalProps {
   visible: boolean;
@@ -89,10 +92,11 @@ const formatTimeInput = (text: string) => {
 
 export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMemberModalProps) => {
   const { colors } = useTheme();
-  const { showError, AlertModal } = useAppAlert();
+  const { showError, showSuccess, AlertModal } = useAppAlert();
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+
   const [address, setAddress] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
   const [dailyHours, setDailyHours] = useState('');
@@ -101,6 +105,12 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   const [age, setAge] = useState('');
   const [weight, setWeight] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Plan Dates
+  const [joiningDate, setJoiningDate] = useState('');
+  const [nextDueDate, setNextDueDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerType, setDatePickerType] = useState<'joining' | 'nextDue'>('joining');
 
   // Timing — start + end with AM/PM (like RenewalModal)
   const [timingStartHour, setTimingStartHour] = useState('');
@@ -176,6 +186,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
     if (visible && member) {
       setFullName(member.full_name || '');
       setPhone(member.phone || '');
+
       setAddress(member.address || '');
       setAadhaarNumber(member.aadhaar_number || '');
       setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
@@ -184,6 +195,15 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       setAge(member.age ? String(member.age) : '');
       setWeight(member.weight ? String(member.weight) : '');
       setNotes(member.notes || '');
+      
+      const getLocalDateStr = (dateStr: string) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+      setJoiningDate(getLocalDateStr(member.joining_date));
+      setNextDueDate(getLocalDateStr(member.next_due_date));
+      
       parseTiming(member.timing || '');
       fetchSeats();
       fetchWifi();
@@ -225,9 +245,11 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
     } catch (e) { }
   };
 
+
+
   const handleSave = async () => {
     if (!fullName.trim()) {
-      showError('Missing Name', 'Name cannot be empty');
+      Alert.alert('Missing Name', 'Name cannot be empty');
       return;
     }
     setSaving(true);
@@ -248,8 +270,14 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       if (weight) payload.weight = parseFloat(weight);
       if (notes) payload.notes = notes;
 
+      
+      if (joiningDate) payload.joining_date = new Date(joiningDate).toISOString();
+      if (nextDueDate) payload.next_due_date = new Date(nextDueDate).toISOString();
+
       const res = await api.put(`/members/${memberId}`, payload);
-      onSaved(res.data);
+      showSuccess('Success', 'Member details updated successfully!', () => {
+        onSaved(res.data);
+      });
     } catch (e: any) {
       showError('Save Failed', e.response?.data?.detail || 'Failed to save changes');
     } finally {
@@ -299,11 +327,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
+          <KeyboardAwareScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" enableOnAndroid={true} extraScrollHeight={20}>
             {/* Basic Info */}
             <Text style={[styles.section, { color: colors.text }]}>👤 Basic Info</Text>
             <InputRow colors={colors} label="Full Name" value={fullName} onChangeText={setFullName} />
@@ -317,6 +341,32 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
               <View style={{ width: spacing.m }} />
               <View style={{ flex: 1 }}>
                 <InputRow colors={colors} label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" />
+              </View>
+            </View>
+
+            {/* Plan Dates */}
+            <Text style={[styles.section, { color: colors.text }]}>📅 Plan Dates</Text>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <View style={fieldStyles.inputGroup}>
+                  <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>Plan Start</Text>
+                  <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }} style={[fieldStyles.input, { borderColor: colors.border, backgroundColor: colors.surfaceLight, justifyContent: 'center' }]}>
+                    <Text style={{ color: joiningDate ? colors.text : colors.textMuted }}>
+                      {joiningDate ? joiningDate.split('-').reverse().join('/') : 'Select Date'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={{ width: spacing.m }} />
+              <View style={{ flex: 1 }}>
+                <View style={fieldStyles.inputGroup}>
+                  <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>Next Due Date</Text>
+                  <TouchableOpacity onPress={() => { setDatePickerType('nextDue'); setShowDatePicker(true); }} style={[fieldStyles.input, { borderColor: colors.border, backgroundColor: colors.surfaceLight, justifyContent: 'center' }]}>
+                    <Text style={{ color: nextDueDate ? colors.text : colors.textMuted }}>
+                      {nextDueDate ? nextDueDate.split('-').reverse().join('/') : 'Select Date'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
 
@@ -493,7 +543,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
             </View>
 
             <View style={{ height: 40 }} />
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
       </View>
 
@@ -511,6 +561,17 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         items={wifiNetworks}
         onSelect={(item: any) => setWifiDetails(item.value)}
         onClose={() => setWifiDropdownVisible(false)}
+      />
+
+      <DatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        onSelect={(date) => {
+          if (datePickerType === 'joining') setJoiningDate(date);
+          else setNextDueDate(date);
+          setShowDatePicker(false);
+        }}
+        initialDate={datePickerType === 'joining' ? joiningDate : nextDueDate}
       />
 
       <AlertModal />
