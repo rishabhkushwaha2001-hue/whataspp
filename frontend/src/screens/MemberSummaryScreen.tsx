@@ -12,7 +12,7 @@ import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
 import { invalidateCache } from '../hooks/useDataStore';
-import { fetchMessageTemplates, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
+import { fetchMessageTemplates, buildPaymentReceiptMessage, getDefaultTemplates } from '../services/messageTemplates';
 
 const { width } = Dimensions.get('window');
 
@@ -77,7 +77,7 @@ export const MemberSummaryScreen = () => {
         setEnableHours(templates.enableHours);
         const defaults = getDefaultTemplates(templates.businessType);
         const dbRenewal = templates.renewalTemplate;
-        setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : defaults.renewal);
+        setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
       } catch (e) {
         const storedName = await AsyncStorage.getItem('gymName');
         if (storedName) setGymName(storedName);
@@ -160,20 +160,36 @@ export const MemberSummaryScreen = () => {
   };
 
   const handleSendReceipt = (payment: any) => {
-    const nextDue = payment.end_date ? new Date(payment.end_date).toLocaleDateString() : 'N/A';
+    const paymentDate = payment.date
+      ? new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const startDate = payment.start_date
+      ? new Date(payment.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : 'N/A';
+    const expiryDate = payment.end_date
+      ? new Date(payment.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      : 'N/A';
     const payDays = (payment.start_date && payment.end_date)
-      ? Math.max(0, Math.ceil((new Date(payment.end_date).getTime() - new Date(payment.start_date).getTime()) / 86400000))
+      ? Math.max(1, Math.ceil((new Date(payment.end_date).getTime() - new Date(payment.start_date).getTime()) / 86400000))
       : 30;
-    const durationMonths = Math.max(1, Math.round(payDays / 30));
+    const amt = Number(payment.amount) || 0;
+    const paid = payment.amount_paid != null ? Number(payment.amount_paid) : amt;
 
-    const msg = buildRenewalMessage(renewalTemplate, businessType, {
-      name: member.full_name, phone: member.phone, date: nextDue,
-      joining_date: member.joining_date ? new Date(member.joining_date).toLocaleDateString() : 'N/A',
-      paid_date: payment.date ? new Date(payment.date).toLocaleDateString() : new Date().toLocaleDateString(),
-      fees: payment.amount, amountPaid: payment.amount_paid != null ? payment.amount_paid : payment.amount,
-      hours: member.daily_hours, timing: member.timing, gym: gymName, durationMonths,
-      seat: businessType === 'library' ? (member.allocated_seat || 'Unassigned') : undefined,
-      wifi: businessType === 'library' ? (member.wifi_details || 'Not Provided') : undefined,
+    const msg = buildPaymentReceiptMessage(businessType, {
+      name: member.full_name,
+      phone: member.phone,
+      gym: gymName,
+      paymentDate,
+      startDate,
+      expiryDate,
+      totalAmount: amt,
+      amountPaid: paid,
+      paymentMode: payment.payment_mode || 'Cash',
+      durationDays: payDays,
+      hours: member.daily_hours,
+      timing: member.timing,
+      seat: businessType === 'library' ? (member.allocated_seat || undefined) : undefined,
+      wifi: businessType === 'library' ? (member.wifi_details || undefined) : undefined,
     });
     sendWhatsAppMessage(member.phone, msg);
   };

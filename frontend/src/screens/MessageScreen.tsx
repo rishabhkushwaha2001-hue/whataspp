@@ -100,7 +100,6 @@ export const MessageScreen = () => {
   const [paymentMode, setPaymentMode] = useState('Cash'); // 'Cash' | 'UPI' | 'Card' | 'Bank Transfer'
   const [discount, setDiscount] = useState('');
   const [sendReceipt, setSendReceipt] = useState(true);
-  const [generateInvoice, setGenerateInvoice] = useState(false);
 
   // Business / Library Options
   const [dailyHours, setDailyHours] = useState('');
@@ -194,7 +193,7 @@ export const MessageScreen = () => {
           setGymName(templates.gymName);
           const dbTemplate = templates.joiningTemplate;
           if (dbTemplate && dbTemplate.trim()) setJoiningMsgTemplate(dbTemplate);
-          else setJoiningMsgTemplate(getDefaultTemplates(templates.businessType).joining);
+          else setJoiningMsgTemplate(null);
           
           if (templates.businessType === 'library') {
             try {
@@ -340,6 +339,7 @@ export const MessageScreen = () => {
         timing: timingStr,
         allocated_seat: businessType === 'library' ? allocatedSeat : undefined,
         wifi_details: businessType === 'library' ? wifiDetails : undefined,
+        aadhaar_number: aadhaar ? aadhaar.trim() : undefined,
       };
 
       await api.post('/members/', enrollmentData);
@@ -371,7 +371,7 @@ export const MessageScreen = () => {
     setDailyHours(''); 
     setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
     setAllocatedSeat(''); setWifiDetails(''); setGender('Male'); setPaymentMode('Cash'); setPaymentStatus('Paid');
-    setIsManual(false); setStep(1); setDiscount(''); setSendReceipt(true); setGenerateInvoice(false);
+    setIsManual(false); setStep(1); setDiscount(''); setSendReceipt(true);
     const todayStr = new Date().toISOString().split('T')[0];
     setJoiningDate(todayStr); setExpiryDate(getNextMonthDate(todayStr));
     setWelcomeMsgFinal('');
@@ -636,45 +636,81 @@ export const MessageScreen = () => {
       </View>
       <Text style={styles.stepSubtitle}>Finalize membership and collect payment</Text>
 
-      <LinearGradient colors={['#F3E8FF', '#E0E7FF']} start={{x:0, y:0}} end={{x:1, y:1}} style={styles.summaryGradientBox}>
+      <LinearGradient colors={isDark ? ['#1e1b4b', '#1e2556'] : ['#F3E8FF', '#E0E7FF']} start={{x:0, y:0}} end={{x:1, y:1}} style={styles.summaryGradientBox}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: '#1e1b4b' }}>Membership Summary</Text>
-          <TouchableOpacity onPress={() => setStep(1)} style={{ backgroundColor: 'rgba(124,58,237,0.1)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: isDark ? '#c4b5fd' : '#1e1b4b' }}>Membership Summary</Text>
+          <TouchableOpacity onPress={() => setStep(1)} style={{ backgroundColor: 'rgba(124,58,237,0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
             <Text style={{ color: '#7C3AED', fontWeight: '700', fontSize: 12 }}>Edit</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>Plan</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>Start Date</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{new Date(joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>End Date</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>Duration</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{durationDays} Days</Text></View>
+        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Plan</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}</Text></View>
+        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Start Date</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{new Date(joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
+        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>End Date</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
+        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Duration</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{durationDays} Days</Text></View>
         {enableHours && dailyHours && timingStartHour && timingEndHour && (
           <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>Timing</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{timingStartHour} {timingStartAmPm} - {timingEndHour} {timingEndAmPm}</Text></View>
         )}
       </LinearGradient>
 
       <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12, marginTop: 12 }}>Payment Method</Text>
-      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        {['Cash', 'UPI', 'Card', 'Bank Transfer'].map(mode => (
-          <TouchableOpacity key={mode} onPress={() => setPaymentMode(mode)} style={[styles.payModeBtn, { flex: 1, minWidth: '45%' }, paymentMode === mode && { borderColor: colors.primary, backgroundColor: `${colors.primary}15` }]}>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: paymentMode === mode ? colors.primary : colors.surfaceLight, justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}>
-              <FontAwesome name={mode === 'Cash' ? 'money' : mode === 'UPI' ? 'mobile-phone' : mode === 'Card' ? 'credit-card' : 'bank'} size={18} color={paymentMode === mode ? '#fff' : colors.textMuted} />
-            </View>
-            <Text style={[styles.payModeText, paymentMode === mode && { color: colors.primary, fontWeight: '700' }]}>{mode}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
+        {(['Cash', 'UPI', 'Card', 'Bank Transfer'] as const).map(mode => {
+          const isSelected = paymentMode === mode;
+          const modeColors: Record<string, string> = { Cash: '#10B981', UPI: '#8B5CF6', Card: '#3B82F6', 'Bank Transfer': '#F59E0B' };
+          const modeColor = modeColors[mode];
+          const iconName = mode === 'Cash' ? 'money' : mode === 'UPI' ? 'mobile-phone' : mode === 'Card' ? 'credit-card' : 'bank';
+          return (
+            <TouchableOpacity
+              key={mode}
+              activeOpacity={0.8}
+              onPress={() => setPaymentMode(mode)}
+              style={[styles.payModeBtn, { width: '47%' }, isSelected && {
+                borderColor: modeColor,
+                backgroundColor: isDark ? `${modeColor}20` : `${modeColor}12`,
+              }]}
+            >
+              <View style={{
+                width: 46, height: 46, borderRadius: 23,
+                backgroundColor: isSelected ? modeColor : (isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6'),
+                justifyContent: 'center', alignItems: 'center', marginBottom: 8,
+              }}>
+                <FontAwesome name={iconName as any} size={18} color={isSelected ? '#fff' : colors.textMuted} />
+              </View>
+              <Text style={{ fontSize: 13, fontWeight: isSelected ? '800' : '600', color: isSelected ? modeColor : colors.textSecondary }}>{mode}</Text>
+              {isSelected && (
+                <View style={{ position: 'absolute', top: 8, right: 8, width: 16, height: 16, borderRadius: 8, backgroundColor: modeColor, justifyContent: 'center', alignItems: 'center' }}>
+                  <FontAwesome name="check" size={8} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Payment Status</Text>
-      <View style={{ flexDirection: 'row', backgroundColor: colors.surfaceLight, borderRadius: 8, padding: 4, marginBottom: 16 }}>
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
         {['Paid', 'Partial', 'Pending'].map((status) => {
           const isActive = paymentStatus === status;
-          const statusColor = status === 'Paid' ? colors.success : status === 'Partial' ? (colors.warning || '#F59E0B') : colors.error;
+          const statusColor = status === 'Paid' ? '#10B981' : status === 'Partial' ? '#F59E0B' : '#EF4444';
+          const statusBg = status === 'Paid' ? '#D1FAE5' : status === 'Partial' ? '#FEF3C7' : '#FEE2E2';
+          const statusDarkBg = status === 'Paid' ? '#064E3B' : status === 'Partial' ? '#78350F' : '#7F1D1D';
+          const emoji = status === 'Paid' ? '✅' : status === 'Partial' ? '⚡' : '⏳';
           return (
-            <TouchableOpacity key={status} style={[styles.statusToggle, isActive && { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }]} onPress={() => setPaymentStatus(status)}>
-              <View style={[styles.radioCircle, { width: 14, height: 14, marginRight: 8, borderColor: isActive ? statusColor : colors.border }, isActive && { backgroundColor: statusColor }]} />
-              <Text style={{ fontWeight: '600', color: isActive ? colors.text : colors.textMuted }}>{status}</Text>
+            <TouchableOpacity
+              key={status}
+              activeOpacity={0.8}
+              onPress={() => setPaymentStatus(status)}
+              style={[{
+                flex: 1, flexDirection: 'column', alignItems: 'center', paddingVertical: 14,
+                borderRadius: 14, borderWidth: 2,
+                borderColor: isActive ? statusColor : colors.border,
+                backgroundColor: isActive ? (isDark ? statusDarkBg : statusBg) : (isDark ? 'rgba(255,255,255,0.04)' : '#FAFAFA'),
+              }]}
+            >
+              <Text style={{ fontSize: 18, marginBottom: 4 }}>{emoji}</Text>
+              <Text style={{ fontWeight: '800', fontSize: 13, color: isActive ? statusColor : colors.textMuted }}>{status}</Text>
             </TouchableOpacity>
-          )
+          );
         })}
       </View>
 
@@ -706,20 +742,19 @@ export const MessageScreen = () => {
         </View>
       )}
 
-      <View style={{ marginTop: 24, gap: 16 }}>
-        <View style={styles.manualRow}>
-          <View>
-            <Text style={styles.manualTitle}>Send WhatsApp Receipt</Text>
-            <Text style={styles.manualSub}>Instantly notify member via WhatsApp</Text>
+      <View style={{ marginTop: 20 }}>
+        <View style={[styles.manualRow, {
+          backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : '#F0FDF4',
+          borderColor: '#10B981',
+        }]}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <FontAwesome name="whatsapp" size={16} color="#10B981" />
+              <Text style={[styles.manualTitle, { color: '#10B981' }]}>Send WhatsApp Receipt</Text>
+            </View>
+            <Text style={styles.manualSub}>Instantly notify member on WhatsApp</Text>
           </View>
-          <Switch value={sendReceipt} onValueChange={(val) => setSendReceipt(val)} trackColor={{ false: colors.surfaceLight, true: colors.primary }} thumbColor={sendReceipt ? '#fff' : '#f4f3f4'} />
-        </View>
-        <View style={styles.manualRow}>
-          <View>
-            <Text style={styles.manualTitle}>Generate Invoice</Text>
-            <Text style={styles.manualSub}>Create a formal PDF invoice</Text>
-          </View>
-          <Switch value={generateInvoice} onValueChange={(val) => setGenerateInvoice(val)} trackColor={{ false: colors.surfaceLight, true: colors.primary }} thumbColor={generateInvoice ? '#fff' : '#f4f3f4'} />
+          <Switch value={sendReceipt} onValueChange={(val) => setSendReceipt(val)} trackColor={{ false: colors.border, true: '#10B981' }} thumbColor={sendReceipt ? '#fff' : '#f4f3f4'} />
         </View>
       </View>
 
@@ -778,15 +813,6 @@ export const MessageScreen = () => {
               </TouchableOpacity>
             )}
 
-            {generateInvoice && (
-              <TouchableOpacity 
-                style={{ backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary, width: '100%', paddingVertical: 18, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', ...shadows.light }}
-                onPress={() => {}}
-              >
-                <FontAwesome name="file-pdf-o" size={20} color={colors.primary} style={{ marginRight: 12 }} />
-                <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '700' }}>Download Invoice</Text>
-              </TouchableOpacity>
-            )}
 
             <TouchableOpacity 
               style={{ backgroundColor: 'transparent', width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' }}
@@ -912,7 +938,7 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   summaryLabel: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
   summaryValue: { color: colors.text, fontSize: 15, fontWeight: '800' },
 
-  payModeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 20, backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, ...shadows.light },
+  payModeBtn: { alignItems: 'center', justifyContent: 'center', paddingVertical: 18, paddingHorizontal: 8, backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, ...shadows.light },
   payModeText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
 
   statusToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 6 },

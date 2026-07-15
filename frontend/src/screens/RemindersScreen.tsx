@@ -73,8 +73,8 @@ export const RemindersScreen = () => {
           const defaults = getDefaultTemplates(templates.businessType);
           const dbReminder = templates.reminderTemplate;
           const dbRenewal = templates.renewalTemplate;
-          setReminderTemplate((dbReminder && dbReminder.trim()) ? dbReminder : defaults.reminder);
-          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : defaults.renewal);
+          setReminderTemplate((dbReminder && dbReminder.trim()) ? dbReminder : null);
+          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
         } catch (e) {
           const storedName = await AsyncStorage.getItem('gymName');
           if (storedName) setGymName(storedName);
@@ -95,6 +95,8 @@ export const RemindersScreen = () => {
 
   const sendReminder = async (member: any) => {
     const dueDate = new Date(member.next_due_date).toLocaleDateString();
+    const isExpired = new Date(member.next_due_date) < new Date(new Date().setHours(0,0,0,0));
+    
     const message = buildReminderMessage(
       reminderTemplate,
       businessType,
@@ -105,6 +107,7 @@ export const RemindersScreen = () => {
         hours: member.daily_hours,
         timing: member.timing,
         gym: gymName,
+        isExpired,
       }
     );
     
@@ -159,13 +162,12 @@ export const RemindersScreen = () => {
     wifiDetails?: string,
     amountPaid?: number
   ) => {
-    setShowRenewModal(false);
-    if (!renewingMember) return;
+    if (!renewingMember) return { success: false };
     try {
       await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths,
         amount: amount,
-        amount_paid: amountPaid,
+        amount_paid: amountPaid ?? null,
         payment_mode: paymentMode,
         next_due_date: nextDueDate,
         joining_date: joiningDate,
@@ -175,7 +177,7 @@ export const RemindersScreen = () => {
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       fetchDueMembers();
-      // Use nextDueDate directly (already selected by user) — no API response needed
+      
       const nextDue = nextDueDate ? new Date(nextDueDate).toLocaleDateString() : 'N/A';
       const msg = buildRenewalMessage(renewalTemplate, businessType, {
         name: renewingMember.full_name,
@@ -184,7 +186,7 @@ export const RemindersScreen = () => {
         joining_date: joiningDate ? new Date(joiningDate).toLocaleDateString() : 'N/A',
         paid_date: new Date().toLocaleDateString(),
         fees: amount,
-        amountPaid: amountPaid,
+        amountPaid: amountPaid ?? undefined,
         hours: hours ?? renewingMember.daily_hours,
         timing: timing ?? renewingMember.timing,
         gym: gymName,
@@ -192,20 +194,9 @@ export const RemindersScreen = () => {
         seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || 'Not Provided') : undefined,
       });
-      setAlertConfig({
-        visible: true,
-        title: "Success",
-        message: "Membership renewed successfully!",
-        type: "success",
-        confirmText: "Send Receipt",
-        onConfirm: () => {
-          setAlertConfig({ visible: false });
-          setTimeout(async () => { await sendWhatsAppMessage(renewingMember.phone, msg); }, 100);
-        },
-        onClose: () => setAlertConfig({ visible: false })
-      });
+      return { success: true, message: msg };
     } catch (error) {
-      setAlertConfig({ visible: true, title: "Error", message: "Failed to renew membership", type: "error" });
+      return { success: false };
     }
   };
 
@@ -459,15 +450,15 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   actionsRow: { flexDirection: 'row', gap: 6 },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 8, borderRadius: borderRadius.m,
+    height: 36, borderRadius: borderRadius.m,
     borderWidth: 1,
     backgroundColor: isDark ? '#111827' : '#F9FAFB',
   },
   actionText: { fontSize: 11, fontWeight: '600' },
-  renewBtn: { flex: 1.2, borderRadius: borderRadius.m, overflow: 'hidden' },
+  renewBtn: { flex: 1.2, height: 36, borderRadius: borderRadius.m, overflow: 'hidden' },
   renewGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 8, paddingHorizontal: 10,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingHorizontal: 10,
   },
   renewText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 

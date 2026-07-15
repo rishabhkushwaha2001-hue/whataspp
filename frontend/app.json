@@ -36,8 +36,8 @@
         {
           "android": {
             "minSdkVersion": 24,
-            "targetSdkVersion": 34,
-            "compileSdkVersion": 34
+            "targetSdkVersion": 35,
+            "compileSdkVersion": 35
           }
         }
       ]
@@ -57,8 +57,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/8b080331-6de2-493f-b127-966283f16220",
-      "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_LOAD"
+      "fallbackToCacheTimeout": 30000,
+      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "enabled": true
     }
   }
 }

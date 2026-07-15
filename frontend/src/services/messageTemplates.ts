@@ -8,13 +8,33 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const fetchMessageTemplates = async () => {
   try {
     const response = await api.get('/settings/');
+    let joiningTemplate = response.data.joining_msg_template || null;
+    let renewalTemplate = response.data.renewal_msg_template || null;
+    let reminderTemplate = response.data.reminder_msg_template || null;
+
+    const isLegacy = (t: string | null) => {
+      if (!t) return true;
+      return t.includes('RENEWAL REMINDER 🔔') || 
+             t.includes('PAYMENT REMINDER 🔔') || 
+             t.includes('MEMBERSHIP CONFIRMATION 📚') || 
+             t.includes('SERVICE ACTIVATED ✅') || 
+             t.includes('WELCOME KIT 🧾') || 
+             t.includes('MEMBERSHIP RENEWED 🔄') || 
+             t.includes('MEMBERSHIP RENEWED 📚') || 
+             t.includes('PLAN RENEWED ✅');
+    };
+
+    if (isLegacy(joiningTemplate)) joiningTemplate = null;
+    if (isLegacy(renewalTemplate)) renewalTemplate = null;
+    if (isLegacy(reminderTemplate)) reminderTemplate = null;
+
     return {
       businessType: response.data.business_type || 'gym',
       enableHours: response.data.enable_hours_feature || false,
       gymName: response.data.gym_name || 'Gym',
-      joiningTemplate: response.data.joining_msg_template || null,
-      renewalTemplate: response.data.renewal_msg_template || null,
-      reminderTemplate: response.data.reminder_msg_template || null,
+      joiningTemplate: null, // Force premium format
+      renewalTemplate: null, // Force premium format
+      reminderTemplate: null, // Force premium format
       wifiNetworks: response.data.wifi_networks || [],
     };
   } catch {
@@ -126,117 +146,58 @@ export const buildJoiningMessage = (
   }
 ): string => {
   const totalAmount = Number(vars.fees);
-  const paidAmount = vars.amountPaid != null ? Number(vars.amountPaid) : null;
-  const isPartial = paidAmount != null && paidAmount < totalAmount;
-  const dueAmount = isPartial ? (totalAmount - paidAmount!).toFixed(0) : 0;
+  const paidAmount = vars.amountPaid != null ? Number(vars.amountPaid) : totalAmount;
+  const isPartial = paidAmount < totalAmount;
+  const dueAmount = isPartial ? (totalAmount - paidAmount).toFixed(0) : 0;
 
-  const gymUp = vars.gym.toUpperCase();
-
-  // --- PARTIAL PAYMENT MESSAGE (always custom — no template override for partial) ---
-  if (isPartial) {
-    if (businessType === 'library') {
-      return (
-        `*${gymUp} - MEMBERSHIP CONFIRMATION 📚*\n\n` +
-        `Dear *${vars.name}*,\n\n` +
-        `Welcome to ${vars.gym}! Your membership has been registered with a partial payment.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `👤 *Member Phone:* ${vars.phone}\n` +
-        `📅 *Joining Date:* ${vars.joining_date}\n` +
-        (vars.hours ? `⏰ *Allotted Timings:* ${vars.hours} Hours/Day (${vars.timing || 'N/A'})\n` : '') +
-        (vars.seat ? `🪑 *Assigned Seat:* ${vars.seat}\n` : '') +
-        (vars.wifi ? `📶 *Wi-Fi Details:* ${vars.wifi}\n` : '') +
-        `📅 *Valid Till:* ${vars.date}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💰 *Total Fees:* ₹${totalAmount}\n` +
-        `✅ *Amount Paid:* ₹${paidAmount}\n` +
-        `⚠️ *Amount Due:* ₹${dueAmount}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Please pay the remaining amount at your earliest. Happy studying! 🚀`
-      );
-    } else if (businessType === 'general') {
-      return (
-        `*${gymUp} - SERVICE ACTIVATED ✅*\n\n` +
-        `Hello *${vars.name}*!\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `📅 *Joining Date:* ${vars.joining_date}\n` +
-        `📅 *Valid Till:* ${vars.date}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💰 *Total Amount:* ₹${totalAmount}\n` +
-        `✅ *Paid Now:* ₹${paidAmount}\n` +
-        `⚠️ *Due Amount:* ₹${dueAmount}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Please clear the remaining balance. Thank you for choosing ${vars.gym}! 🙏`
-      );
-    }
-    // Default: gym
-    return (
-      `*${gymUp} - WELCOME KIT 🧾*\n\n` +
-      `Hello *${vars.name}*, welcome to ${vars.gym}! 💪\n\n` +
-      `*MEMBERSHIP DETAILS:*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📱 *Phone:* ${vars.phone}\n` +
-      `📅 *Joining Date:* ${vars.joining_date}\n` +
-      `🗓️ *Plan Duration:* ${vars.durationDays || ''} Days\n` +
-      (vars.hours ? `⏰ *Hours:* ${vars.hours} Hrs\n` : '') +
-      (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
-      `📅 *Expiry Date:* ${vars.date}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `💰 *Total Fees:* ₹${totalAmount}\n` +
-      `✅ *Paid Now:* ₹${paidAmount}\n` +
-      `⚠️ *Due Amount:* ₹${dueAmount}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Please clear the remaining balance soon. *Stay Strong & Crush Your Goals!* 🚀`
-    );
-  }
-
-  // --- FULL PAYMENT MESSAGE ---
-  if (template) {
+  if (!isPartial && template) {
     return fillTemplate(template, { ...vars, fees: totalAmount });
   }
-  // Fallback defaults
-  if (businessType === 'library') {
-    return (
-      `*${gymUp} - MEMBERSHIP CONFIRMATION 📚*\n\n` +
-      `Dear *${vars.name}*,\n\n` +
-      `Welcome to ${vars.gym}! Your membership has been successfully registered. We are committed to providing you with a silent and productive study environment.\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `👤 *Member Phone:* ${vars.phone}\n` +
-      `📅 *Joining Date:* ${vars.joining_date}\n` +
-      `⏰ *Allotted Timings:* ${vars.hours || '—'} Hours/Day (${vars.timing || 'N/A'})\n` +
-      `🪑 *Assigned Seat:* ${vars.seat || 'Unassigned'}\n` +
-      `📶 *Wi-Fi Details:* ${vars.wifi || 'N/A'}\n` +
-      `💰 *Fees Paid:* ₹${totalAmount}\n` +
-      `📅 *Valid Till:* ${vars.date}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Please maintain silence inside the premises. Happy studying! 🚀`
-    );
-  } else if (businessType === 'general') {
-    return (
-      `*${gymUp} - SERVICE ACTIVATED ✅*\n\n` +
-      `Hello *${vars.name}*!\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📅 *Date:* ${vars.joining_date}\n` +
-      `💰 *Amount Paid:* ₹${totalAmount}\n` +
-      `📅 *Valid Till:* ${vars.date}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Thank you for choosing ${vars.gym}! 🙏`
-    );
-  }
-  // Default: gym
+
+  const gymUp = vars.gym.toUpperCase();
+  const receiptId = `ENR-${Date.now().toString().slice(-6)}`;
+
+  const header = businessType === 'library'
+    ? `📚 *${gymUp}*`
+    : businessType === 'general'
+    ? `🏢 *${gymUp}*`
+    : `🏋️ *${gymUp}*`;
+
+  const footer = businessType === 'library'
+    ? `Happy studying! 📖🚀`
+    : businessType === 'general'
+    ? `Thank you for choosing us! 🙏`
+    : `Stay strong & crush your goals! 💪🚀`;
+
   return (
-    `*${gymUp} - WELCOME KIT 🧾*\n\n` +
-    `Hello *${vars.name}*, welcome to ${vars.gym}! 💪\n\n` +
-    `*MEMBERSHIP DETAILS:*\n` +
+    `${header}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🎉 *MEMBERSHIP CONFIRMATION*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Dear *${vars.name}*,\n` +
+    `Welcome to ${vars.gym}! Your membership has been successfully registered.\n\n` +
+    `📋 *Enrollment ID:* #${receiptId}\n` +
+    `📅 *Joining Date:* ${vars.joining_date}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *MEMBER DETAILS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `📱 *Phone:* ${vars.phone}\n` +
-    `📅 *Joining Date:* ${vars.joining_date}\n` +
-    `🗓️ *Plan Duration:* ${vars.durationDays || ''} Days\n` +
-    (vars.hours ? `⏰ *Hours:* ${vars.hours} Hrs\n` : '') +
-    (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
-    `💰 *Amount Paid:* ₹${totalAmount}\n` +
-    `📅 *Expiry Date:* ${vars.date}\n` +
+    (vars.seat ? `🪑 *Seat:* ${vars.seat}\n` : '') +
+    (vars.hours ? `⏰ *Timing:* ${vars.hours} Hrs/Day (${vars.timing || 'N/A'})\n` : '') +
+    (vars.wifi ? `📶 *Wi-Fi:* ${vars.wifi}\n` : '') +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `📆 *PLAN DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.durationDays ? `🗓️ *Plan Period:* ${vars.durationDays} Days\n` : '') +
+    `🔚 *Valid Till:* ${vars.date}\n` +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *PAYMENT SUMMARY*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🏷️ *Total Amount:* ₹${totalAmount}\n` +
+    `✅ *Amount Paid:* ₹${paidAmount}\n` +
+    (isPartial ? `⚠️ *Balance Due:* ₹${dueAmount}\n` : `🎉 *Status:* Fully Paid ✔️\n`) +
     `━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `*Stay Strong & Crush Your Goals!* 🚀`
+    `${footer}`
   );
 };
 
@@ -265,116 +226,138 @@ export const buildRenewalMessage = (
   }
 ): string => {
   const totalAmount = Number(vars.fees);
-  const paidAmount = vars.amountPaid != null ? Number(vars.amountPaid) : null;
-  const isPartial = paidAmount != null && paidAmount < totalAmount;
-  const dueAmount = isPartial ? (totalAmount - paidAmount!).toFixed(0) : 0;
+  const paidAmount = vars.amountPaid != null ? Number(vars.amountPaid) : totalAmount;
+  const isPartial = paidAmount < totalAmount;
+  const dueAmount = isPartial ? (totalAmount - paidAmount).toFixed(0) : 0;
+
+  if (!isPartial && template) {
+    return fillTemplate(template, { ...vars, fees: totalAmount });
+  }
 
   const gymUp = vars.gym.toUpperCase();
+  const receiptId = `REN-${Date.now().toString().slice(-6)}`;
   const renewalDate = vars.joining_date || 'N/A';
   const expiryDate = vars.date;
 
-  // --- PARTIAL RENEWAL MESSAGE ---
-  if (isPartial) {
-    if (businessType === 'library') {
-      return (
-        `*${gymUp} - MEMBERSHIP RENEWED 📚*\n\n` +
-        `Dear *${vars.name}*,\n\n` +
-        `Your library membership has been renewed with a partial payment.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🚀 *Started:* ${renewalDate}\n` +
-        `💸 *Paid On:* ${vars.paid_date || new Date().toLocaleDateString()}\n` +
-        `📅 *Expiry Date:* ${expiryDate}\n` +
-        (vars.hours ? `⏰ *Allotted Timings:* ${vars.hours} Hours/Day (${vars.timing || 'N/A'})\n` : '') +
-        (vars.seat ? `🪑 *Assigned Seat:* ${vars.seat}\n` : '') +
-        (vars.wifi ? `📶 *Wi-Fi Details:* ${vars.wifi}\n` : '') +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💰 *Total Fees:* ₹${totalAmount}\n` +
-        `✅ *Paid Now:* ₹${paidAmount}\n` +
-        `⚠️ *Amount Due:* ₹${dueAmount}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Please clear the remaining balance. Keep reading, keep growing! 📖🚀`
-      );
-    } else if (businessType === 'general') {
-      return (
-        `*${gymUp} - PLAN RENEWED ✅*\n\n` +
-        `Hello *${vars.name}*! Your plan has been renewed with a partial payment.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🚀 *Started:* ${renewalDate}\n` +
-        `💸 *Paid On:* ${vars.paid_date || new Date().toLocaleDateString()}\n` +
-        `📅 *Valid Till:* ${expiryDate}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💰 *Total Amount:* ₹${totalAmount}\n` +
-        `✅ *Paid Now:* ₹${paidAmount}\n` +
-        `⚠️ *Due Amount:* ₹${dueAmount}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `Please clear the remaining balance. Thank you for continuing with ${vars.gym}! 🙏`
-      );
-    }
-    // Default: gym
-    return (
-      `*${gymUp} - MEMBERSHIP RENEWED 🔄*\n\n` +
-      `Hello *${vars.name}*, thank you for continuing your journey! 💪\n\n` +
-      `*RENEWAL DETAILS:*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `🚀 *Started:* ${renewalDate}\n` +
-      `💸 *Paid On:* ${vars.paid_date || new Date().toLocaleDateString()}\n` +
-      `📅 *New Expiry:* ${expiryDate}\n` +
-      `🗓️ *Plan:* ${vars.durationMonths || ''} Month(s)\n` +
-      (vars.hours ? `⏰ *Hours:* ${vars.hours} Hrs\n` : '') +
-      (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `💰 *Total Fees:* ₹${totalAmount}\n` +
-      `✅ *Paid Now:* ₹${paidAmount}\n` +
-      `⚠️ *Due Amount:* ₹${dueAmount}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Please clear the remaining balance. *Let's push your limits again!* 🚀`
-    );
-  }
+  const header = businessType === 'library'
+    ? `📚 *${gymUp}*`
+    : businessType === 'general'
+    ? `🏢 *${gymUp}*`
+    : `🏋️ *${gymUp}*`;
 
-  // --- FULL PAYMENT RENEWAL MESSAGE ---
-  if (template) {
-    return fillTemplate(template, { ...vars, fees: totalAmount });
-  }
-  if (businessType === 'library') {
-    return (
-      `*${gymUp} - MEMBERSHIP RENEWED 📚*\n\n` +
-      `Dear *${vars.name}*,\n\n` +
-      `Your library membership has been successfully renewed.\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📅 *Renewal Date:* ${renewalDate}\n` +
-      `📅 *New Expiry Date:* ${expiryDate}\n` +
-      (vars.hours ? `⏰ *Allotted Timings:* ${vars.hours} Hours/Day (${vars.timing || 'N/A'})\n` : '') +
-      (vars.seat ? `🪑 *Assigned Seat:* ${vars.seat}\n` : '') +
-      (vars.wifi ? `📶 *Wi-Fi Details:* ${vars.wifi}\n` : '') +
-      `💰 *Amount Paid:* ₹${totalAmount}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Keep reading, keep growing! 📖🚀`
-    );
-  } else if (businessType === 'general') {
-    return (
-      `*${gymUp} - PLAN RENEWED ✅*\n\n` +
-      `Hello *${vars.name}*! Your plan has been renewed.\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📅 *Renewal Date:* ${renewalDate}\n` +
-      `📅 *Valid Till:* ${expiryDate}\n` +
-      `💰 *Amount Paid:* ₹${totalAmount}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Thank you for continuing with ${vars.gym}! 🙏`
-    );
-  }
+  const footer = businessType === 'library'
+    ? `Keep reading, keep growing! 📖🚀`
+    : businessType === 'general'
+    ? `Thank you for continuing with us! 🙏`
+    : `Let's push your limits again! 💪🚀`;
+
   return (
-    `*${gymUp} - MEMBERSHIP RENEWED 🔄*\n\n` +
-    `Hello *${vars.name}*, thank you for continuing your journey! 💪\n\n` +
-    `*RENEWAL DETAILS:*\n` +
+    `${header}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `📅 *Renewal Date:* ${renewalDate}\n` +
-    `📅 *New Expiry:* ${expiryDate}\n` +
-    `🗓️ *Plan:* ${vars.durationMonths || ''} Month(s)\n` +
-    (vars.hours ? `⏰ *Hours:* ${vars.hours} Hrs\n` : '') +
-    (vars.timing ? `🌞 *Timing:* ${vars.timing}\n` : '') +
-    `💰 *Amount Paid:* ₹${totalAmount}\n` +
+    `🔄 *MEMBERSHIP RENEWED*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `*Let's push your limits again!* 🚀`
+    `Dear *${vars.name}*,\n` +
+    `Your membership has been successfully renewed. Thank you for continuing your journey!\n\n` +
+    `📋 *Renewal ID:* #${receiptId}\n` +
+    `📅 *Renewal Date:* ${renewalDate}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *MEMBER DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📱 *Phone:* ${vars.phone}\n` +
+    (vars.seat ? `🪑 *Seat:* ${vars.seat}\n` : '') +
+    (vars.hours ? `⏰ *Timing:* ${vars.hours} Hrs/Day (${vars.timing || 'N/A'})\n` : '') +
+    (vars.wifi ? `📶 *Wi-Fi:* ${vars.wifi}\n` : '') +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `📆 *PLAN DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.durationMonths ? `🗓️ *Plan Period:* ${vars.durationMonths} Month(s)\n` : '') +
+    `▶️ *Start Date:* ${renewalDate}\n` +
+    `🔚 *Expiry Date:* ${expiryDate}\n` +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *PAYMENT SUMMARY*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🏷️ *Total Amount:* ₹${totalAmount}\n` +
+    `✅ *Amount Paid:* ₹${paidAmount}\n` +
+    (isPartial ? `⚠️ *Balance Due:* ₹${dueAmount}\n` : `🎉 *Status:* Fully Paid ✔️\n`) +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `${footer}`
+  );
+};
+
+/**
+ * Builds a premium PAYMENT RECEIPT WhatsApp message.
+ * Used from Payment History → "Send Receipt".
+ * Looks like a formal invoice/receipt — not a renewal message.
+ */
+export const buildPaymentReceiptMessage = (
+  businessType: string,
+  vars: {
+    name: string;
+    phone: string;
+    gym: string;
+    paymentDate: string;      // date payment was made
+    startDate: string;        // plan start date
+    expiryDate: string;       // plan expiry date
+    totalAmount: number | string;
+    amountPaid: number | string;
+    paymentMode: string;
+    durationDays: number;
+    hours?: number;
+    timing?: string;
+    seat?: string;
+    wifi?: string;
+  }
+): string => {
+  const gymUp = vars.gym.toUpperCase();
+  const total = Number(vars.totalAmount);
+  const paid = Number(vars.amountPaid);
+  const due = Math.max(0, total - paid);
+  const isPartial = due > 0;
+  const receiptId = `RCP-${Date.now().toString().slice(-6)}`;
+
+  const header = businessType === 'library'
+    ? `📚 *${gymUp}*`
+    : businessType === 'general'
+    ? `🏢 *${gymUp}*`
+    : `🏋️ *${gymUp}*`;
+
+  const footer = businessType === 'library'
+    ? `Keep reading, keep growing! 📖`
+    : businessType === 'general'
+    ? `Thank you for your continued trust! 🙏`
+    : `Stay strong & crush your goals! 💪`;
+
+  return (
+    `${header}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🧾 *PAYMENT RECEIPT*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Dear *${vars.name}*,\n` +
+    `We have received your payment. Here are the details:\n\n` +
+    `📋 *Receipt ID:* #${receiptId}\n` +
+    `📅 *Payment Date:* ${vars.paymentDate}\n` +
+    `💳 *Payment Mode:* ${vars.paymentMode}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *MEMBER DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📱 *Phone:* ${vars.phone}\n` +
+    (vars.seat ? `🪑 *Seat:* ${vars.seat}\n` : '') +
+    (vars.hours ? `⏰ *Timing:* ${vars.hours} Hrs/Day (${vars.timing || 'N/A'})\n` : '') +
+    (vars.wifi ? `📶 *Wi-Fi:* ${vars.wifi}\n` : '') +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `📆 *PLAN DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🗓️ *Plan Period:* ${vars.durationDays} Days\n` +
+    `▶️ *Start Date:* ${vars.startDate}\n` +
+    `🔚 *Expiry Date:* ${vars.expiryDate}\n` +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *PAYMENT SUMMARY*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `🏷️ *Total Amount:* ₹${total}\n` +
+    `✅ *Amount Paid:* ₹${paid}\n` +
+    (isPartial ? `⚠️ *Balance Due:* ₹${due}\n` : `🎉 *Status:* Fully Paid ✔️\n`) +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `${footer}`
   );
 };
 
@@ -384,40 +367,47 @@ export const buildRenewalMessage = (
 export const buildReminderMessage = (
   template: string | null,
   businessType: string,
-  vars: { name: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string; seat?: string; }
+  vars: { name: string; date: string; fees: number | string; hours?: number; timing?: string; gym: string; seat?: string; isExpired?: boolean; }
 ): string => {
   if (template) {
     return fillTemplate(template, vars);
   }
   const gymUp = vars.gym.toUpperCase();
-  if (businessType === 'library') {
-    return (
-      `*${gymUp} - RENEWAL REMINDER 🔔*\n\n` +
-      `Dear *${vars.name}* 📚,\n\n` +
-      `This is a gentle reminder that your library membership is due for renewal.\n\n` +
-      `💰 *Pending Fees:* ₹${vars.fees}\n` +
-      `📅 *Due Date:* ${vars.date}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Please renew your membership to continue accessing your assigned seat (${vars.seat || 'Unassigned'}) and Wi-Fi. Thank you! 🚀`
-    );
-  } else if (businessType === 'general') {
-    return (
-      `*${gymUp} - PAYMENT REMINDER 🔔*\n\n` +
-      `Hello *${vars.name}*,\n\n` +
-      `This is a friendly reminder that your payment is due.\n\n` +
-      `*AMOUNT DUE:* ₹${vars.fees}\n` +
-      `*DUE DATE:* ${vars.date}\n\n` +
-      `Please contact us for renewal. Thank you! 🙏`
-    );
-  }
+  const header = businessType === 'library'
+    ? `📚 *${gymUp}*`
+    : businessType === 'general'
+    ? `🏢 *${gymUp}*`
+    : `🏋️ *${gymUp}*`;
+
+  const footer = businessType === 'library'
+    ? `Please renew soon to keep your seat! 📖`
+    : businessType === 'general'
+    ? `Please contact us for renewal. 🙏`
+    : `Don't break the momentum! See you at the gym! 💪`;
+
+  const statusTitle = vars.isExpired ? `🚨 *MEMBERSHIP EXPIRED*` : `🔔 *RENEWAL REMINDER*`;
+  const introText = vars.isExpired 
+    ? `Your membership expired on ${vars.date}. Please renew it to continue your services.`
+    : `This is a gentle reminder that your membership is due for renewal on ${vars.date}.`;
+
   return (
-    `*${gymUp} - RENEWAL REMINDER 🔔*\n\n` +
-    `Hello *${vars.name}* 💪,\n\n` +
-    `Your membership is due for renewal.\n\n` +
-    `*PENDING FEES:* ₹${vars.fees} 💰\n` +
-    `*DUE DATE:* ${vars.date} 📅\n` +
+    `${header}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `${statusTitle}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `*Don't break the momentum!* 🚀\n\n` +
-    `See you at the gym! 🏋️‍♂️`
+    `Dear *${vars.name}*,\n` +
+    `${introText}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *MEMBER DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.seat ? `🪑 *Seat:* ${vars.seat}\n` : '') +
+    (vars.hours ? `⏰ *Timing:* ${vars.hours} Hrs/Day (${vars.timing || 'N/A'})\n` : '') +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `⚠️ *DUE DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📅 *Due Date:* ${vars.date}\n` +
+    `💰 *Pending Fees:* ₹${vars.fees}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `${footer}`
   );
 };

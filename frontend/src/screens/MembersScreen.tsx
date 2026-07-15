@@ -50,7 +50,7 @@ export const MembersScreen = () => {
           setEnableHours(templates.enableHours);
           const defaults = getDefaultTemplates(templates.businessType);
           const dbRenewal = templates.renewalTemplate;
-          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : defaults.renewal);
+          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
         } catch (e) {
           const storedName = await AsyncStorage.getItem('gymName');
           if (storedName) setGymName(storedName);
@@ -438,15 +438,15 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   actionsRow: { flexDirection: 'row', gap: 6 },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 8, borderRadius: borderRadius.m,
+    height: 36, borderRadius: borderRadius.m,
     borderWidth: 1,
     backgroundColor: isDark ? '#111827' : '#F9FAFB',
   },
   actionText: { fontSize: 11, fontWeight: '600' },
-  renewBtn: { flex: 1.2, borderRadius: borderRadius.m, overflow: 'hidden' },
+  renewBtn: { flex: 1.2, height: 36, borderRadius: borderRadius.m, overflow: 'hidden' },
   renewGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    paddingVertical: 8, paddingHorizontal: 10,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    paddingHorizontal: 10,
   },
   renewText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
