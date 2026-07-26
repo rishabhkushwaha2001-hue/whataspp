@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Linking, TouchableOpacity, RefreshControl, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ScrollView, Linking, TouchableOpacity, RefreshControl, Alert, TextInput, Switch } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,9 +27,82 @@ export const RemindersScreen = () => {
   const [gymName, setGymName] = useState('Gym');
   const [businessType, setBusinessType] = useState('gym');
   const [enableHours, setEnableHours] = useState(false);
+  const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
+  const [activeOffers, setActiveOffers] = useState<any[]>([]);
+  const [appendOffers, setAppendOffers] = useState(true);
   const [reminderTemplate, setReminderTemplate] = useState<string | null>(null);
   const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
   const router = useRouter();
+
+  // ── Today's Queue State ────────────────────────────────────────────────
+  const [mainTab, setMainTab] = useState<'due' | 'queue'>('due');
+  const [queueData, setQueueData] = useState<any>(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueCategory, setQueueCategory] = useState<'all' | 'birthday' | 'expiring' | 'overdue'>('all');
+
+  const QUEUE_CATS = [
+    { key: 'birthday' as const, label: 'Birthday', icon: 'birthday-cake', color: '#EC4899' },
+    { key: 'expiring' as const, label: 'Expiring', icon: 'clock-o',       color: '#F59E0B' },
+    { key: 'overdue'  as const, label: 'Expired',  icon: 'exclamation-circle', color: '#EF4444' },
+  ];
+
+  const fetchQueue = useCallback(async () => {
+    setQueueLoading(true);
+    try {
+      const res = await api.get('/reminders/today');
+      setQueueData(res.data);
+    } catch (e) {
+      console.warn('Queue fetch failed', e);
+    } finally {
+      setQueueLoading(false);
+    }
+  }, []);
+
+  const getQueueMembers = () => {
+    if (!queueData) return [];
+    let list: any[] = [];
+    if (queueCategory === 'all') list = [
+      ...(queueData.birthdays || []),
+      ...(queueData.expiring_soon || []),
+      ...(queueData.overdue || []),
+    ];
+    else if (queueCategory === 'birthday') list = queueData.birthdays || [];
+    else if (queueCategory === 'expiring') list = queueData.expiring_soon || [];
+    else if (queueCategory === 'overdue')  list = queueData.overdue || [];
+    // Filter out already sent members — they disappear from the list
+    return list.filter((m: any) => !sentMap[m._id]);
+  };
+
+  const getSentCount = () => Object.keys(sentMap).length;
+
+  const appendOfferToMessage = (msg: string) => {
+    if (!appendOffers || activeOffers.length === 0) return msg;
+    const bestOffer = activeOffers[0];
+    const discount = bestOffer.discount_type === 'Percentage' ? `${bestOffer.discount_value}%` : `₹${bestOffer.discount_value}`;
+    const expiry = bestOffer.valid_until ? ` before ${new Date(bestOffer.valid_until).toLocaleDateString()}` : '';
+    return `${msg}\n\n🎁 *Special Offer:* Use "${bestOffer.name}" to get ${discount} OFF on your next renewal${expiry}!`;
+  };
+
+  const handleQueueSend = async (member: any) => {
+    const finalMsg = appendOfferToMessage(member.message_hint);
+    const success = await sendWhatsAppMessage(member.phone, finalMsg);
+    if (success) {
+      setSentMap(prev => ({ ...prev, [member._id]: true }));
+      try {
+        await api.post('/messages/log', { recipient_phone: member.phone, message_body: finalMsg, status: 'sent' });
+      } catch {}
+    }
+  };
+
+  const handleSendAll = async () => {
+    const members = getQueueMembers().filter((m: any) => !sentMap[m._id]);
+    for (const m of members) {
+      const finalMsg = appendOfferToMessage(m.message_hint);
+      await sendWhatsAppMessage(m.phone, finalMsg);
+      setSentMap(prev => ({ ...prev, [m._id]: true }));
+      await new Promise(r => setTimeout(r, 700));
+    }
+  };
 
   const applyFilters = useCallback((data: any[], searchText: string) => {
     let filtered = data;
@@ -62,6 +135,15 @@ export const RemindersScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchDueMembers();
+      fetchQueue();
+
+      const fetchOffers = async () => {
+        try {
+          const res = await api.get('/offers/');
+          setActiveOffers(res.data.filter((o: any) => o.is_active));
+        } catch (e) { }
+      };
+      fetchOffers();
 
       const loadSettings = async () => {
         try {
@@ -73,8 +155,8 @@ export const RemindersScreen = () => {
           const defaults = getDefaultTemplates(templates.businessType);
           const dbReminder = templates.reminderTemplate;
           const dbRenewal = templates.renewalTemplate;
-          setReminderTemplate((dbReminder && dbReminder.trim()) ? dbReminder : null);
-          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
+          setReminderTemplate(dbReminder && typeof dbReminder === 'string' && dbReminder.trim() ? dbReminder : null);
+          setRenewalTemplate(dbRenewal && typeof dbRenewal === 'string' && dbRenewal.trim() ? dbRenewal : null);
         } catch (e) {
           const storedName = await AsyncStorage.getItem('gymName');
           if (storedName) setGymName(storedName);
@@ -160,7 +242,8 @@ export const RemindersScreen = () => {
     timing?: string,
     allocatedSeat?: string,
     wifiDetails?: string,
-    amountPaid?: number
+    amountPaid?: number,
+    appliedOfferName?: string
   ) => {
     if (!renewingMember) return { success: false };
     try {
@@ -174,6 +257,7 @@ export const RemindersScreen = () => {
         daily_hours: hours,
         timing: timing,
         allocated_seat: allocatedSeat,
+        applied_offer_name: appliedOfferName
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       fetchDueMembers();
@@ -214,26 +298,77 @@ export const RemindersScreen = () => {
         onClose={() => setShowRenewModal(false)}
         onConfirm={confirmRenewal}
       />
+
+      {/* Header */}
       <View style={[styles.header, { paddingTop: 56 }]}>
-        <Text style={styles.title}>Due Reminders</Text>
-        <Text style={styles.subtitle}>Upcoming renewals within 5 days</Text>
-        <View style={[styles.searchBar, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
-          <FontAwesome name="search" size={14} color={colors.textMuted} />
-          <TextInput
-            placeholder="Search name, phone or ID..."
-            placeholderTextColor={colors.textMuted}
-            style={[styles.searchInput, { color: colors.text }]}
-            value={search}
-            onChangeText={handleSearch}
-          />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View>
+            <Text style={styles.title}>Reminders</Text>
+            <Text style={styles.subtitle}>
+              {mainTab === 'due' ? 'Upcoming renewals within 5 days' : new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'long' })}
+            </Text>
+          </View>
+          {mainTab === 'queue' && queueData?.total > 0 && (
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#25D366', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 }}
+              onPress={handleSendAll}
+            >
+              <FontAwesome name="whatsapp" size={14} color="white" />
+              <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>Send All</Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Main Tab Switcher */}
+        <View style={[styles.mainTabRow, { backgroundColor: colors.surfaceLight || colors.background, borderColor: colors.border }]}>
+          <TouchableOpacity
+            style={[styles.mainTab, mainTab === 'due' && { backgroundColor: colors.primary }]}
+            onPress={() => setMainTab('due')}
+          >
+            <FontAwesome name="clock-o" size={13} color={mainTab === 'due' ? 'white' : colors.textMuted} />
+            <Text style={[styles.mainTabText, { color: mainTab === 'due' ? 'white' : colors.textMuted }]}>Due Renewals</Text>
+            {filteredMembers.length > 0 && (
+              <View style={[styles.tabBadge, { backgroundColor: mainTab === 'due' ? 'rgba(255,255,255,0.3)' : colors.primary }]}>
+                <Text style={{ color: 'white', fontSize: 9, fontWeight: '700' }}>{filteredMembers.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.mainTab, mainTab === 'queue' && { backgroundColor: '#EC4899' }]}
+            onPress={() => setMainTab('queue')}
+          >
+            <FontAwesome name="magic" size={13} color={mainTab === 'queue' ? 'white' : colors.textMuted} />
+            <Text style={[styles.mainTabText, { color: mainTab === 'queue' ? 'white' : colors.textMuted }]}>Today's Queue</Text>
+            {queueData?.total > 0 && (
+              <View style={[styles.tabBadge, { backgroundColor: mainTab === 'queue' ? 'rgba(255,255,255,0.3)' : '#EC4899' }]}>
+                <Text style={{ color: 'white', fontSize: 9, fontWeight: '700' }}>{queueData.total}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Search — only for due tab */}
+        {mainTab === 'due' && (
+          <View style={[styles.searchBar, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+            <FontAwesome name="search" size={14} color={colors.textMuted} />
+            <TextInput
+              placeholder="Search name, phone or ID..."
+              placeholderTextColor={colors.textMuted}
+              style={[styles.searchInput, { color: colors.text }]}
+              value={search}
+              onChangeText={handleSearch}
+            />
+          </View>
+        )}
       </View>
-      <FlatList
-        data={filteredMembers}
-        keyExtractor={(item) => item.id || item._id}
-        contentContainerStyle={[styles.content, { paddingTop: 10 }]}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
+      {/* Due Renewals Tab */}
+      {mainTab === 'due' && (
+        <FlatList
+          data={filteredMembers}
+          keyExtractor={(item) => item.id || item._id}
+          contentContainerStyle={[styles.content, { paddingTop: 10 }]}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}
         renderItem={({ item }) => {
           const now = new Date();
           const dueDate = new Date(item.next_due_date);
@@ -362,16 +497,142 @@ export const RemindersScreen = () => {
             </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIcon}>
-              <FontAwesome name="check-circle" size={48} color={colors.success} />
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIcon}>
+                <FontAwesome name="check-circle" size={48} color={colors.success} />
+              </View>
+              <Text style={styles.emptyTitle}>All caught up!</Text>
+              <Text style={styles.emptySubtitle}>No renewals due in the next 5 days</Text>
             </View>
-            <Text style={styles.emptyTitle}>All caught up!</Text>
-            <Text style={styles.emptySubtitle}>No renewals due in the next 5 days</Text>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
+
+      {/* Today's Queue Tab */}
+      {mainTab === 'queue' && (
+        <ScrollView
+          contentContainerStyle={{ padding: spacing.m, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={queueLoading} onRefresh={fetchQueue} tintColor="#EC4899" />}
+        >
+          {/* Category filter chips */}
+          {queueData && (
+            <>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.m }}>
+                <TouchableOpacity
+                  style={[styles.catChip, { borderColor: queueCategory === 'all' ? colors.primary : colors.border, backgroundColor: queueCategory === 'all' ? `${colors.primary}15` : colors.surface }]}
+                  onPress={() => setQueueCategory('all')}
+                >
+                  <Text style={{ color: queueCategory === 'all' ? colors.primary : colors.textMuted, fontSize: 11, fontWeight: '700' }}>All {queueData.total}</Text>
+                </TouchableOpacity>
+                {QUEUE_CATS.map(cat => {
+                  const count = cat.key === 'birthday' ? queueData.summary?.birthdays :
+                                cat.key === 'expiring' ? queueData.summary?.expiring_soon :
+                                queueData.summary?.overdue;
+                  return (
+                    <TouchableOpacity
+                      key={cat.key}
+                      style={[styles.catChip, { borderColor: queueCategory === cat.key ? cat.color : colors.border, backgroundColor: queueCategory === cat.key ? `${cat.color}15` : colors.surface }]}
+                      onPress={() => setQueueCategory(cat.key)}
+                    >
+                      <FontAwesome name={cat.icon as any} size={11} color={cat.color} />
+                      <Text style={{ color: queueCategory === cat.key ? cat.color : colors.textMuted, fontSize: 11, fontWeight: '700' }}>{cat.label} {count || 0}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Sent progress banner */}
+              {getSentCount() > 0 && (
+                <View style={[styles.sentBanner, { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' }]}>
+                  <FontAwesome name="check-circle" size={14} color="#16A34A" />
+                  <Text style={{ color: '#16A34A', fontSize: 12, fontWeight: '700', flex: 1 }}>
+                    {getSentCount()} message{getSentCount() > 1 ? 's' : ''} sent today! 💬
+                  </Text>
+                  <TouchableOpacity onPress={() => setSentMap({})}>
+                    <Text style={{ color: '#16A34A', fontSize: 11, textDecorationLine: 'underline' }}>Undo</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Offers toggle in Queue */}
+              {activeOffers.length > 0 && (
+                <TouchableOpacity 
+                  style={[styles.offersToggleCard, { backgroundColor: appendOffers ? `${colors.primary}15` : colors.surfaceLight, borderColor: appendOffers ? colors.primary : colors.border }]}
+                  onPress={() => setAppendOffers(!appendOffers)}
+                >
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                    <FontAwesome name="gift" size={16} color={appendOffers ? colors.primary : colors.textMuted} />
+                    <View>
+                      <Text style={{fontSize: 13, fontWeight: '700', color: appendOffers ? colors.primary : colors.text}}>Append Active Offers</Text>
+                      <Text style={{fontSize: 11, color: colors.textSecondary}}>"{activeOffers[0].name}" will be added to messages.</Text>
+                    </View>
+                  </View>
+                  <Switch 
+                    value={appendOffers} 
+                    onValueChange={setAppendOffers} 
+                    trackColor={{ true: colors.primary, false: colors.border }} 
+                    style={{ transform: [{ scale: 0.8 }] }}
+                  />
+                </TouchableOpacity>
+              )}
+
+              {getQueueMembers().length === 0 ? (
+                <View style={[styles.emptyContainer, { marginTop: 40 }]}>
+                  <Text style={{ fontSize: 48 }}>{getSentCount() > 0 ? '🎉' : '🎉'}</Text>
+                  <Text style={styles.emptyTitle}>
+                    {getSentCount() > 0 ? `${getSentCount()} sent! All done!` : 'All caught up!'}
+                  </Text>
+                  <Text style={styles.emptySubtitle}>
+                    {getSentCount() > 0
+                      ? 'All reminders for this category have been sent.'
+                      : 'No reminders for this category today'}
+                  </Text>
+                </View>
+              ) : (
+                getQueueMembers().map((m: any, idx: number) => {
+                  const catColor = QUEUE_CATS.find(c => c.key === m.category)?.color || '#8B5CF6';
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      key={`${m._id}_${idx}`}
+                      onPress={() => router.push(`/members/${m._id}`)}
+                      style={[styles.queueCard, { backgroundColor: colors.surface, borderColor: colors.border, borderLeftColor: catColor }]}
+                    >
+                      <View style={[styles.queueAvatar, { backgroundColor: `${catColor}18` }]}>
+                        <Text style={[styles.avatarText, { color: catColor }]}>{(m.full_name || '?')[0].toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.memberName, { marginBottom: 2 }]}>{m.full_name}</Text>
+                        <Text style={styles.memberId}>{m.phone}</Text>
+                        <View style={[styles.labelBadge, { backgroundColor: `${catColor}15`, alignSelf: 'flex-start', marginTop: 4 }]}>
+                          <Text style={{ color: catColor, fontSize: 10, fontWeight: '700' }}>{m.label}</Text>
+                        </View>
+                        {m.monthly_fees ? <Text style={[styles.memberId, { marginTop: 2 }]}>Fees: ₹{m.monthly_fees}</Text> : null}
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.queueWaBtn, { backgroundColor: '#25D366' }]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleQueueSend(m);
+                        }}
+                      >
+                        <FontAwesome name="whatsapp" size={18} color="white" />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </>
+          )}
+          {queueLoading && !queueData && (
+            <View style={{ gap: 12 }}>
+              {[1,2,3].map(i => <View key={i} style={[styles.queueCard, { backgroundColor: colors.surface, borderColor: colors.border, borderLeftColor: colors.border, height: 85 }]} />)}
+            </View>
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 };
@@ -466,4 +727,58 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
   emptySubtitle: { fontSize: 14, color: colors.textMuted },
+
+  // Main tab switcher
+  mainTabRow: {
+    flexDirection: 'row', gap: 6, marginTop: spacing.m,
+    borderRadius: borderRadius.m, padding: 4,
+    borderWidth: 1,
+  },
+  mainTab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 9, borderRadius: borderRadius.s - 2,
+  },
+  mainTabText: { fontSize: 12, fontWeight: '700' },
+  tabBadge: {
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Category chips
+  catChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: borderRadius.full, borderWidth: 1.5,
+  },
+
+  // Queue member card
+  queueCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 14, borderRadius: 16,
+    borderWidth: 1, borderLeftWidth: 4,
+    marginBottom: 10,
+    ...shadows.light,
+  },
+  queueAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  labelBadge: {
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: borderRadius.full,
+  },
+  queueWaBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+    ...shadows.medium,
+  },
+  sentBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    padding: 10, borderRadius: borderRadius.m, borderWidth: 1,
+    marginBottom: spacing.m,
+  },
+  offersToggleCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: 12, borderRadius: borderRadius.m, borderWidth: 1,
+    marginBottom: spacing.m,
+  }
 });

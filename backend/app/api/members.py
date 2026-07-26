@@ -101,6 +101,14 @@ async def create_member(member_in: MemberCreate) -> Any:
 
     member_dict = member_in.dict()
     
+    now = datetime.now(timezone.utc)
+    if member_in.date_of_birth:
+        dob = member_in.date_of_birth
+        if dob.tzinfo is None:
+            dob = dob.replace(tzinfo=timezone.utc)
+        if dob > now:
+            raise HTTPException(status_code=400, detail="Date of Birth cannot be a future date! Please select today or a past date.")
+    
     # Calculate expiry date based on plan duration if not custom provided
     joining_date = member_dict["joining_date"]
     if joining_date.tzinfo is None:
@@ -163,6 +171,7 @@ async def get_all_members() -> Any:
     # Build a map: member_id -> latest payment's pending amount
     seen_members: set = set()
     pending_map: dict = {}
+    paid_map: dict = {}
     for p in all_payments:
         mid = p.get("member_id")
         if mid and mid not in seen_members:
@@ -174,18 +183,28 @@ async def get_all_members() -> Any:
                 pending = max(0, amt - amt_paid)
                 if pending > 0:
                     pending_map[mid] = pending
+                paid_map[mid] = amt_paid
+            else:
+                paid_map[mid] = amt
     
     for m in members:
         m["_id"] = str(m["_id"])
         m["pending_amount"] = pending_map.get(m["_id"], 0)
+        m["amount_paid"] = paid_map.get(m["_id"], m.get("amount_paid", 0))
     return members
 
 @router.get("/status/due", response_model=List[Any])
-async def get_due_members(days_ahead: int = 7) -> Any:
+async def get_due_members(days_ahead: int = 5) -> Any:
     db = get_database()
-    now = datetime.now(timezone.utc)
-    threshold = now + timedelta(days=days_ahead)
-    query = {"status": "active", "next_due_date": {"$lte": threshold}}
+    now_utc = datetime.now(timezone.utc)
+    # Convert to IST so we calculate days ahead until the very end of the target day
+    now_ist = now_utc + timedelta(hours=5, minutes=30)
+    end_of_target_ist = (now_ist + timedelta(days=days_ahead)).replace(hour=23, minute=59, second=59, microsecond=999999)
+    threshold = end_of_target_ist - timedelta(hours=5, minutes=30)
+    query = {
+        "status": {"$in": ["active", "expired"]},
+        "next_due_date": {"$ne": None, "$lte": threshold}
+    }
     cursor = db["members"].find(query).sort("next_due_date", 1)
     members = await cursor.to_list(length=100)
     
@@ -211,10 +230,11 @@ async def get_due_members(days_ahead: int = 7) -> Any:
                     if pending > 0:
                         pending_map[mid] = pending
 
+    today_ist = (now_utc + timedelta(hours=5, minutes=30)).date()
     for m in members:
         m["_id"] = str(m["_id"])
-        expiry = m["next_due_date"].replace(tzinfo=timezone.utc)
-        m["remaining_days"] = (expiry - now).days
+        expiry_ist = (m["next_due_date"].replace(tzinfo=timezone.utc) + timedelta(hours=5, minutes=30)).date()
+        m["remaining_days"] = (expiry_ist - today_ist).days
         m["pending_amount"] = pending_map.get(m["_id"], 0)
     return members
 
@@ -223,20 +243,33 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     db = get_database()
     now = datetime.now(timezone.utc)
     
+    # Sync any active member whose due date has passed to 'expired'
+    await db["members"].update_many(
+        {"status": "active", "next_due_date": {"$ne": None, "$lt": now}},
+        {"$set": {"status": "expired"}}
+    )
+
     total_members = await db["members"].count_documents({})
-    active_members = await db["members"].count_documents({"status": "active", "next_due_date": {"$gt": now}})
+    active_members = await db["members"].count_documents({
+        "status": "active",
+        "$or": [{"next_due_date": None}, {"next_due_date": {"$gte": now}}]
+    })
+    expired_members = await db["members"].count_documents({
+        "$or": [
+            {"status": "expired"},
+            {"status": {"$ne": "inactive"}, "next_due_date": {"$ne": None, "$lt": now}}
+        ]
+    })
     
     # Expiring soon (next 7 days)
     soon = now + timedelta(days=7)
     expiring_soon = await db["members"].count_documents({
         "status": "active", 
-        "next_due_date": {"$gte": now, "$lte": soon}
+        "next_due_date": {"$ne": None, "$gte": now, "$lte": soon}
     })
     
     # Overdue
-    overdue = await db["members"].count_documents({
-        "next_due_date": {"$lt": now}
-    })
+    overdue = expired_members
     
     # Revenue Calculations
     start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -311,7 +344,7 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     return {
         "total_members": total_members,
         "active_members": active_members,
-        "expired_members": total_members - active_members,
+        "expired_members": expired_members,
         "expiring_soon": expiring_soon,
         "pending_payments": overdue,
         "overdue_payments": overdue,
@@ -560,6 +593,13 @@ class EditMemberPayload(BaseModel):
     trainer_assigned: Optional[str] = None
     notes: Optional[str] = None
     aadhaar_number: Optional[str] = None
+    joining_date: Optional[datetime] = None
+    next_due_date: Optional[datetime] = None
+    date_of_birth: Optional[datetime] = None
+    monthly_fees: Optional[float] = None
+    plan_duration_months: Optional[int] = None
+    plan_name: Optional[str] = None
+    status: Optional[str] = None
 
 @router.put("/{member_id}")
 async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
@@ -598,7 +638,36 @@ async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
 
+    now = datetime.now(timezone.utc)
+    for date_field in ["joining_date", "next_due_date", "date_of_birth"]:
+        if date_field in update_fields and update_fields[date_field]:
+            d = update_fields[date_field]
+            if d.tzinfo is None:
+                d = d.replace(tzinfo=timezone.utc)
+            if date_field == "date_of_birth" and d > now:
+                raise HTTPException(status_code=400, detail="Date of Birth cannot be a future date! Please select today or a past date.")
+            update_fields[date_field] = d
+
+    if "next_due_date" in update_fields and update_fields["next_due_date"]:
+        if update_fields["next_due_date"] > now and "status" not in update_fields:
+            update_fields["status"] = "active"
+
     await db["members"].update_one({"_id": member["_id"]}, {"$set": update_fields})
+
+    # Also sync latest payment record date range if joining_date or next_due_date changed
+    if "joining_date" in update_fields or "next_due_date" in update_fields:
+        latest_payment = await db["payments"].find_one(
+            {"member_id": {"$in": [str(member["_id"]), member.get("member_id")]}},
+            sort=[("payment_date", -1)]
+        )
+        if latest_payment:
+            pay_update = {}
+            if "joining_date" in update_fields and update_fields["joining_date"]:
+                pay_update["start_date"] = update_fields["joining_date"]
+            if "next_due_date" in update_fields and update_fields["next_due_date"]:
+                pay_update["end_date"] = update_fields["next_due_date"]
+            if pay_update:
+                await db["payments"].update_one({"_id": latest_payment["_id"]}, {"$set": pay_update})
 
     updated = await db["members"].find_one({"_id": member["_id"]})
     updated["_id"] = str(updated["_id"])
@@ -647,7 +716,7 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         if new_due_date.tzinfo is None:
             new_due_date = new_due_date.replace(tzinfo=timezone.utc)
             
-        renewal_start_date = payload.joining_date or now
+        renewal_start_date = payload.joining_date or member.get("next_due_date") or now
         if renewal_start_date.tzinfo is None:
             renewal_start_date = renewal_start_date.replace(tzinfo=timezone.utc)
     else:
@@ -655,14 +724,10 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         if current_due and current_due.tzinfo is None:
             current_due = current_due.replace(tzinfo=timezone.utc)
             
-        # If member is already expired, renew from today. If still active, add to existing due date.
-        if current_due and current_due > now:
-            base_date = current_due
-        else:
-            base_date = now
+        base_date = current_due if current_due else now
             
         new_due_date = base_date + relativedelta(months=payload.plan_duration_months)
-        renewal_start_date = now
+        renewal_start_date = base_date
     
     # Update member — also update plan_duration_months and monthly_fees
     # so profile shows correct plan and next renewal amount is calculated correctly
@@ -758,10 +823,26 @@ async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayl
         raise HTTPException(status_code=400, detail="No fields to update")
     
     await db["payments"].update_one({"_id": ObjectId(payment_id)}, {"$set": update_fields})
+    if payload.amount_paid is not None:
+        await db["members"].update_one(
+            {"_id": ObjectId(actual_member_id)},
+            {"$set": {"amount_paid": payload.amount_paid}}
+        )
     
     updated = await db["payments"].find_one({"_id": ObjectId(payment_id)})
     updated["_id"] = str(updated["_id"])
     return updated
+
+@router.delete("/{member_id}/payments/{payment_id}")
+async def delete_payment(member_id: str, payment_id: str) -> Any:
+    """Delete a specific payment record if entered by mistake."""
+    db = get_database()
+    if not ObjectId.is_valid(payment_id):
+        raise HTTPException(status_code=400, detail="Invalid payment ID")
+    res = await db["payments"].delete_one({"_id": ObjectId(payment_id)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return {"message": "Payment deleted successfully"}
 
 @router.get("/{member_id}/payments")
 async def get_member_payments(member_id: str) -> Any:

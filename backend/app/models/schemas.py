@@ -13,18 +13,21 @@ class MemberCreate(BaseModel):
     gender: str
     notes: Optional[str] = None
     photo_url: Optional[str] = None
+    plan_name: Optional[str] = "Custom"
+    applied_offer_name: Optional[str] = None
     plan_type: str = "Monthly" # Monthly, Quarterly, Half-Yearly, Yearly, Custom
     age: Optional[int] = None
     weight: Optional[float] = None
     trainer_assigned: Optional[str] = "General"
     payment_mode: Optional[str] = "Cash"
     category: Optional[str] = "New"
-    daily_hours: Optional[int] = None  # Library-specific: daily study hours (e.g. 8, 10)
+    daily_hours: Optional[int] = Field(None, le=24)  # Library-specific: daily study hours max 24
     timing: Optional[str] = None        # Library-specific: study timing (e.g. 9 AM - 5 PM)
     allocated_seat: Optional[str] = None # Library-specific: Assigned seat (e.g. A-12)
     wifi_details: Optional[str] = None   # Library-specific: Wi-Fi credentials
     amount_paid: Optional[float] = None  # Partial payment support
     aadhaar_number: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
 
 
 class MemberUpdate(BaseModel):
@@ -37,8 +40,12 @@ class MemberUpdate(BaseModel):
     allocated_seat: Optional[str] = None
     wifi_details: Optional[str] = None
     timing: Optional[str] = None
+    daily_hours: Optional[int] = Field(None, le=24)
     aadhaar_number: Optional[str] = None
     photo_url: Optional[str] = None
+    date_of_birth: Optional[datetime] = None
+    plan_name: Optional[str] = None
+    applied_offer_name: Optional[str] = None
 
 
 class PaymentBase(BaseModel):
@@ -46,6 +53,8 @@ class PaymentBase(BaseModel):
     amount: float
     amount_paid: Optional[float] = None  # Partial payment support — None means full payment
     plan_duration: int
+    plan_name: Optional[str] = None
+    applied_offer_name: Optional[str] = None
     payment_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
@@ -181,4 +190,16 @@ class MembershipPlan(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class MembershipPlanInDB(MembershipPlan):
+    id: str = Field(alias="_id")
+
+class OfferCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    discount_type: str = "Percentage" # Percentage, Flat
+    discount_value: float
+    valid_until: Optional[datetime] = None
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class OfferInDB(OfferCreate):
     id: str = Field(alias="_id")

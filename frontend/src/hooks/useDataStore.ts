@@ -73,7 +73,10 @@ export function useCachedFetch<T = any>(
     if (cached) return transform ? transform(cached.data) : cached.data;
     return null;
   });
-  const [loading, setLoading] = useState(() => !cache[key]);
+  const [loading, setLoading] = useState(() => {
+    const cached = cache[key];
+    return !cached || (Array.isArray(cached.data) && cached.data.length === 0);
+  });
   const [refreshing, setRefreshing] = useState(false);
   const isFetching = useRef(false);
 
@@ -94,7 +97,7 @@ export function useCachedFetch<T = any>(
     isFetching.current = true;
     if (forceRefresh) {
       setRefreshing(true);
-    } else if (!cached) {
+    } else if (!cached || (Array.isArray(cached.data) && cached.data.length === 0)) {
       setLoading(true);
     }
 

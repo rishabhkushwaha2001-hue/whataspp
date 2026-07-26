@@ -26,7 +26,7 @@ export const EditPaymentModal = ({
 }: EditPaymentModalProps) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
-  const { showError, AlertModal } = useAppAlert();
+  const { showError, showSuccess, showConfirm, AlertModal } = useAppAlert();
 
   const [amountPaid, setAmountPaid] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -117,6 +117,31 @@ export const EditPaymentModal = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    const paymentId = payment?.id || payment?._id;
+    if (!paymentId) return;
+    showConfirm(
+      'Delete Payment Record',
+      'Are you sure you want to delete this payment entry? This cannot be undone.',
+      async () => {
+        setSaving(true);
+        try {
+          await api.delete(`/members/${memberId}/payments/${paymentId}`);
+          showSuccess('Deleted', 'Payment record removed successfully.', () => {
+            onSaved();
+            onClose();
+          });
+        } catch (e: any) {
+          showError('Delete Failed', e?.response?.data?.detail || 'Failed to delete payment');
+        } finally {
+          setSaving(false);
+        }
+      },
+      'Delete',
+      true
+    );
   };
 
   if (!visible || !payment) return null;
@@ -261,6 +286,22 @@ export const EditPaymentModal = ({
 
           {/* Footer */}
           <View style={styles.footer}>
+            <TouchableOpacity
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                borderRadius: 10,
+                backgroundColor: '#FEE2E2',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 5,
+              }}
+              onPress={handleDelete}
+              disabled={saving}
+            >
+              <FontAwesome name="trash" size={14} color="#EF4444" />
+              <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 13 }}>Delete</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
               <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>

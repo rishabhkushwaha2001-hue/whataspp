@@ -1,150 +1,162 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Switch, ActivityIndicator, Platform, RefreshControl, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { api } from '../services/api';
-import { useAppAlert } from '../hooks/useAppAlert';
-import { LinearGradient } from 'expo-linear-gradient';
-import { ModernInput } from '../components/ModernInput';
-import { GradientButton } from '../components/GradientButton';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import React, { useState, useEffect } from "react";
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
+  Switch, ActivityIndicator, Platform, RefreshControl, TextInput, Dimensions
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useTheme, shadows } from "../theme/theme";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { api } from "../services/api";
+import { useAppAlert } from "../hooks/useAppAlert";
+import { LinearGradient } from "expo-linear-gradient";
+import { ModernInput } from "../components/ModernInput";
+import { GradientButton } from "../components/GradientButton";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 
-const ICONS = ['crown', 'star', 'user', 'heart', 'star-o', 'bolt', 'diamond', 'fire'];
-const COLORS = ['#FFB020', '#6366F1', '#A855F7', '#EC4899', '#3B82F6', '#10B981', '#F43F5E', '#8B5CF6'];
+const { width } = Dimensions.get("window");
+
+const ICONS = ["crown", "star", "user", "heart", "star-o", "bolt", "diamond", "fire"];
+const COLORS = ["#FFB020", "#6366F1", "#A855F7", "#EC4899", "#3B82F6", "#10B981", "#F43F5E", "#8B5CF6"];
+const DURATION_PRESETS = [
+  { label: "1 Month", days: "30" },
+  { label: "2 Months", days: "60" },
+  { label: "3 Months", days: "90" },
+  { label: "4 Months", days: "120" },
+  { label: "5 Months", days: "150" },
+  { label: "6 Months", days: "180" },
+  { label: "7 Months", days: "210" },
+  { label: "8 Months", days: "240" },
+  { label: "9 Months", days: "270" },
+  { label: "10 Months", days: "300" },
+  { label: "11 Months", days: "330" },
+  { label: "1 Year", days: "365" },
+];
 
 export const PlansScreen = () => {
   const router = useRouter();
   const { theme, colors } = useTheme();
-  const styles = getStyles(colors);
-  const { showSuccess, showError, AlertModal } = useAppAlert();
-  
+  const isDark = theme === "dark";
+  const styles = getStyles(colors, isDark);
+  const { showSuccess, showError, showConfirm, AlertModal } = useAppAlert();
+
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('All'); // All, Active, Inactive
-  
+  const [filter, setFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any>(null);
-  
-  // Form State
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [planType, setPlanType] = useState('Individual');
-  const [durationDays, setDurationDays] = useState('30');
-  const [price, setPrice] = useState('');
-  const [actualPrice, setActualPrice] = useState('');
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [durationDays, setDurationDays] = useState("30");
+  const [price, setPrice] = useState("");
+  const [actualPrice, setActualPrice] = useState("");
   const [icon, setIcon] = useState(ICONS[0]);
   const [color, setColor] = useState(COLORS[0]);
   const [isActive, setIsActive] = useState(true);
-  const [features, setFeatures] = useState<string[]>(['Gym Access', 'Trainer Support']);
-  const [newFeature, setNewFeature] = useState('');
+  const [features, setFeatures] = useState<string[]>(["Gym Access", "Trainer Support"]);
+  const [newFeature, setNewFeature] = useState("");
   const [saving, setSaving] = useState(false);
 
   const fetchPlans = async () => {
     try {
-      const res = await api.get('/plans/');
+      const res = await api.get("/plans/");
       setPlans(res.data);
     } catch (e: any) {
-      showError('Failed to fetch', e.response?.data?.detail || 'Could not load plans.');
+      showError("Failed", e.response?.data?.detail || "Could not load plans.");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchPlans();
-  }, []);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchPlans();
-  };
+  useEffect(() => { fetchPlans(); }, []);
 
   const openCreateModal = () => {
     setEditingPlan(null);
-    setName('');
-    setDescription('');
-    setPlanType('Individual');
-    setDurationDays('30');
-    setPrice('');
-    setActualPrice('');
-    setIcon(ICONS[0]);
-    setColor(COLORS[0]);
+    setName(""); setDescription(""); setDurationDays("30");
+    setPrice(""); setActualPrice("");
+    setIcon(ICONS[0]); setColor(COLORS[0]);
     setIsActive(true);
-    setFeatures(['Gym Access', 'Trainer Support']);
+    setFeatures(["Gym Access", "Trainer Support"]);
     setShowModal(true);
   };
 
   const openEditModal = (plan: any) => {
     setEditingPlan(plan);
-    setName(plan.name);
-    setDescription(plan.description || '');
-    setPlanType(plan.type || 'Individual');
+    setName(plan.name); setDescription(plan.description || "");
     setDurationDays(plan.duration_days.toString());
     setPrice(plan.price.toString());
-    setActualPrice(plan.actual_price ? plan.actual_price.toString() : '');
-    setIcon(plan.icon || ICONS[0]);
-    setColor(plan.color || COLORS[0]);
+    setActualPrice(plan.actual_price ? plan.actual_price.toString() : "");
+    setIcon(plan.icon || ICONS[0]); setColor(plan.color || COLORS[0]);
     setIsActive(plan.is_active);
     setFeatures(plan.features || []);
     setShowModal(true);
   };
 
   const addFeature = () => {
-    if (newFeature.trim()) {
-      setFeatures([...features, newFeature.trim()]);
-      setNewFeature('');
-    }
+    if (newFeature.trim()) { setFeatures([...features, newFeature.trim()]); setNewFeature(""); }
   };
 
   const removeFeature = (index: number) => {
-    const f = [...features];
-    f.splice(index, 1);
-    setFeatures(f);
+    const f = [...features]; f.splice(index, 1); setFeatures(f);
   };
 
   const savePlan = async () => {
     if (!name || !durationDays || !price) {
-      showError('Missing Fields', 'Name, duration, and price are required.');
+      showError("Missing Fields", "Name, duration, and price are required.");
       return;
     }
-    
     setSaving(true);
     try {
       const payload = {
-        name,
-        description,
-        type: planType,
+        name, description, type: "Individual",
         duration_days: parseInt(durationDays) || 30,
         price: parseFloat(price) || 0,
         actual_price: actualPrice ? parseFloat(actualPrice) : null,
-        icon,
-        color,
-        features,
-        is_active: isActive
+        icon, color, features, is_active: isActive
       };
-      
-      if (editingPlan) {
-        await api.put(`/plans/${editingPlan._id}`, payload);
-        showSuccess('Saved', 'Plan updated successfully!');
-      } else {
-        await api.post('/plans/', payload);
-        showSuccess('Created', 'New plan added successfully!');
-      }
       setShowModal(false);
       fetchPlans();
+      setTimeout(() => {
+        if (editingPlan) {
+          showSuccess("Saved", "Plan updated!");
+        } else {
+          showSuccess("Created", "New plan added!");
+        }
+      }, 350);
     } catch (e: any) {
-      showError('Error', e.response?.data?.detail || 'Failed to save plan.');
+      showError("Error", e.response?.data?.detail || "Failed to save plan.");
     } finally {
       setSaving(false);
     }
   };
 
+  const deletePlan = (plan: any, e?: any) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    showConfirm(
+      "Delete Plan",
+      `Are you sure you want to delete "${plan.name}"? This action cannot be undone.`,
+      async () => {
+        try {
+          await api.delete(`/plans/${plan._id}`);
+          showSuccess("Deleted", `${plan.name} has been removed.`);
+          if (editingPlan && editingPlan._id === plan._id) {
+            setShowModal(false);
+          }
+          fetchPlans();
+        } catch (err: any) {
+          showError("Error", err.response?.data?.detail || "Could not delete plan.");
+        }
+      },
+      "Delete",
+      true
+    );
+  };
+
   const filteredPlans = plans.filter(p => {
-    if (filter === 'Active') return p.is_active;
-    if (filter === 'Inactive') return !p.is_active;
+    if (filter === "Active") return p.is_active;
+    if (filter === "Inactive") return !p.is_active;
     return true;
   });
 
@@ -153,311 +165,373 @@ export const PlansScreen = () => {
   return (
     <View style={styles.container}>
       <AlertModal />
-      
-      <LinearGradient colors={[colors.background, theme === 'dark' ? '#1a103c' : '#ede9fe']} style={StyleSheet.absoluteFill} />
-      
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+
+      <LinearGradient
+        colors={isDark ? ["#1a1a2e", "#16213e"] : ["#ffffff", "#F8F7FF"]}
+        style={styles.headerGrad}
+      >
+        <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <FontAwesome name="arrow-left" size={16} color={colors.text} />
           </TouchableOpacity>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Membership Plans</Text>
-            <Text style={styles.subtitle}>Create and manage membership plans</Text>
+            <Text style={styles.subtitle}>{activePlansCount} active · {plans.length} total</Text>
           </View>
-        </View>
-        <TouchableOpacity style={styles.createBtn} onPress={openCreateModal}>
-          <FontAwesome name="plus" size={14} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={styles.createBtnText}>Create New Plan</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView 
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
-      >
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#F3E8FF' }]}>
-              <FontAwesome name="check-square-o" size={16} color="#A855F7" />
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Total Plans</Text>
-              <Text style={styles.statValue}>{plans.length}</Text>
-            </View>
-          </View>
-          <View style={styles.statCard}>
-            <View style={[styles.statIconBox, { backgroundColor: '#ECFDF5' }]}>
-              <FontAwesome name="check" size={16} color="#10B981" />
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Active Plans</Text>
-              <Text style={styles.statValue}>{activePlansCount}</Text>
-            </View>
-          </View>
+          <TouchableOpacity onPress={openCreateModal}>
+            <LinearGradient colors={["#7C3AED", "#4F46E5"]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.addBtnGrad}>
+              <FontAwesome name="plus" size={13} color="#fff" />
+              <Text style={styles.addBtnText}>New Plan</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
 
-        {/* Filters */}
-        <View style={styles.filtersContainer}>
-          {['All', 'Active', 'Inactive'].map(f => (
-            <TouchableOpacity 
-              key={f} 
-              style={[styles.filterBtn, filter === f && styles.filterBtnActive, filter === f && { borderColor: colors.primary }]}
+        <View style={styles.filterRow}>
+          {["All", "Active", "Inactive"].map(f => (
+            <TouchableOpacity
+              key={f}
+              style={[styles.filterTab, filter === f && styles.filterTabActive]}
               onPress={() => setFilter(f)}
             >
-              <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>{f}</Text>
+              <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>{f}</Text>
             </TouchableOpacity>
           ))}
         </View>
+      </LinearGradient>
 
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchPlans(); }} tintColor={colors.primary} />}
+        showsVerticalScrollIndicator={false}
+      >
         {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} />
         ) : filteredPlans.length === 0 ? (
           <View style={styles.emptyState}>
-            <FontAwesome name="tags" size={48} color={colors.textMuted} style={{ opacity: 0.5, marginBottom: 16 }} />
-            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>No plans found in this category.</Text>
+            <View style={styles.emptyIcon}>
+              <FontAwesome name="tags" size={32} color={colors.textMuted} />
+            </View>
+            <Text style={styles.emptyTitle}>No plans yet</Text>
+            <Text style={styles.emptyDesc}>Tap "New Plan" to create your first membership plan</Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={openCreateModal}>
+              <Text style={styles.emptyBtnText}>+ Create First Plan</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.listContainer}>
-            {filteredPlans.map(plan => {
-              const savePercent = plan.actual_price && plan.actual_price > plan.price 
-                ? Math.round(((plan.actual_price - plan.price) / plan.actual_price) * 100) 
-                : 0;
+          filteredPlans.map(plan => {
+            const savePercent = plan.actual_price && plan.actual_price > plan.price
+              ? Math.round(((plan.actual_price - plan.price) / plan.actual_price) * 100)
+              : 0;
+            const accentColor = plan.color || colors.primary;
+            const durationLabel = plan.duration_days >= 365
+              ? `${Math.round(plan.duration_days / 365)}Y`
+              : plan.duration_days >= 28
+              ? `${Math.round(plan.duration_days / 30)}M`
+              : `${plan.duration_days}D`;
+            const durationFull = plan.duration_days >= 365
+              ? `${Math.round(plan.duration_days / 365)} Year`
+              : plan.duration_days >= 28
+              ? `${Math.round(plan.duration_days / 30)} Month${Math.round(plan.duration_days / 30) > 1 ? "s" : ""}`
+              : `${plan.duration_days} Days`;
 
-              return (
-                <View key={plan._id} style={[styles.planCard, { borderColor: `${plan.color || colors.primary}40` }]}>
-                  {savePercent > 0 && (
-                    <LinearGradient colors={['#ECFDF5', '#D1FAE5']} style={styles.discountBadge}>
-                      <Text style={styles.discountText}>Save {savePercent}%</Text>
-                    </LinearGradient>
-                  )}
-                  {plan.type === 'Corporate' && (
-                    <LinearGradient colors={['#F3E8FF', '#E9D5FF']} style={[styles.discountBadge, { right: savePercent > 0 ? 80 : 16 }]}>
-                      <Text style={[styles.discountText, { color: '#7C3AED' }]}>Corporate</Text>
-                    </LinearGradient>
-                  )}
-                  
-                  <View style={styles.planCardHeader}>
-                    <View style={[styles.planIconBox, { backgroundColor: `${plan.color || colors.primary}15` }]}>
-                      <FontAwesome name={plan.icon || 'star'} size={24} color={plan.color || colors.primary} />
+            return (
+              <TouchableOpacity
+                key={plan._id}
+                style={styles.planCard}
+                activeOpacity={0.92}
+                onPress={() => openEditModal(plan)}
+              >
+                <View style={[styles.planAccent, { backgroundColor: accentColor }]} />
+
+                <View style={styles.planBody}>
+                  <View style={styles.planTop}>
+                    <View style={[styles.planIconCircle, { backgroundColor: `${accentColor}18` }]}>
+                      <FontAwesome name={plan.icon || "star"} size={18} color={accentColor} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.planName}>{plan.name}</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
-                        <Text style={styles.planPrice}>₹{plan.price}</Text>
-                        <Text style={styles.planDuration}>/ {plan.duration_days} Days</Text>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.planName} numberOfLines={1}>{plan.name}</Text>
+                      {plan.description ? <Text style={styles.planDesc} numberOfLines={1}>{plan.description}</Text> : null}
+                    </View>
+                    <View style={[styles.durationPill, { backgroundColor: `${accentColor}18` }]}>
+                      <Text style={[styles.durationPillText, { color: accentColor }]}>{durationFull}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceText}>₹{plan.price}</Text>
+                    {plan.actual_price ? <Text style={styles.strikePrice}>₹{plan.actual_price}</Text> : null}
+                    {savePercent > 0 ? (
+                      <View style={styles.saveBadge}>
+                        <Text style={styles.saveBadgeText}>{savePercent}% OFF</Text>
                       </View>
-                      {plan.actual_price && (
-                        <Text style={styles.actualPrice}>₹{plan.actual_price}</Text>
+                    ) : null}
+                  </View>
+
+                  {plan.features && plan.features.length > 0 && (
+                    <View style={styles.chipRow}>
+                      {plan.features.slice(0, 4).map((feat: string, i: number) => (
+                        <View key={i} style={styles.chip}>
+                          <FontAwesome name="check" size={8} color={accentColor} style={{ marginRight: 4 }} />
+                          <Text style={styles.chipText}>{feat}</Text>
+                        </View>
+                      ))}
+                      {plan.features.length > 4 && (
+                        <View style={styles.chip}>
+                          <Text style={styles.chipText}>+{plan.features.length - 4} more</Text>
+                        </View>
                       )}
                     </View>
-                  </View>
-                  
-                  <View style={styles.featuresList}>
-                    {plan.features.map((feat: string, i: number) => (
-                      <View key={i} style={styles.featureItem}>
-                        <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: `${plan.color || colors.primary}15`, justifyContent: 'center', alignItems: 'center', marginRight: 10 }}>
-                          <FontAwesome name="check" size={8} color={plan.color || colors.primary} />
-                        </View>
-                        <Text style={styles.featureText}>{feat}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  )}
 
                   <View style={styles.planFooter}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={[styles.statusDot, { backgroundColor: plan.is_active ? '#10B981' : '#EF4444' }]} />
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: plan.is_active ? '#10B981' : '#EF4444' }}>
-                        {plan.is_active ? 'Active' : 'Inactive'}
+                    <View style={[styles.statusBadge, { backgroundColor: plan.is_active ? "#ECFDF5" : "#FEF2F2" }]}>
+                      <View style={[styles.statusDot, { backgroundColor: plan.is_active ? "#10B981" : "#EF4444" }]} />
+                      <Text style={[styles.statusText, { color: plan.is_active ? "#059669" : "#DC2626" }]}>
+                        {plan.is_active ? "Active" : "Inactive"}
                       </Text>
                     </View>
-                    <TouchableOpacity style={styles.editBtn} onPress={() => openEditModal(plan)}>
-                      <FontAwesome name="pencil" size={14} color={colors.primary} style={{ marginRight: 6 }} />
-                      <Text style={styles.editBtnText}>Edit</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )
-            })}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Create/Edit Modal */}
-      <Modal visible={showModal} animationType="slide" transparent>
-        <KeyboardAwareScrollView contentContainerStyle={{ flexGrow: 1 }} style={{ flex: 1 }} enableOnAndroid extraScrollHeight={20}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setShowModal(false)} style={styles.modalCloseBtn}>
-                  <FontAwesome name="times" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <Text style={styles.modalTitle}>{editingPlan ? 'Edit Plan' : 'Create New Plan'}</Text>
-                <TouchableOpacity onPress={savePlan} disabled={saving} style={[styles.saveBtn, { opacity: saving ? 0.7 : 1 }]}>
-                  {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save</Text>}
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.modalContent}>
-                <ModernInput label="Plan Name *" value={name} onChangeText={setName} placeholder="e.g. Gold Monthly" />
-                <ModernInput label="Short Description" value={description} onChangeText={setDescription} placeholder="Brief description of the plan" />
-                
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Duration (Days) *</Text>
-                    <View style={styles.inputBox}>
-                      <TextInput style={styles.inputText} keyboardType="numeric" value={durationDays} onChangeText={setDurationDays} placeholder="30" placeholderTextColor={colors.textMuted} />
-                      <Text style={styles.inputSuffix}>Days</Text>
-                    </View>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Price (₹) *</Text>
-                    <View style={styles.inputBox}>
-                      <Text style={styles.inputPrefix}>₹</Text>
-                      <TextInput style={styles.inputText} keyboardType="numeric" value={price} onChangeText={setPrice} placeholder="1500" placeholderTextColor={colors.textMuted} />
-                    </View>
-                  </View>
-                </View>
-
-                <View style={{ marginBottom: 24 }}>
-                  <Text style={styles.label}>Actual Price (Optional)</Text>
-                  <View style={styles.inputBox}>
-                    <Text style={styles.inputPrefix}>₹</Text>
-                    <TextInput style={styles.inputText} keyboardType="numeric" value={actualPrice} onChangeText={setActualPrice} placeholder="Strike-through price" placeholderTextColor={colors.textMuted} />
-                  </View>
-                </View>
-                
-                <Text style={styles.sectionTitle}>Plan Icon</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
-                  {ICONS.map(i => (
-                    <TouchableOpacity key={i} onPress={() => setIcon(i)} style={[styles.iconSelect, icon === i && { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]}>
-                      <FontAwesome name={i as any} size={20} color={icon === i ? colors.primary : colors.textMuted} />
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                <Text style={styles.sectionTitle}>Plan Color</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
-                  {COLORS.map(c => (
-                    <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorSelect, { backgroundColor: c }, color === c && styles.colorSelectActive]}>
-                      {color === c && <FontAwesome name="check" size={12} color="#fff" />}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                <Text style={styles.sectionTitle}>Inclusions (Features)</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                  <TextInput 
-                    style={[styles.inputBox, { flex: 1, marginBottom: 0 }]} 
-                    value={newFeature} 
-                    onChangeText={setNewFeature} 
-                    placeholder="e.g. Gym Access" 
-                    placeholderTextColor={colors.textMuted}
-                    onSubmitEditing={addFeature}
-                  />
-                  <TouchableOpacity style={styles.addFeatureBtn} onPress={addFeature}>
-                    <FontAwesome name="plus" size={14} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                <View style={{ marginBottom: 24 }}>
-                  {features.map((feat, idx) => (
-                    <View key={idx} style={styles.featurePill}>
-                      <Text style={styles.featurePillText}>{feat}</Text>
-                      <TouchableOpacity onPress={() => removeFeature(idx)} style={{ padding: 4 }}>
-                        <FontAwesome name="times" size={12} color={colors.textMuted} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                      <View style={styles.editHint}>
+                        <Text style={styles.editHintText}>Tap to edit</Text>
+                        <FontAwesome name="pencil" size={11} color={colors.textMuted} />
+                      </View>
+                      <TouchableOpacity
+                        onPress={(e) => deletePlan(plan, e)}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          backgroundColor: isDark ? '#3B181E' : '#FEE2E2',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <FontAwesome name="trash-o" size={14} color="#EF4444" />
                       </TouchableOpacity>
                     </View>
-                  ))}
-                </View>
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 40, padding: 16, backgroundColor: colors.surfaceLight, borderRadius: 12 }}>
-                  <View>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>Plan Status</Text>
-                    <Text style={{ fontSize: 12, color: colors.textMuted }}>Inactive plans won't show in enrollment</Text>
                   </View>
-                  <Switch value={isActive} onValueChange={setIsActive} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#fff" />
                 </View>
-                
+              </TouchableOpacity>
+            );
+          })
+        )}
+        <View style={{ height: 80 }} />
+      </ScrollView>
+
+      <TouchableOpacity style={styles.fab} onPress={openCreateModal} activeOpacity={0.88}>
+        <LinearGradient colors={["#7C3AED", "#4F46E5"]} start={{x:0,y:0}} end={{x:1,y:1}} style={styles.fabGrad}>
+          <FontAwesome name="plus" size={20} color="#fff" />
+        </LinearGradient>
+      </TouchableOpacity>
+
+      <Modal visible={showModal} animationType="slide" transparent onRequestClose={() => setShowModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>{editingPlan ? "Edit Plan" : "Create New Plan"}</Text>
+                <Text style={styles.modalSubtitle}>{editingPlan ? "Update plan details" : "Add a new membership plan"}</Text>
               </View>
+              <TouchableOpacity onPress={() => setShowModal(false)} style={styles.closeBtn}>
+                <FontAwesome name="times" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
+
+            <KeyboardAwareScrollView
+              contentContainerStyle={styles.modalContent}
+              showsVerticalScrollIndicator={false}
+              enableOnAndroid
+              extraScrollHeight={20}
+              keyboardShouldPersistTaps="handled"
+            >
+              <ModernInput label="Plan Name *" value={name} onChangeText={setName} placeholder="e.g. Gold Monthly" />
+              <ModernInput label="Short Description" value={description} onChangeText={setDescription} placeholder="Brief description" />
+
+              <Text style={styles.sectionLabel}>Duration</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                {DURATION_PRESETS.map(preset => (
+                  <TouchableOpacity
+                    key={preset.days}
+                    onPress={() => setDurationDays(preset.days)}
+                    style={[styles.presetPill, durationDays === preset.days && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  >
+                    <Text style={[styles.presetText, durationDays === preset.days && { color: "#fff" }]}>{preset.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={styles.inputBox}>
+                <TextInput style={styles.inputText} keyboardType="numeric" value={durationDays} onChangeText={setDurationDays} placeholder="Custom days" placeholderTextColor={colors.textMuted} />
+                <Text style={styles.inputSuffix}>Days</Text>
+              </View>
+
+              <Text style={styles.sectionLabel}>Pricing</Text>
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Price (₹) *</Text>
+                  <View style={styles.inputBox}>
+                    <Text style={styles.inputPrefix}>₹</Text>
+                    <TextInput style={styles.inputText} keyboardType="numeric" value={price} onChangeText={setPrice} placeholder="1500" placeholderTextColor={colors.textMuted} />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>MRP (Optional)</Text>
+                  <View style={styles.inputBox}>
+                    <Text style={styles.inputPrefix}>₹</Text>
+                    <TextInput style={styles.inputText} keyboardType="numeric" value={actualPrice} onChangeText={setActualPrice} placeholder="2000" placeholderTextColor={colors.textMuted} />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={styles.sectionLabel}>Icon</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {ICONS.map(i => (
+                  <TouchableOpacity key={i} onPress={() => setIcon(i)} style={[styles.iconPill, icon === i && { backgroundColor: `${colors.primary}15`, borderColor: colors.primary }]}>
+                    <FontAwesome name={i as any} size={18} color={icon === i ? colors.primary : colors.textMuted} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.sectionLabel}>Plan Color</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                {COLORS.map(c => (
+                  <TouchableOpacity key={c} onPress={() => setColor(c)} style={[styles.colorCircle, { backgroundColor: c }, color === c && styles.colorSelected]}>
+                    {color === c && <FontAwesome name="check" size={12} color="#fff" />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.sectionLabel}>Inclusions</Text>
+              <View style={styles.featureInputRow}>
+                <TextInput style={styles.featureInput} value={newFeature} onChangeText={setNewFeature} placeholder="e.g. Gym Access" placeholderTextColor={colors.textMuted} onSubmitEditing={addFeature} returnKeyType="done" />
+                <TouchableOpacity style={styles.featureAddBtn} onPress={addFeature}>
+                  <FontAwesome name="plus" size={13} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.chipsWrap}>
+                {features.map((feat, idx) => (
+                  <View key={idx} style={styles.featChip}>
+                    <Text style={styles.featChipText}>{feat}</Text>
+                    <TouchableOpacity onPress={() => removeFeature(idx)} style={{ marginLeft: 6 }}>
+                      <FontAwesome name="times" size={10} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.toggleRow}>
+                <View>
+                  <Text style={styles.toggleLabel}>Plan Active</Text>
+                  <Text style={styles.toggleSub}>Inactive plans won't appear during enrollment</Text>
+                </View>
+                <Switch value={isActive} onValueChange={setIsActive} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#fff" />
+              </View>
+
+              <View style={{ marginTop: 8, marginBottom: 40 }}>
+                <GradientButton title={saving ? "Saving..." : editingPlan ? "Update Plan" : "Create Plan"} onPress={savePlan} isLoading={saving} />
+                {editingPlan && (
+                  <TouchableOpacity
+                    style={{
+                      marginTop: 16,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      paddingVertical: 12,
+                      borderRadius: 16,
+                      backgroundColor: isDark ? '#3B181E' : '#FEE2E2',
+                      borderWidth: 1,
+                      borderColor: '#EF4444',
+                    }}
+                    onPress={() => deletePlan(editingPlan)}
+                  >
+                    <FontAwesome name="trash-o" size={16} color="#EF4444" />
+                    <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '700' }}>
+                      Delete This Plan
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </KeyboardAwareScrollView>
           </View>
-        </KeyboardAwareScrollView>
+        </View>
       </Modal>
     </View>
   );
 };
 
-const getStyles = (colors: any) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: Platform.OS === 'android' ? 40 : 20, paddingBottom: 16,
-  },
-  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text },
-  subtitle: { fontSize: 12, color: colors.textSecondary },
-  createBtn: { backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
-  createBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  
-  content: { padding: 20, paddingBottom: 100 },
-  
-  statsRow: { flexDirection: 'row', gap: 16, marginBottom: 24 },
-  statCard: { flex: 1, backgroundColor: colors.surface, padding: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, ...shadows.light },
-  statIconBox: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  statLabel: { fontSize: 12, color: colors.textMuted, marginBottom: 2 },
-  statValue: { fontSize: 18, fontWeight: '800', color: colors.text },
-  
-  filtersContainer: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  filterBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  filterBtnActive: { backgroundColor: `${colors.primary}10`, borderColor: colors.primary },
-  filterText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
-  filterTextActive: { color: colors.primary },
-  
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-  
-  listContainer: { gap: 16 },
-  planCard: { width: '100%', backgroundColor: colors.surface, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: colors.border, marginBottom: 8, ...shadows.card },
-  discountBadge: { position: 'absolute', top: 16, right: 16, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  discountText: { fontSize: 11, fontWeight: '800', color: '#059669' },
-  planCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  planIconBox: { width: 56, height: 56, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 16 },
-  planName: { fontSize: 18, fontWeight: '800', color: colors.text, marginBottom: 4 },
-  planPrice: { fontSize: 28, fontWeight: '800', color: colors.text },
-  planDuration: { fontSize: 14, fontWeight: '700', color: colors.textMuted },
-  actualPrice: { fontSize: 13, fontWeight: '600', color: colors.textMuted, textDecorationLine: 'line-through', marginTop: 2 },
-  featuresList: { marginBottom: 20 },
-  featureItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  featureText: { fontSize: 14, color: colors.textSecondary, flex: 1, fontWeight: '500' },
-  
-  planFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  editBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: `${colors.primary}15`, borderRadius: 16 },
-  editBtnText: { fontSize: 14, fontWeight: '800', color: colors.primary },
-  
-  // Modal Styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContainer: { backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, minHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border },
-  modalCloseBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-  saveBtn: { backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
-  saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  modalContent: { padding: 20 },
-  
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 8 },
-  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceLight, borderWidth: 1, borderColor: colors.border, borderRadius: 12, height: 50, paddingHorizontal: 16, marginBottom: 16 },
-  inputText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
-  inputPrefix: { color: colors.textMuted, fontSize: 15, fontWeight: '700', marginRight: 8 },
-  inputSuffix: { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginLeft: 8 },
-  
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 12 },
-  iconSelect: { width: 48, height: 48, borderRadius: 12, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center', marginRight: 12, borderWidth: 1, borderColor: colors.border },
-  colorSelect: { width: 40, height: 40, borderRadius: 20, marginRight: 12, justifyContent: 'center', alignItems: 'center' },
-  colorSelectActive: { borderWidth: 3, borderColor: '#fff' },
-  
-  addFeatureBtn: { width: 50, height: 50, backgroundColor: colors.primary, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginLeft: 12 },
-  featurePill: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, marginBottom: 8, justifyContent: 'space-between' },
-  featurePillText: { fontSize: 13, color: colors.text, fontWeight: '500' },
+const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: isDark ? "#0F1117" : "#F7F8FC" },
+  headerGrad: { paddingTop: Platform.OS === "android" ? 44 : 20, borderBottomWidth: 1, borderBottomColor: isDark ? "#1E2030" : "#EEEBFF" },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingBottom: 16 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: isDark ? "#1E2030" : "#F1F0FF", justifyContent: "center", alignItems: "center", marginRight: 12 },
+  title: { fontSize: 20, fontWeight: "800", color: colors.text, letterSpacing: -0.4 },
+  subtitle: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
+  addBtnGrad: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
+  addBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  filterRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingBottom: 14 },
+  filterTab: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20, backgroundColor: isDark ? "#1E2030" : "#EEEBFF" },
+  filterTabActive: { backgroundColor: colors.primary },
+  filterTabText: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
+  filterTabTextActive: { color: "#fff" },
+  content: { padding: 16, paddingTop: 20 },
+  planCard: { flexDirection: "row", backgroundColor: isDark ? "#171A22" : "#fff", borderRadius: 20, marginBottom: 14, overflow: "hidden", borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#EFEFEF", ...shadows.medium },
+  planAccent: { width: 5 },
+  planBody: { flex: 1, padding: 16 },
+  planTop: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  planIconCircle: { width: 40, height: 40, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+  planName: { fontSize: 16, fontWeight: "800", color: colors.text, marginBottom: 2 },
+  planDesc: { fontSize: 12, color: colors.textMuted, fontWeight: "500" },
+  durationPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  durationPillText: { fontSize: 12, fontWeight: "700" },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginBottom: 12 },
+  priceText: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
+  strikePrice: { fontSize: 14, fontWeight: "600", color: colors.textMuted, textDecorationLine: "line-through" },
+  saveBadge: { backgroundColor: "#ECFDF5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  saveBadgeText: { fontSize: 11, fontWeight: "800", color: "#059669" },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 14 },
+  chip: { flexDirection: "row", alignItems: "center", backgroundColor: isDark ? "#1E2030" : "#F5F3FF", paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10 },
+  chipText: { fontSize: 11, fontWeight: "600", color: isDark ? colors.textSecondary : "#374151" },
+  planFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  statusBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 12, fontWeight: "700" },
+  editHint: { flexDirection: "row", alignItems: "center", gap: 4 },
+  editHintText: { fontSize: 11, color: colors.textMuted, fontWeight: "500" },
+  emptyState: { alignItems: "center", paddingTop: 80, paddingHorizontal: 40 },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: isDark ? "#1E2030" : "#F1F0FF", justifyContent: "center", alignItems: "center", marginBottom: 20 },
+  emptyTitle: { fontSize: 20, fontWeight: "800", color: colors.text, marginBottom: 8 },
+  emptyDesc: { fontSize: 14, color: colors.textMuted, textAlign: "center", lineHeight: 20, marginBottom: 24 },
+  emptyBtn: { backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20 },
+  emptyBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  fab: { position: "absolute", bottom: 28, right: 20, shadowColor: "#7C3AED", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16, elevation: 10 },
+  fabGrad: { width: 56, height: 56, borderRadius: 28, justifyContent: "center", alignItems: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  modalSheet: { backgroundColor: isDark ? "#171A22" : "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "92%", minHeight: "70%" },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? "#2A2D3A" : "#E5E7EB", alignSelf: "center", marginTop: 12, marginBottom: 4 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: isDark ? "#2A2D3A" : "#F3F4F6" },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: colors.text },
+  modalSubtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? "#2A2D3A" : "#F3F4F6", justifyContent: "center", alignItems: "center" },
+  modalContent: { paddingHorizontal: 20, paddingTop: 20 },
+  sectionLabel: { fontSize: 12, fontWeight: "700", color: colors.textSecondary, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 12, fontWeight: "600", color: colors.textMuted, marginBottom: 6 },
+  presetPill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8, borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#E5E7EB", backgroundColor: isDark ? "#1E2030" : "#F9FAFB" },
+  presetText: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
+  inputBox: { flexDirection: "row", alignItems: "center", backgroundColor: isDark ? "#1E2030" : "#F9FAFB", borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#E5E7EB", borderRadius: 12, height: 48, paddingHorizontal: 14, marginBottom: 16 },
+  inputText: { flex: 1, color: colors.text, fontSize: 15, fontWeight: "600" },
+  inputPrefix: { color: colors.textMuted, fontSize: 16, fontWeight: "700", marginRight: 6 },
+  inputSuffix: { color: colors.textMuted, fontSize: 13, fontWeight: "600", marginLeft: 6 },
+  iconPill: { width: 48, height: 48, borderRadius: 14, justifyContent: "center", alignItems: "center", marginRight: 10, borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#E5E7EB", backgroundColor: isDark ? "#1E2030" : "#F9FAFB" },
+  colorCircle: { width: 38, height: 38, borderRadius: 19, marginRight: 10, justifyContent: "center", alignItems: "center" },
+  colorSelected: { borderWidth: 3, borderColor: "#fff" },
+  featureInputRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+  featureInput: { flex: 1, height: 44, backgroundColor: isDark ? "#1E2030" : "#F9FAFB", borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#E5E7EB", borderRadius: 12, paddingHorizontal: 14, color: colors.text, fontSize: 14, fontWeight: "500" },
+  featureAddBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" },
+  chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 },
+  featChip: { flexDirection: "row", alignItems: "center", backgroundColor: isDark ? "#1E2030" : "#F1F0FF", paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#DDD6FE" },
+  featChipText: { fontSize: 12, fontWeight: "600", color: colors.text },
+  toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: isDark ? "#1E2030" : "#F9FAFB", padding: 16, borderRadius: 16, marginBottom: 16, borderWidth: 1, borderColor: isDark ? "#2A2D3A" : "#E5E7EB" },
+  toggleLabel: { fontSize: 15, fontWeight: "700", color: colors.text },
+  toggleSub: { fontSize: 12, color: colors.textMuted, marginTop: 2, maxWidth: 220 },
 });

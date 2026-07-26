@@ -110,7 +110,8 @@ export const MessageScreen = () => {
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
   const [expiryDate, setExpiryDate] = useState(getNextMonthDate(new Date().toISOString().split('T')[0]));
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry'>('joining');
+  const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry' | 'dob'>('joining');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [isManual, setIsManual] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [gymName, setGymName] = useState('Gym');
@@ -130,9 +131,27 @@ export const MessageScreen = () => {
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('custom');
 
+  const [offers, setOffers] = useState<any[]>([]);
+  const [selectedOffer, setSelectedOffer] = useState<any>(null);
+  const [baseAmount, setBaseAmount] = useState('');
+  const [trainers, setTrainers] = useState<any[]>([]);
+  const [selectedTrainer, setSelectedTrainer] = useState<string>('General Coach');
+  const [showPlanTooltip, setShowPlanTooltip] = useState(false);
+
   const [alertConfig, setAlertConfig] = useState<{ visible: boolean, title: string, message: string, type: 'success' | 'error' }>({
     visible: false, title: '', message: '', type: 'success'
   });
+  const scrollRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      if (typeof scrollRef.current.scrollToPosition === 'function') {
+        scrollRef.current.scrollToPosition(0, 0, false);
+      } else if (typeof scrollRef.current.scrollTo === 'function') {
+        scrollRef.current.scrollTo({ x: 0, y: 0, animated: false });
+      }
+    }
+  }, [step]);
 
   const getDurationInDays = (start: string, end: string) => {
     const s = new Date(start);
@@ -173,9 +192,47 @@ export const MessageScreen = () => {
     }
   };
 
+  const fetchOffers = async () => {
+    try {
+      const res = await api.get('/offers/');
+      setOffers(res.data.filter((o: any) => o.is_active));
+    } catch (e) {
+      console.log('Failed to fetch offers', e);
+    }
+  };
+
+  const fetchTrainers = async () => {
+    try {
+      const res = await api.get('/trainers/');
+      setTrainers(res.data || []);
+    } catch (e) {
+      console.log('Failed to fetch trainers', e);
+    }
+  };
+
+  const applyOffer = (offer: any, baseAmtStr: string) => {
+    setSelectedOffer(offer);
+    if (!baseAmtStr || isNaN(parseFloat(baseAmtStr))) {
+      setAmount('');
+      return;
+    }
+    
+    const base = parseFloat(baseAmtStr);
+    let finalAmt = base;
+    if (offer) {
+      if (offer.discount_type === 'Percentage') {
+        finalAmt = base - (base * (offer.discount_value / 100));
+      } else {
+        finalAmt = Math.max(0, base - offer.discount_value);
+      }
+    }
+    setAmount(finalAmt.toString());
+  };
+
   const selectPredefinedPlan = (plan: any) => {
     setSelectedPlanId(plan._id);
-    setAmount(plan.price.toString());
+    setBaseAmount(plan.price.toString());
+    applyOffer(selectedOffer, plan.price.toString());
     const d = new Date(joiningDate);
     d.setDate(d.getDate() + (plan.duration_days || 30));
     setExpiryDate(d.toISOString().split('T')[0]);
@@ -192,7 +249,7 @@ export const MessageScreen = () => {
           setEnableHours(templates.enableHours);
           setGymName(templates.gymName);
           const dbTemplate = templates.joiningTemplate;
-          if (dbTemplate && dbTemplate.trim()) setJoiningMsgTemplate(dbTemplate);
+          if (dbTemplate && typeof dbTemplate === 'string' && dbTemplate.trim()) setJoiningMsgTemplate(dbTemplate);
           else setJoiningMsgTemplate(null);
           
           if (templates.businessType === 'library') {
@@ -204,6 +261,8 @@ export const MessageScreen = () => {
           }
           
           await fetchPlans();
+          await fetchOffers();
+          await fetchTrainers();
 
           try {
             const memRes = await api.get('/members/?skip=0&limit=5');
@@ -316,6 +375,7 @@ export const MessageScreen = () => {
           hours: (enableHours && dailyHours) ? parseInt(dailyHours) : undefined, timing: timingStr,
           gym: gymName, durationDays, seat: businessType === 'library' ? allocatedSeat : undefined,
           wifi: businessType === 'library' ? wifiDetails : undefined,
+          plan_name: plans.find(p => p._id === selectedPlanId)?.name || 'Custom',
         });
         setWelcomeMsgFinal(welcomeMsg);
       }
@@ -331,6 +391,7 @@ export const MessageScreen = () => {
         gender,
         age: age && !isNaN(parseInt(age)) ? parseInt(age) : undefined,
         weight: weight && !isNaN(parseFloat(weight)) ? parseFloat(weight) : undefined,
+        date_of_birth: dateOfBirth ? new Date(dateOfBirth).toISOString() : undefined,
         payment_mode: paymentMode,
         amount_paid: paymentStatus === 'Partial' && amountPaid && parseFloat(amountPaid) > 0 ? parseFloat(amountPaid) : (paymentStatus === 'Pending' ? 0 : parsedAmount),
         notes: notes || '',
@@ -340,6 +401,9 @@ export const MessageScreen = () => {
         allocated_seat: businessType === 'library' ? allocatedSeat : undefined,
         wifi_details: businessType === 'library' ? wifiDetails : undefined,
         aadhaar_number: aadhaar ? aadhaar.trim() : undefined,
+        plan_name: plans.find(p => p._id === selectedPlanId)?.name || 'Custom',
+        applied_offer_name: selectedOffer?.name || null,
+        trainer_assigned: selectedTrainer || "General Coach",
       };
 
       await api.post('/members/', enrollmentData);
@@ -366,7 +430,7 @@ export const MessageScreen = () => {
 
   const clearForm = () => {
     setName(''); setPhone(''); setAmount(''); setAmountPaid(''); setAge(''); setWeight('');
-    setAddress(''); 
+    setAddress(''); setDateOfBirth('');
     setAadhaar(''); setNotes(''); 
     setDailyHours(''); 
     setTimingStartHour(''); setTimingStartAmPm('AM'); setTimingEndHour(''); setTimingEndAmPm('PM');
@@ -406,7 +470,7 @@ export const MessageScreen = () => {
         <View style={{ width: 32 }} />
       </View>
 
-      <KeyboardAwareScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 100 }} enableOnAndroid={true} extraScrollHeight={20}>
+      <KeyboardAwareScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.xl, paddingBottom: 100 }} enableOnAndroid={true} extraScrollHeight={20}>
         <TouchableOpacity activeOpacity={0.9} onPress={() => setStep(1)}>
           <LinearGradient colors={['#7C3AED', '#4F46E5']} start={{x: 0, y: 0}} end={{x: 1, y: 1}} style={{ borderRadius: 20, padding: 24, marginBottom: 24, overflow: 'hidden' }}>
             <View style={{ width: '65%' }}>
@@ -487,9 +551,146 @@ export const MessageScreen = () => {
       <Text style={styles.stepSubtitle}>Enter membership amount and dates</Text>
 
       <View style={{ marginTop: 16, backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
-        <ModernInput label="Total Plan Amount (₹) *" value={amount} onChangeText={(val) => { setAmount(val); setSelectedPlanId('custom'); }} keyboardType="numeric" placeholder="e.g. 1500" icon={<FontAwesome name="money" size={16} color={colors.primary} />} />
+        {plans.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Select Membership Plan</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', paddingBottom: 8 }}>
+               <TouchableOpacity 
+                 activeOpacity={0.8}
+                 style={[{ width: 120, height: 95, padding: 12, borderRadius: 16, borderWidth: 1, marginRight: 12, justifyContent: 'center', alignItems: 'center' }, selectedPlanId === 'custom' ? { backgroundColor: colors.surface, borderColor: colors.primary, ...(!isDark ? shadows.light : {}) } : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }]}
+                 onPress={() => setSelectedPlanId('custom')}
+               >
+                 <FontAwesome name="pencil-square-o" size={24} color={selectedPlanId === 'custom' ? colors.primary : colors.textMuted} style={{ marginBottom: 6 }} />
+                 <Text style={{ fontSize: 13, fontWeight: selectedPlanId === 'custom' ? '700' : '500', color: selectedPlanId === 'custom' ? colors.primary : colors.textSecondary }}>Custom Plan</Text>
+               </TouchableOpacity>
+               {plans.map(plan => {
+                 const isSelected = selectedPlanId === plan._id;
+                 return (
+                   <TouchableOpacity activeOpacity={0.9} key={plan._id} onPress={() => selectPredefinedPlan(plan)} style={{ marginRight: 12 }}>
+                     <LinearGradient
+                       colors={isSelected ? (isDark ? ['#10B981', '#059669'] : ['#34D399', '#10B981']) : (isDark ? ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : ['#F9FAFB', '#F3F4F6'])}
+                       start={{x:0, y:0}} end={{x:1, y:1}}
+                       style={{ width: 150, height: 95, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isSelected ? 'transparent' : colors.border, justifyContent: 'space-between', ...(!isDark && isSelected ? shadows.light : {}) }}
+                     >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <View style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: isSelected ? '#fff' : colors.primary }}>
+                              ₹{plan.price}
+                            </Text>
+                          </View>
+                          {isSelected ? <FontAwesome name="check-circle" size={18} color="#fff" /> : <FontAwesome name={plan.icon || 'star'} size={16} color={plan.color || colors.textMuted} />}
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#fff' : colors.text }} numberOfLines={1}>{plan.name}</Text>
+                          <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.9)' : colors.textMuted, marginTop: 2, fontWeight: '600' }} numberOfLines={1}>{plan.duration_days} Days</Text>
+                        </View>
+                     </LinearGradient>
+                   </TouchableOpacity>
+                 );
+               })}
+            </ScrollView>
+          </View>
+        )}
+
+
+        <ModernInput 
+          label="Base Plan Amount (₹) *" 
+          value={baseAmount} 
+          onChangeText={(val) => { 
+            setBaseAmount(val); 
+            setSelectedPlanId('custom'); 
+            applyOffer(selectedOffer, val);
+          }} 
+          keyboardType="numeric" 
+          placeholder="e.g. 1500" 
+          icon={<FontAwesome name="money" size={16} color={colors.primary} />} 
+        />
         
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
+        {offers.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 8 }}>Apply Promotional Offer</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8, paddingBottom: 8 }}>
+               <TouchableOpacity 
+                 activeOpacity={0.8}
+                 style={[{ width: 120, height: 85, padding: 12, borderRadius: 16, borderWidth: 1, marginRight: 12, justifyContent: 'center', alignItems: 'center' }, !selectedOffer ? { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' } : { backgroundColor: colors.surface, borderColor: colors.border }]}
+                 onPress={() => applyOffer(null, baseAmount)}
+               >
+                 <FontAwesome name="times-circle" size={24} color={!selectedOffer ? colors.textSecondary : colors.textMuted} style={{ marginBottom: 6 }} />
+                 <Text style={{ fontSize: 13, fontWeight: !selectedOffer ? '700' : '500', color: !selectedOffer ? colors.text : colors.textSecondary }}>No Offer</Text>
+               </TouchableOpacity>
+               {offers.map(offer => {
+                 const isSelected = selectedOffer?._id === offer._id;
+                 return (
+                   <TouchableOpacity activeOpacity={0.9} key={offer._id} onPress={() => applyOffer(offer, baseAmount)} style={{ marginRight: 12 }}>
+                     <LinearGradient
+                       colors={isSelected ? (isDark ? ['#7C3AED', '#4F46E5'] : ['#8B5CF6', '#6366F1']) : (isDark ? ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : ['#F9FAFB', '#F3F4F6'])}
+                       start={{x:0, y:0}} end={{x:1, y:1}}
+                       style={{ width: 160, height: 85, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isSelected ? 'transparent' : colors.border, justifyContent: 'space-between', ...(!isDark && isSelected ? shadows.light : {}) }}
+                     >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <View style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: isSelected ? '#fff' : colors.primary }}>
+                              {offer.discount_type === 'Percentage' ? `${offer.discount_value}% OFF` : `₹${offer.discount_value} OFF`}
+                            </Text>
+                          </View>
+                          {isSelected ? <FontAwesome name="check-circle" size={18} color="#fff" /> : <FontAwesome name="gift" size={16} color={colors.textMuted} />}
+                        </View>
+                        <View>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#fff' : colors.text }} numberOfLines={1}>{offer.name}</Text>
+                          {offer.description ? <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.8)' : colors.textMuted, marginTop: 2 }} numberOfLines={1}>{offer.description}</Text> : null}
+                        </View>
+                     </LinearGradient>
+                   </TouchableOpacity>
+                 );
+               })}
+            </ScrollView>
+            
+            {selectedOffer && (
+              <View style={{ marginTop: 8, padding: 12, backgroundColor: '#ECFDF5', borderRadius: 8, borderWidth: 1, borderColor: '#10B981', flexDirection: 'row', justifyContent: 'space-between' }}>
+                 <Text style={{ color: '#059669', fontWeight: '600', fontSize: 13 }}>Final Amount after Discount:</Text>
+                 <Text style={{ color: '#059669', fontWeight: '800', fontSize: 14 }}>₹{amount}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Assign Trainer Selector */}
+        <View style={{ marginTop: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>ASSIGN TRAINER / COACH</Text>
+            <TouchableOpacity onPress={() => router.push('/trainers' as any)}>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.primary }}>+ Manage Trainers</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {['General Coach', ...trainers.map(t => t.name)].map((trName) => {
+              const active = selectedTrainer === trName;
+              return (
+                <TouchableOpacity
+                  key={trName}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    marginRight: 10,
+                    backgroundColor: active ? colors.primary : colors.surface,
+                    borderColor: active ? colors.primary : colors.border,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                  onPress={() => setSelectedTrainer(trName)}
+                >
+                  <FontAwesome name="user-circle-o" size={14} color={active ? '#fff' : colors.textSecondary} />
+                  <Text style={{ fontSize: 13, fontWeight: active ? '700' : '600', color: active ? '#fff' : colors.text }}>{trName}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+        
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
           <View style={{ flex: 1 }}>
             <TouchableOpacity onPress={() => { setDatePickerType('joining'); setShowDatePicker(true); }}>
               <ModernInput label="Joining Date *" value={joiningDate.split('-').reverse().join('/')} editable={false} placeholder="Select Date" icon={<FontAwesome name="calendar" size={16} color={colors.primary} />} />
@@ -522,7 +723,19 @@ export const MessageScreen = () => {
       {/* Global Add-ons: Timing, Seat, WiFi */}
       {enableHours && (
         <View style={{ marginTop: 16 }}>
-          <ModernInput label={businessType === 'library' ? "Study Hours ⏰" : "Daily Hours ⏰"} value={dailyHours} onChangeText={setDailyHours} keyboardType="numeric" placeholder="e.g. 8" icon={<FontAwesome name="clock-o" size={16} color={colors.primary} />} />
+          <ModernInput 
+            label={businessType === 'library' ? "Study Hours ⏰ (Max 24)" : "Daily Hours ⏰ (Max 24)"} 
+            value={dailyHours} 
+            onChangeText={(val) => {
+              const num = parseInt(val);
+              if (!isNaN(num) && num > 24) setDailyHours('24');
+              else setDailyHours(val);
+            }} 
+            keyboardType="numeric" 
+            maxLength={2}
+            placeholder="e.g. 8" 
+            icon={<FontAwesome name="clock-o" size={16} color={colors.primary} />} 
+          />
           <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8, marginTop: 4, fontWeight: '600' }}>Timing Slot 🌞</Text>
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 2 }}>
@@ -575,7 +788,7 @@ export const MessageScreen = () => {
       </View>
       <Text style={styles.stepSubtitle}>Personal details and contact info</Text>
 
-      <GlassCard style={[styles.card, { padding: 20 }]}>
+      <GlassCard style={{ ...(styles.card as any), padding: 20 }}>
         <ModernInput label="Full Name *" value={name} onChangeText={setName} placeholder="e.g. Rahul Sharma" icon={<FontAwesome name="user-o" size={16} color={colors.textSecondary} />} />
         
         <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
@@ -606,6 +819,33 @@ export const MessageScreen = () => {
           <View style={{ flex: 1 }}><ModernInput label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="70" /></View>
         </View>
 
+        {/* Date of Birth */}
+        <TouchableOpacity
+          onPress={() => { setDatePickerType('dob'); setShowDatePicker(true); }}
+          style={[{ marginTop: 8, borderWidth: 1, borderRadius: borderRadius.m, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }, { borderColor: dateOfBirth ? '#EC4899' : colors.border, backgroundColor: colors.surfaceLight }]}
+        >
+          <FontAwesome name="birthday-cake" size={16} color={dateOfBirth ? '#EC4899' : colors.textMuted} />
+          <Text style={{ color: dateOfBirth ? colors.text : colors.textMuted, flex: 1 }}>
+            {dateOfBirth ? `DOB: ${dateOfBirth.split('-').reverse().join(' / ')}` : '🎂 Date of Birth (Optional)'}
+          </Text>
+          {dateOfBirth ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {(() => {
+                const today = new Date();
+                const dob = new Date(dateOfBirth);
+                let calcAge = today.getFullYear() - dob.getFullYear();
+                const mo = today.getMonth() - dob.getMonth();
+                if (mo < 0 || (mo === 0 && today.getDate() < dob.getDate())) calcAge--;
+                const isToday = dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+                return <Text style={{ color: '#EC4899', fontSize: 12, fontWeight: '700' }}>{calcAge}y{isToday ? ' 🎉' : ''}</Text>;
+              })()}
+              <TouchableOpacity onPress={() => setDateOfBirth('')}>
+                <FontAwesome name="times-circle" size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+
         <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />
 
         <ModernInput label="Address" value={address} onChangeText={setAddress} placeholder="Street/Area" icon={<FontAwesome name="map-marker" size={16} color={colors.textSecondary} />} />
@@ -628,142 +868,385 @@ export const MessageScreen = () => {
 
   const renderStep3 = () => (
     <View style={styles.stepContent}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={styles.stepTitle}>Payment & Review</Text>
-        <View style={{ backgroundColor: `${colors.primary}15`, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
-          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Step 3 of 3</Text>
+      {/* Top Title & Step Badge */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <Text style={styles.stepTitle}>Review & Checkout</Text>
+        <View style={{ backgroundColor: `${colors.primary}15`, paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, borderWidth: 1, borderColor: `${colors.primary}30` }}>
+          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>FINAL STEP</Text>
         </View>
       </View>
-      <Text style={styles.stepSubtitle}>Finalize membership and collect payment</Text>
+      <Text style={[styles.stepSubtitle, { marginBottom: 20 }]}>Verify membership details and collect fee payment</Text>
 
-      <LinearGradient colors={isDark ? ['#1e1b4b', '#1e2556'] : ['#F3E8FF', '#E0E7FF']} start={{x:0, y:0}} end={{x:1, y:1}} style={styles.summaryGradientBox}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: isDark ? '#c4b5fd' : '#1e1b4b' }}>Membership Summary</Text>
-          <TouchableOpacity onPress={() => setStep(1)} style={{ backgroundColor: 'rgba(124,58,237,0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
-            <Text style={{ color: '#7C3AED', fontWeight: '700', fontSize: 12 }}>Edit</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Plan</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Start Date</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{new Date(joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>End Date</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Text></View>
-        <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: isDark ? '#a78bfa' : '#4338ca' }]}>Duration</Text><Text style={[styles.summaryValue, { color: isDark ? '#e0e7ff' : '#1e1b4b' }]}>{durationDays} Days</Text></View>
-        {enableHours && dailyHours && timingStartHour && timingEndHour && (
-          <View style={styles.summaryRow}><Text style={[styles.summaryLabel, { color: '#4338ca' }]}>Timing</Text><Text style={[styles.summaryValue, { color: '#1e1b4b' }]}>{timingStartHour} {timingStartAmPm} - {timingEndHour} {timingEndAmPm}</Text></View>
-        )}
-      </LinearGradient>
-
-      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12, marginTop: 12 }}>Payment Method</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 }}>
-        {(['Cash', 'UPI', 'Card', 'Bank Transfer'] as const).map(mode => {
-          const isSelected = paymentMode === mode;
-          const modeColors: Record<string, string> = { Cash: '#10B981', UPI: '#8B5CF6', Card: '#3B82F6', 'Bank Transfer': '#F59E0B' };
-          const modeColor = modeColors[mode];
-          const iconName = mode === 'Cash' ? 'money' : mode === 'UPI' ? 'mobile-phone' : mode === 'Card' ? 'credit-card' : 'bank';
-          return (
-            <TouchableOpacity
-              key={mode}
-              activeOpacity={0.8}
-              onPress={() => setPaymentMode(mode)}
-              style={[styles.payModeBtn, { width: '47%' }, isSelected && {
-                borderColor: modeColor,
-                backgroundColor: isDark ? `${modeColor}20` : `${modeColor}12`,
-              }]}
-            >
-              <View style={{
-                width: 46, height: 46, borderRadius: 23,
-                backgroundColor: isSelected ? modeColor : (isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6'),
-                justifyContent: 'center', alignItems: 'center', marginBottom: 8,
-              }}>
-                <FontAwesome name={iconName as any} size={18} color={isSelected ? '#fff' : colors.textMuted} />
-              </View>
-              <Text style={{ fontSize: 13, fontWeight: isSelected ? '800' : '600', color: isSelected ? modeColor : colors.textSecondary }}>{mode}</Text>
-              {isSelected && (
-                <View style={{ position: 'absolute', top: 8, right: 8, width: 16, height: 16, borderRadius: 8, backgroundColor: modeColor, justifyContent: 'center', alignItems: 'center' }}>
-                  <FontAwesome name="check" size={8} color="#fff" />
+      {/* ULTRA-PREMIUM INVOICE VOUCHER CARD */}
+      <View style={{ marginBottom: 24 }}>
+        <LinearGradient
+          colors={isDark ? ['#1e1b4b', '#111827'] : ['#4F46E5', '#312E81']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={{
+            borderRadius: 22,
+            padding: 22,
+            shadowColor: '#4F46E5',
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.3,
+            shadowRadius: 15,
+            elevation: 8,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.15)',
+            overflow: 'hidden'
+          }}
+        >
+          {/* Header row: Member profile summary */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+            <View style={{ flex: 1, marginRight: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>NEW ENROLLMENT</Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 }}>Payment Status</Text>
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-        {['Paid', 'Partial', 'Pending'].map((status) => {
-          const isActive = paymentStatus === status;
-          const statusColor = status === 'Paid' ? '#10B981' : status === 'Partial' ? '#F59E0B' : '#EF4444';
-          const statusBg = status === 'Paid' ? '#D1FAE5' : status === 'Partial' ? '#FEF3C7' : '#FEE2E2';
-          const statusDarkBg = status === 'Paid' ? '#064E3B' : status === 'Partial' ? '#78350F' : '#7F1D1D';
-          const emoji = status === 'Paid' ? '✅' : status === 'Partial' ? '⚡' : '⏳';
-          return (
-            <TouchableOpacity
-              key={status}
-              activeOpacity={0.8}
-              onPress={() => setPaymentStatus(status)}
-              style={[{
-                flex: 1, flexDirection: 'column', alignItems: 'center', paddingVertical: 14,
-                borderRadius: 14, borderWidth: 2,
-                borderColor: isActive ? statusColor : colors.border,
-                backgroundColor: isActive ? (isDark ? statusDarkBg : statusBg) : (isDark ? 'rgba(255,255,255,0.04)' : '#FAFAFA'),
-              }]}
-            >
-              <Text style={{ fontSize: 18, marginBottom: 4 }}>{emoji}</Text>
-              <Text style={{ fontWeight: '800', fontSize: 13, color: isActive ? statusColor : colors.textMuted }}>{status}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {paymentStatus === 'Partial' && (
-        <View style={[styles.partialPayBox, { borderColor: `${colors.warning || '#F59E0B'}40`, backgroundColor: `${colors.warning || '#F59E0B'}10` }]}>
-          <ModernInput label="Amount Paid Now (₹)" value={amountPaid} onChangeText={setAmountPaid} keyboardType="numeric" placeholder={`Total is ₹${amount}`} icon={<FontAwesome name="rupee" size={14} color={colors.warning || '#F59E0B'} />} />
-          {amountPaid && parseFloat(amountPaid) > 0 && parseFloat(amount) > 0 && (
-            <Text style={{ fontSize: 13, color: colors.error, fontWeight: '600', textAlign: 'right' }}>Remaining Due: ₹{Math.max(0, parseFloat(amount) - parseFloat(amountPaid)).toFixed(0)}</Text>
-          )}
-        </View>
-      )}
-
-      <View style={styles.totalBox}>
-        <Text style={{ fontSize: 16, color: colors.textSecondary, fontWeight: '600' }}>Total Amount</Text>
-        <View style={{ backgroundColor: `${colors.success}20`, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.success }}>₹{amount}</Text>
-        </View>
-      </View>
-      {paymentStatus === 'Partial' && amountPaid && (
-        <View style={[styles.totalBox, { marginTop: 8, backgroundColor: 'transparent', padding: 0 }]}>
-          <Text style={{ fontSize: 14, color: colors.textSecondary, fontWeight: '600' }}>Amount Collected</Text>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.warning || '#F59E0B' }}>₹{amountPaid}</Text>
-        </View>
-      )}
-      {paymentStatus === 'Pending' && (
-        <View style={[styles.totalBox, { marginTop: 8, backgroundColor: 'transparent', padding: 0 }]}>
-          <Text style={{ fontSize: 14, color: colors.textSecondary, fontWeight: '600' }}>Amount Collected</Text>
-          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.error }}>₹0</Text>
-        </View>
-      )}
-
-      <View style={{ marginTop: 20 }}>
-        <View style={[styles.manualRow, {
-          backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : '#F0FDF4',
-          borderColor: '#10B981',
-        }]}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <FontAwesome name="whatsapp" size={16} color="#10B981" />
-              <Text style={[styles.manualTitle, { color: '#10B981' }]}>Send WhatsApp Receipt</Text>
+                {gender ? (
+                  <View style={{ backgroundColor: 'rgba(250,204,21,0.25)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                    <Text style={{ color: '#FDE047', fontSize: 10, fontWeight: '800' }}>{gender.toUpperCase()}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: '#fff' }} numberOfLines={1}>
+                {name || 'New Member'}
+              </Text>
+              <Text style={{ fontSize: 13, color: '#E0E7FF', marginTop: 2, fontWeight: '500' }}>
+                📞 +91 {phone || 'N/A'}
+              </Text>
             </View>
-            <Text style={styles.manualSub}>Instantly notify member on WhatsApp</Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ fontSize: 11, color: '#C4B5FD', fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 }}>NET PAYABLE</Text>
+              <Text style={{ fontSize: 26, fontWeight: '900', color: '#34D399' }}>
+                ₹{amount || '0'}
+              </Text>
+            </View>
           </View>
-          <Switch value={sendReceipt} onValueChange={(val) => setSendReceipt(val)} trackColor={{ false: colors.border, true: '#10B981' }} thumbColor={sendReceipt ? '#fff' : '#f4f3f4'} />
+
+          {/* Ticket punch dashed line */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 14 }}>
+            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: colors.background, marginLeft: -29 }} />
+            <View style={{ flex: 1, height: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)', borderStyle: 'dashed', marginHorizontal: 8 }} />
+            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: colors.background, marginRight: -29 }} />
+          </View>
+
+          {/* Summary Grid Details */}
+          <View style={{ gap: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                  <FontAwesome name="star" size={13} color="#FDE047" />
+                </View>
+                <Text style={{ fontSize: 13, color: '#E0E7FF', fontWeight: '600' }}>Selected Plan</Text>
+              </View>
+              <View style={{ flex: 1, marginLeft: 16, alignItems: 'flex-end', position: 'relative', zIndex: 10 }}>
+                <TouchableOpacity 
+                  activeOpacity={0.75} 
+                  onPress={() => setShowPlanTooltip(!showPlanTooltip)}
+                  style={{ width: '100%', alignItems: 'flex-end' }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff', textAlign: 'right' }} numberOfLines={1}>
+                    {selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name || 'Membership Plan'}
+                  </Text>
+                </TouchableOpacity>
+                {showPlanTooltip && (
+                  <View style={{
+                    position: 'absolute',
+                    top: 22,
+                    right: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.15)',
+                    zIndex: 999,
+                    width: 280,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 6,
+                    elevation: 5
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' }}>
+                      {selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name || 'Membership Plan'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                  <FontAwesome name="calendar" size={13} color="#60A5FA" />
+                </View>
+                <Text style={{ fontSize: 13, color: '#E0E7FF', fontWeight: '600' }}>Validity Period</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>
+                  {joiningDate ? new Date(joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''} ➔ {expiryDate ? new Date(expiryDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                </Text>
+                <Text style={{ fontSize: 11, color: '#A7F3D0', fontWeight: '700', marginTop: 1 }}>{durationDays} Days Total</Text>
+              </View>
+            </View>
+
+            {enableHours && dailyHours ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                    <FontAwesome name="clock-o" size={14} color="#F472B6" />
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#E0E7FF', fontWeight: '600' }}>Study Hours & Slot</Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#fff' }}>
+                  {dailyHours} Hrs • {timingStartHour ? `${timingStartHour} ${timingStartAmPm} - ${timingEndHour} ${timingEndAmPm}` : 'Anytime'}
+                </Text>
+              </View>
+            ) : null}
+
+            {selectedTrainer && selectedTrainer !== 'General' && selectedTrainer !== 'General Coach' ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                    <FontAwesome name="user-circle" size={13} color="#C084FC" />
+                  </View>
+                  <Text style={{ fontSize: 13, color: '#E0E7FF', fontWeight: '600' }}>Assigned Coach</Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#E9D5FF' }}>
+                  {selectedTrainer}
+                </Text>
+              </View>
+            ) : null}
+
+            {selectedOffer ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(52, 211, 153, 0.15)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <FontAwesome name="tag" size={12} color="#34D399" />
+                  <Text style={{ fontSize: 12, color: '#A7F3D0', fontWeight: '700' }}>{selectedOffer.name || 'Special Offer'}</Text>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#34D399' }}>Discount Applied ✨</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Edit Button in invoice card */}
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
+            <TouchableOpacity
+              onPress={() => setStep(2)}
+              activeOpacity={0.8}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                paddingHorizontal: 14,
+                paddingVertical: 7,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: 'rgba(255, 255, 255, 0.25)'
+              }}
+            >
+              <FontAwesome name="pencil" size={11} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Modify Plan Details</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </View>
+
+      {/* SECTION 2: PAYMENT METHOD (Fintech Grid) */}
+      <View style={{ marginBottom: 24 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Select Payment Mode</Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>Choose Collection Method</Text>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          {(['Cash', 'UPI', 'Card', 'Bank Transfer'] as const).map(mode => {
+            const isSelected = paymentMode === mode;
+            const modeDetails: Record<string, { color: string, sub: string, icon: any }> = {
+              Cash: { color: '#10B981', sub: 'Instant Cash Receipt', icon: 'money' },
+              UPI: { color: '#8B5CF6', sub: 'GPay / PhonePe / Paytm', icon: 'mobile-phone' },
+              Card: { color: '#3B82F6', sub: 'POS / Debit / Credit', icon: 'credit-card' },
+              'Bank Transfer': { color: '#F59E0B', sub: 'NEFT / IMPS / NetBank', icon: 'bank' }
+            };
+            const item = modeDetails[mode];
+            return (
+              <TouchableOpacity
+                key={mode}
+                activeOpacity={0.85}
+                onPress={() => setPaymentMode(mode)}
+                style={[{
+                  width: '48%',
+                  padding: 14,
+                  borderRadius: 16,
+                  borderWidth: 2,
+                  borderColor: isSelected ? item.color : colors.border,
+                  backgroundColor: isSelected ? (isDark ? `${item.color}20` : `${item.color}10`) : (isDark ? 'rgba(255,255,255,0.03)' : '#fff'),
+                  shadowOpacity: 0,
+                  elevation: 0
+                }]}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <View style={{
+                    width: 40, height: 40, borderRadius: 12,
+                    backgroundColor: isSelected ? item.color : (isDark ? 'rgba(255,255,255,0.08)' : '#F3F4F6'),
+                    justifyContent: 'center', alignItems: 'center'
+                  }}>
+                    <FontAwesome name={item.icon} size={17} color={isSelected ? '#fff' : colors.textSecondary} />
+                  </View>
+                  {isSelected && (
+                    <View style={{
+                      width: 20, height: 20, borderRadius: 10,
+                      backgroundColor: item.color,
+                      justifyContent: 'center', alignItems: 'center'
+                    }}>
+                      <FontAwesome name="check" size={10} color="#fff" />
+                    </View>
+                  )}
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? item.color : colors.text, marginBottom: 2 }}>{mode}</Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '500' }}>{item.sub}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
-        <TouchableOpacity style={[styles.backBtn, { borderColor: colors.border }]} onPress={() => setStep(2)}>
-          <FontAwesome name="arrow-left" size={16} color={colors.textSecondary} />
+      {/* SECTION 3: PAYMENT STATUS & SETTLEMENT */}
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 12 }}>Payment Settlement Status</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: paymentStatus === 'Partial' ? 16 : 0 }}>
+          {[
+            { id: 'Paid', label: 'Paid in Full', icon: 'check-circle', color: '#10B981', bg: '#D1FAE5', darkBg: '#064E3B' },
+            { id: 'Partial', label: 'Partial Pay', icon: 'clock-o', color: '#F59E0B', bg: '#FEF3C7', darkBg: '#78350F' },
+            { id: 'Pending', label: 'Pending Due', icon: 'exclamation-circle', color: '#EF4444', bg: '#FEE2E2', darkBg: '#7F1D1D' }
+          ].map(statusItem => {
+            const isActive = paymentStatus === statusItem.id;
+            return (
+              <TouchableOpacity
+                key={statusItem.id}
+                activeOpacity={0.85}
+                onPress={() => setPaymentStatus(statusItem.id)}
+                style={[{
+                  flex: 1,
+                  paddingVertical: 14,
+                  paddingHorizontal: 10,
+                  borderRadius: 16,
+                  borderWidth: 2,
+                  borderColor: isActive ? statusItem.color : colors.border,
+                  backgroundColor: isActive ? (isDark ? statusItem.darkBg : statusItem.bg) : (isDark ? 'rgba(255,255,255,0.03)' : '#fff'),
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }]}
+              >
+                <FontAwesome name={statusItem.icon as any} size={18} color={isActive ? statusItem.color : colors.textMuted} style={{ marginBottom: 6 }} />
+                <Text style={{ fontWeight: '800', fontSize: 13, color: isActive ? statusItem.color : colors.textSecondary }}>
+                  {statusItem.id}
+                </Text>
+                <Text style={{ fontSize: 10, color: isActive ? statusItem.color : colors.textMuted, marginTop: 2, fontWeight: '600' }}>
+                  {statusItem.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* PARTIAL SETTLEMENT CALCULATOR BOX */}
+        {paymentStatus === 'Partial' && (
+          <View style={{
+            padding: 16,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: `${colors.warning || '#F59E0B'}60`,
+            backgroundColor: isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB'
+          }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: colors.warning || '#D97706', marginBottom: 12 }}>
+              ⚡ PARTIAL PAYMENT CALCULATOR
+            </Text>
+            <ModernInput
+              label="Amount Collected Now (₹)"
+              value={amountPaid}
+              onChangeText={setAmountPaid}
+              keyboardType="numeric"
+              placeholder={`Total fee is ₹${amount}`}
+              icon={<FontAwesome name="rupee" size={15} color={colors.warning || '#F59E0B'} />}
+            />
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 6,
+              paddingTop: 10,
+              borderTopWidth: 1,
+              borderTopColor: `${colors.warning || '#F59E0B'}30`
+            }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>Remaining Balance Due:</Text>
+              <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+                <Text style={{ fontSize: 15, fontWeight: '900', color: '#EF4444' }}>
+                  ₹{Math.max(0, parseFloat(amount || '0') - parseFloat(amountPaid || '0')).toFixed(0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* SECTION 4: WHATSAPP RECEIPT TOGGLE */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(16,185,129,0.3)' : '#A7F3D0',
+        backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : '#ECFDF5',
+        marginBottom: 28
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center' }}>
+            <FontAwesome name="whatsapp" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '800', color: isDark ? '#6EE7B7' : '#065F46' }}>
+              Send Instant WhatsApp Receipt
+            </Text>
+            <Text style={{ fontSize: 12, color: isDark ? '#A7F3D0' : '#047857', marginTop: 2 }}>
+              Notify member with digital welcome invoice
+            </Text>
+          </View>
+        </View>
+        <Switch
+          value={sendReceipt}
+          onValueChange={(val) => setSendReceipt(val)}
+          trackColor={{ false: colors.border, true: '#10B981' }}
+          thumbColor={sendReceipt ? '#fff' : '#f4f3f4'}
+        />
+      </View>
+
+      {/* BOTTOM ACTION BUTTONS */}
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+        <TouchableOpacity
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 16,
+            borderWidth: 1.5,
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}
+          onPress={() => setStep(2)}
+        >
+          <FontAwesome name="arrow-left" size={17} color={colors.textSecondary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <GradientButton title={isLoading ? "Processing..." : "Complete Enrollment ➔"} onPress={handleEnroll} disabled={isLoading} />
+          <GradientButton
+            title={isLoading ? "Processing Enrollment..." : `✓ Confirm Enrollment • ₹${paymentStatus === 'Partial' && amountPaid ? amountPaid : paymentStatus === 'Pending' ? '0' : amount}`}
+            onPress={handleEnroll}
+            disabled={isLoading}
+          />
         </View>
       </View>
     </View>
@@ -781,17 +1264,49 @@ export const MessageScreen = () => {
           <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: 'center', marginBottom: 40 }}>{name} has been enrolled successfully.</Text>
 
           <View style={{ backgroundColor: colors.surfaceLight, borderRadius: 24, padding: 24, width: '100%', marginBottom: 32, borderWidth: 1, borderColor: colors.border, ...shadows.light }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 16, marginBottom: 16 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(124,58,237,0.1)', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 16, marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, marginRight: 8 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(124,58,237,0.1)', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
                   <Text style={{ fontSize: 20 }}>👑</Text>
                 </View>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}</Text>
+                <View style={{ flex: 1, position: 'relative', zIndex: 20 }}>
+                  <TouchableOpacity 
+                    activeOpacity={0.75} 
+                    onPress={() => setShowPlanTooltip(!showPlanTooltip)}
+                    style={{ width: '100%' }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }} numberOfLines={1}>
+                      {selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}
+                    </Text>
+                  </TouchableOpacity>
+                  {showPlanTooltip && (
+                    <View style={{
+                      position: 'absolute',
+                      top: 22,
+                      left: 0,
+                      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: 'rgba(255,255,255,0.15)',
+                      zIndex: 999,
+                      width: 200,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 6,
+                      elevation: 5
+                    }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' }}>
+                        {selectedPlanId === 'custom' ? 'Custom Plan' : plans.find(p => p._id === selectedPlanId)?.name}
+                      </Text>
+                    </View>
+                  )}
                   <Text style={{ fontSize: 12, color: colors.textSecondary }}>{durationDays} Days</Text>
                 </View>
               </View>
-              <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, justifyContent: 'center' }}>
+              <View style={{ backgroundColor: '#D1FAE5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, justifyContent: 'center', flexShrink: 0 }}>
                 <Text style={{ color: '#059669', fontWeight: '700', fontSize: 12 }}>Active</Text>
               </View>
             </View>
@@ -835,12 +1350,21 @@ export const MessageScreen = () => {
       <DatePickerModal visible={showDatePicker} onClose={() => setShowDatePicker(false)} onSelect={(date) => {
         if (datePickerType === 'joining') {
           setJoiningDate(date);
-          const d = new Date(date); d.setMonth(d.getMonth() + 1); setExpiryDate(d.toISOString().split('T')[0]);
+          const selectedPlan = plans.find((p: any) => p._id === selectedPlanId);
+          const d = new Date(date);
+          if (selectedPlan && selectedPlan.duration_days) {
+            d.setDate(d.getDate() + selectedPlan.duration_days);
+          } else {
+            d.setMonth(d.getMonth() + 1);
+          }
+          setExpiryDate(d.toISOString().split('T')[0]);
+        } else if (datePickerType === 'dob') {
+          setDateOfBirth(date);
         } else {
           if (new Date(date) < new Date(joiningDate)) showCustomAlert('Invalid Date', 'End Date cannot be before Start Date', 'error');
           else setExpiryDate(date);
         }
-      }} initialDate={datePickerType === 'joining' ? joiningDate : expiryDate} title={datePickerType === 'joining' ? 'Select Start Date' : 'Select End Date'} />
+      }} initialDate={datePickerType === 'joining' ? joiningDate : datePickerType === 'dob' ? dateOfBirth : expiryDate} title={datePickerType === 'joining' ? 'Select Start Date' : datePickerType === 'dob' ? '🎂 Select Date of Birth' : 'Select End Date'} />
       <DropdownModal visible={showSeatModal} title="Select Seat" items={availableSeats} onClose={() => setShowSeatModal(false)} onSelect={(seat) => setAllocatedSeat(seat.seat_number)} renderItem={(item) => ( <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}><Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>Seat {item.seat_number}</Text><Text style={{ color: item.status === 'Available' ? colors.success : colors.warning, fontSize: 14 }}>{item.status}</Text></View> )} />
       <DropdownModal visible={showWifiModal} title="Select WiFi Network" items={wifiOptions} onClose={() => setShowWifiModal(false)} onSelect={(wifi) => setWifiDetails(`${wifi.name} (Password: ${wifi.password})`)} renderItem={(item) => ( <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{item.name}</Text> )} />
 
@@ -857,7 +1381,7 @@ export const MessageScreen = () => {
       {step > 0 && step < 4 && <StepIndicator />}
 
       {step === 0 ? renderStep0() : (
-        <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" enableOnAndroid={true} extraScrollHeight={20}>
+        <KeyboardAwareScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" enableOnAndroid={true} extraScrollHeight={20}>
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}

@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
   ActivityIndicator, Linking, RefreshControl, ScrollView, Dimensions,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { CustomAlert } from '../components/CustomAlert';
@@ -14,6 +14,7 @@ import { sendWhatsAppMessage } from '../services/whatsapp';
 import { RenewalModal } from '../components/RenewalModal';
 import { fetchMessageTemplates, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
 import { useCachedFetch, invalidateCache } from '../hooks/useDataStore';
+import { Skeleton } from '../components/Skeleton';
 
 const { width } = Dimensions.get('window');
 const AVATAR_COLORS = ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#EF4444', '#06B6D4', '#F97316'];
@@ -21,10 +22,10 @@ const AVATAR_COLORS = ['#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#
 export const MembersScreen = () => {
   const { colors, theme } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: string }>();
   const isDark = theme === 'dark';
   const styles = getStyles(colors, isDark);
 
-  const [filteredMembers, setFilteredMembers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('All');
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
@@ -35,10 +36,34 @@ export const MembersScreen = () => {
   const [enableHours, setEnableHours] = useState(false);
   const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
 
-  const { data: membersRaw, refreshing, refresh: refreshMembers } = useCachedFetch<any[]>('members', '/members/');
+  const { data: membersRaw, loading, refreshing, refresh: refreshMembers } = useCachedFetch<any[]>('members', '/members/');
   const members: any[] = Array.isArray(membersRaw) ? membersRaw : [];
 
-  useEffect(() => { applyFilters(members, search, activeTab); }, [members, search, activeTab]);
+  const isInitialLoading = loading || membersRaw === null || (loading && members.length === 0);
+
+  const filteredMembers = useMemo(() => {
+    const safeData = Array.isArray(members) ? members : [];
+    let filtered = safeData;
+    if (search) {
+      filtered = filtered.filter(m =>
+        m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+        m.phone?.includes(search) ||
+        m.member_id?.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+    if (activeTab === 'Active') filtered = filtered.filter(m => m.status === 'active' && new Date(m.next_due_date) > new Date());
+    else if (activeTab === 'Expired') filtered = filtered.filter(m => m.status === 'expired' || new Date(m.next_due_date) < new Date());
+    else if (activeTab === 'Due') filtered = filtered.filter(m => m.pending_amount > 0 && (!m.amount_paid || m.amount_paid === 0));
+    else if (activeTab === 'Partial') filtered = filtered.filter(m => m.pending_amount > 0 && m.amount_paid > 0);
+    else if (activeTab === 'Manual') filtered = filtered.filter(m => m.category === 'Manual');
+    return filtered;
+  }, [members, search, activeTab]);
+
+  useEffect(() => {
+    if (params.filter && ['All', 'Active', 'Due', 'Expired', 'Partial'].includes(params.filter)) {
+      setActiveTab(params.filter);
+    }
+  }, [params.filter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -50,7 +75,7 @@ export const MembersScreen = () => {
           setEnableHours(templates.enableHours);
           const defaults = getDefaultTemplates(templates.businessType);
           const dbRenewal = templates.renewalTemplate;
-          setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
+          setRenewalTemplate(dbRenewal && typeof dbRenewal === 'string' && dbRenewal.trim() ? dbRenewal : null);
         } catch (e) {
           const storedName = await AsyncStorage.getItem('gymName');
           if (storedName) setGymName(storedName);
@@ -60,22 +85,7 @@ export const MembersScreen = () => {
     }, [])
   );
 
-  const applyFilters = (data: any[], searchText: string, tab: string) => {
-    const safeData = Array.isArray(data) ? data : [];
-    let filtered = safeData;
-    if (searchText) {
-      filtered = filtered.filter(m =>
-        m.full_name?.toLowerCase().includes(searchText.toLowerCase()) ||
-        m.phone?.includes(searchText) ||
-        m.member_id?.toLowerCase().includes(searchText.toLowerCase())
-      );
-    }
-    if (tab === 'Active') filtered = filtered.filter(m => m.status === 'active' && new Date(m.next_due_date) > new Date());
-    else if (tab === 'Expired') filtered = filtered.filter(m => m.status === 'expired' || new Date(m.next_due_date) < new Date());
-    else if (tab === 'Partial') filtered = filtered.filter(m => m.pending_amount > 0);
-    else if (tab === 'Manual') filtered = filtered.filter(m => m.category === 'Manual');
-    setFilteredMembers(filtered);
-  };
+
 
   const handleSearch = (text: string) => setSearch(text);
   const handleTabChange = (tab: string) => setActiveTab(tab);
@@ -84,14 +94,14 @@ export const MembersScreen = () => {
   const confirmRenewal = async (
     durationMonths: number, amount: number, paymentMode: string,
     nextDueDate?: string, joiningDate?: string, hours?: number,
-    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number
+    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number, appliedOfferName?: string
   ) => {
     if (!renewingMember) return;
     try {
       await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths, amount, amount_paid: amountPaid ?? null, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
-        daily_hours: hours, timing, allocated_seat: allocatedSeat,
+        daily_hours: hours, timing, allocated_seat: allocatedSeat, applied_offer_name: appliedOfferName,
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       refreshMembers();
@@ -134,106 +144,136 @@ export const MembersScreen = () => {
 
     return (
       <TouchableOpacity
-        activeOpacity={0.75}
+        activeOpacity={0.8}
         onPress={() => router.push({ pathname: `/members/${memberId}` as any, params: { name: item.full_name, mid: item.member_id, cat: item.category || 'New' } })}
-        style={styles.cardWrapper}
+        style={[styles.card, { marginBottom: spacing.m }]}
       >
-        <View style={styles.card}>
-          {/* Avatar */}
-          <View style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40` }]}>
-            <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+        {/* Avatar */}
+        <View style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40` }]}>
+          <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+        </View>
+
+        {/* Main content */}
+        <View style={styles.cardBody}>
+          {/* Row 1: Name + Status pill */}
+          <View style={styles.cardRow}>
+            <Text style={styles.memberName} numberOfLines={1}>{item.full_name}</Text>
+            <View style={[styles.statusPill, { backgroundColor: `${statusColor}18` }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            </View>
           </View>
 
-          {/* Main content */}
-          <View style={styles.cardBody}>
-            {/* Row 1: Name + Status pill */}
-            <View style={styles.cardRow}>
-              <Text style={styles.memberName} numberOfLines={1}>{item.full_name}</Text>
-              <View style={[styles.statusPill, { backgroundColor: `${statusColor}18` }]}>
-                <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
-              </View>
-            </View>
-
-            {/* Row 2: Member ID + Plan */}
-            <View style={styles.cardRow2}>
-              <Text style={styles.memberId}>{item.member_id}</Text>
+          {/* Row 2: Member ID + Plan */}
+          <View style={[styles.cardRow2, { justifyContent: 'space-between' }]}>
+            <Text style={[styles.memberId, { flexShrink: 0 }]}>{item.member_id}</Text>
+            <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 1, justifyContent: 'flex-end', marginLeft: 8 }}>
               {item.plan_name || item.plan_duration_months ? (
-                <View style={styles.planBadge}>
-                  <FontAwesome name="star" size={9} color={colors.primary} />
-                  <Text style={[styles.planText, { color: colors.primary }]}>
+                <View style={[styles.planBadge, { flexShrink: 1, maxWidth: 120 }]}>
+                  <FontAwesome name="star" size={9} color={colors.primary} style={{ flexShrink: 0 }} />
+                  <Text style={[styles.planText, { color: colors.primary }]} numberOfLines={1} ellipsizeMode="tail">
                     {item.plan_name || `${item.plan_duration_months}M Plan`}
                   </Text>
                 </View>
               ) : null}
+              {item.trainer_assigned && item.trainer_assigned !== 'General' && item.trainer_assigned !== 'General Coach' ? (
+                <View style={[styles.planBadge, { backgroundColor: '#EDE9FE', borderColor: '#7C3AED', flexShrink: 1, maxWidth: 100 }]}>
+                  <FontAwesome name="user" size={9} color="#7C3AED" style={{ flexShrink: 0 }} />
+                  <Text style={[styles.planText, { color: '#6D28D9' }]} numberOfLines={1} ellipsizeMode="tail">
+                    {item.trainer_assigned}
+                  </Text>
+                </View>
+              ) : null}
             </View>
+          </View>
 
-            {/* Row 3: Dates */}
-            {joiningDateStr && (
-              <Text style={styles.dateRange}>
-                {joiningDateStr} – {dueDateStr}
-              </Text>
-            )}
+          {/* Row 3: Dates */}
+          {joiningDateStr && (
+            <Text style={styles.dateRange}>
+              {joiningDateStr} – {dueDateStr}
+            </Text>
+          )}
 
-            {/* Row 4: Fee + Days */}
-            <View style={styles.cardRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.feeText}>₹{item.monthly_fees || item.plan_fee || 0}</Text>
-                {item.pending_amount > 0 ? (
-                  <View style={[styles.dueBadge, { backgroundColor: `${colors.error}15` }]}>
-                    <Text style={[styles.dueText, { color: colors.error }]}>Due</Text>
+          {/* Row 4: Fee + Days */}
+          <View style={styles.cardRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
+              <Text style={styles.feeText}>₹{item.monthly_fees || item.plan_fee || 0}</Text>
+              {item.pending_amount > 0 ? (
+                item.amount_paid > 0 ? (
+                  <View style={[styles.dueBadge, { backgroundColor: '#F59E0B18', paddingHorizontal: 4, paddingVertical: 1.5 }]}>
+                    <Text style={[styles.dueText, { color: '#F59E0B', fontSize: 9 }]}>Partial</Text>
                   </View>
                 ) : (
-                  <Text style={[styles.paidLabel, { color: colors.success }]}>Paid</Text>
-                )}
-              </View>
-              <View style={styles.daysBox}>
-                <Text style={[styles.daysNum, { color: isExpired ? colors.error : daysLeft <= 7 ? (colors.warning || '#F59E0B') : colors.text }]}>
-                  {Math.abs(daysLeft)}
-                </Text>
-                <Text style={styles.daysLabel}>{isExpired ? 'ago' : 'Days Left'}</Text>
-              </View>
+                  <View style={[styles.dueBadge, { backgroundColor: `${colors.error}15`, paddingHorizontal: 4, paddingVertical: 1.5 }]}>
+                    <Text style={[styles.dueText, { color: colors.error, fontSize: 9 }]}>Due</Text>
+                  </View>
+                )
+              ) : (
+                <Text style={[styles.paidLabel, { color: colors.success, fontSize: 9 }]}>Paid</Text>
+              )}
+              {item.timing ? (
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#E0F2FE',
+                  paddingHorizontal: 4,
+                  paddingVertical: 1.5,
+                  borderRadius: 4,
+                  gap: 2
+                }}>
+                  <FontAwesome name="clock-o" size={9} color="#0284C7" />
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#0284C7' }}>
+                    {item.timing.replace(/\s*to\s*/gi, '-').replace(/:00/g, '')}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-
-            {/* Divider */}
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-            {/* Action buttons */}
-            <View style={styles.actionsRow}>
-              <TouchableOpacity
-                style={[styles.actionBtn, { borderColor: colors.border }]}
-                onPress={() => {
-                  const callPhone = item.phone?.length > 10 && item.phone.startsWith('91')
-                    ? item.phone.substring(2) : item.phone;
-                  Linking.openURL(`tel:${callPhone}`);
-                }}
-              >
-                <FontAwesome name="phone" size={13} color={colors.primary} />
-                <Text style={[styles.actionText, { color: colors.textSecondary }]}>Call</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.actionBtn, { borderColor: colors.border }]}
-                onPress={async () => { await sendWhatsAppMessage(item.phone); }}
-              >
-                <FontAwesome name="whatsapp" size={13} color="#25D366" />
-                <Text style={[styles.actionText, { color: colors.textSecondary }]}>WhatsApp</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.renewBtn}
-                onPress={() => handleRenew(item)}
-              >
-                <LinearGradient
-                  colors={[colors.primary, colors.secondary || colors.primary]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.renewGradient}
-                >
-                  <FontAwesome name="refresh" size={12} color="#fff" />
-                  <Text style={styles.renewText}>Renewal</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+            <View style={styles.daysBox}>
+              <Text style={[styles.daysNum, { color: isExpired ? colors.error : daysLeft <= 7 ? (colors.warning || '#F59E0B') : colors.text }]}>
+                {Math.abs(daysLeft)}
+              </Text>
+              <Text style={styles.daysLabel}>{isExpired ? 'ago' : 'Days Left'}</Text>
             </View>
+          </View>
+
+          {/* Divider */}
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          {/* Action buttons */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: colors.border }]}
+              onPress={() => {
+                const callPhone = item.phone?.length > 10 && item.phone.startsWith('91')
+                  ? item.phone.substring(2) : item.phone;
+                Linking.openURL(`tel:${callPhone}`);
+              }}
+            >
+              <FontAwesome name="phone" size={13} color={colors.primary} />
+              <Text style={[styles.actionText, { color: colors.textSecondary }]}>Call</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: colors.border }]}
+              onPress={async () => { await sendWhatsAppMessage(item.phone); }}
+            >
+              <FontAwesome name="whatsapp" size={13} color="#25D366" />
+              <Text style={[styles.actionText, { color: colors.textSecondary }]}>WhatsApp</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.renewBtn}
+              onPress={() => handleRenew(item)}
+            >
+              <LinearGradient
+                colors={[colors.primary, colors.secondary || colors.primary]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.renewGradient}
+              >
+                <FontAwesome name="refresh" size={12} color="#fff" />
+                <Text style={styles.renewText}>Renewal</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -261,7 +301,11 @@ export const MembersScreen = () => {
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.headerTitle}>Members</Text>
-            <Text style={styles.headerSubtitle}>Total Members {members.length.toLocaleString()}</Text>
+            {isInitialLoading ? (
+              <Skeleton width={110} height={14} style={{ marginTop: 4 }} />
+            ) : (
+              <Text style={styles.headerSubtitle}>Total Members {members.length.toLocaleString()}</Text>
+            )}
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconBtn}>
@@ -309,22 +353,52 @@ export const MembersScreen = () => {
       </View>
 
       {/* List */}
-      <FlatList
-        data={filteredMembers}
-        renderItem={renderMember}
-        keyExtractor={item => item.id || item._id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshMembers} tintColor={colors.primary} />}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIcon, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6' }]}>
-              <FontAwesome name="users" size={32} color={colors.textMuted} />
+      {isInitialLoading ? (
+        <ScrollView style={styles.listContent} showsVerticalScrollIndicator={false}>
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <View key={i} style={styles.cardWrapper}>
+              <View style={styles.card}>
+                <Skeleton width={52} height={52} borderRadius={26} style={{ marginRight: spacing.m, alignSelf: 'flex-start', marginTop: 2 }} />
+                <View style={styles.cardBody}>
+                  <View style={styles.cardRow}>
+                    <Skeleton width={130} height={18} />
+                    <Skeleton width={65} height={20} borderRadius={10} />
+                  </View>
+                  <Skeleton width={90} height={14} style={{ marginBottom: 6 }} />
+                  <Skeleton width={130} height={12} style={{ marginBottom: 12 }} />
+                  <View style={styles.cardRow}>
+                    <Skeleton width={60} height={18} />
+                    <Skeleton width={45} height={26} borderRadius={6} />
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <View style={styles.actionsRow}>
+                    <Skeleton width={80} height={36} borderRadius={8} style={{ flex: 1 }} />
+                    <Skeleton width={80} height={36} borderRadius={8} style={{ flex: 1 }} />
+                    <Skeleton width={100} height={36} borderRadius={8} style={{ flex: 1.2 }} />
+                  </View>
+                </View>
+              </View>
             </View>
-            <Text style={styles.emptyTitle}>No members found</Text>
-            <Text style={styles.emptySubtitle}>Try adjusting your search or filter</Text>
-          </View>
-        )}
-      />
+          ))}
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={filteredMembers}
+          renderItem={renderMember}
+          keyExtractor={item => item.id || item._id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshMembers} tintColor={colors.primary} />}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <View style={[styles.emptyIcon, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6' }]}>
+                <FontAwesome name="users" size={32} color={colors.textMuted} />
+              </View>
+              <Text style={styles.emptyTitle}>No members found</Text>
+              <Text style={styles.emptySubtitle}>Try adjusting your search or filter</Text>
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 };
@@ -378,7 +452,7 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   listContent: { padding: spacing.m, paddingBottom: 100 },
 
   // Card
-  cardWrapper: { marginBottom: spacing.m },
+  cardWrapper: { marginBottom: spacing.m, borderRadius: borderRadius.xl, overflow: 'hidden' },
   card: {
     flexDirection: 'row',
     backgroundColor: colors.surface,

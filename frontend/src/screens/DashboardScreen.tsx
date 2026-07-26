@@ -10,6 +10,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { useCachedParallelFetch, invalidateCache } from '../hooks/useDataStore';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { Skeleton } from '../components/Skeleton';
 
 const { width } = Dimensions.get('window');
 
@@ -60,12 +61,15 @@ export const DashboardScreen = () => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [hideRevenue, setHideRevenue] = useState(false);
   const [revealedOnce, setRevealedOnce] = useState(false);
+  const [insightsData, setInsightsData] = useState<any>(null);
+  const [selectedInsight, setSelectedInsight] = useState<any>(null);
 
-  const { results, refreshing, refresh: refreshDashboard } = useCachedParallelFetch([
+  const { results, loading, refreshing, refresh: refreshDashboard } = useCachedParallelFetch([
     { key: `dashboard_${period}`, endpoint: `/members/stats/dashboard?period=${period}` },
     { key: 'dashboard_attendance', endpoint: '/members/attendance/today' },
     { key: 'dashboard_messages', endpoint: '/messages/history?limit=4' },
     { key: 'dashboard_settings', endpoint: '/settings/' },
+    { key: 'dashboard_insights', endpoint: '/analytics/insights' },
   ]);
 
   useEffect(() => {
@@ -73,6 +77,7 @@ export const DashboardScreen = () => {
     if (results['dashboard_attendance']) setAttendance(results['dashboard_attendance']);
     if (results['dashboard_messages']) setRecentMessages(results['dashboard_messages']);
     if (results['dashboard_settings']) setGymSettings(results['dashboard_settings']);
+    if (results['dashboard_insights']) setInsightsData(results['dashboard_insights']);
   }, [results, period]);
 
   useFocusEffect(
@@ -85,7 +90,6 @@ export const DashboardScreen = () => {
   );
 
   const handlePeriodChange = (newPeriod: 'month' | 'prev_month' | 'year' | 'all') => {
-    invalidateCache(`dashboard_${newPeriod}`);
     setPeriod(newPeriod);
   };
 
@@ -123,11 +127,11 @@ export const DashboardScreen = () => {
     </TouchableOpacity>
   );
 
-  const KPICard = ({ title, value, icon, color, trend, trendVal, comparison }: any) => {
+  const KPICard = ({ title, value, icon, color, trend, trendVal, comparison, onPress }: any) => {
     const isUp = trend === 'up';
     const trendColor = isUp ? colors.success : colors.error;
     return (
-      <View style={styles.kpiCard}>
+      <TouchableOpacity style={styles.kpiCard} onPress={onPress} activeOpacity={0.8}>
         <View style={styles.kpiHeader}>
           <View style={[styles.kpiIconBox, { backgroundColor: `${color}15` }]}>
             <FontAwesome name={icon} size={14} color={color} />
@@ -147,7 +151,7 @@ export const DashboardScreen = () => {
           </View>
           <Text style={styles.kpiCompareText}>{comparison}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -155,6 +159,31 @@ export const DashboardScreen = () => {
     if (!prev) return current > 0 ? 100 : 0;
     return ((current - prev) / prev) * 100;
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.content]}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <Skeleton width={120} height={14} style={{ marginBottom: 8 }} />
+            <Skeleton width={180} height={24} style={{ marginBottom: 8 }} />
+            <Skeleton width={140} height={14} />
+          </View>
+          <View style={styles.headerRight}>
+            <Skeleton width={40} height={40} borderRadius={20} />
+            <Skeleton width={44} height={44} borderRadius={22} />
+          </View>
+        </View>
+        <Skeleton width="100%" height={220} borderRadius={24} style={{ marginBottom: 24 }} />
+        <View style={styles.kpiGrid}>
+          {[1, 2, 3, 4].map(i => (
+             <Skeleton key={i} width={(width - 40 - 16) / 2} height={130} borderRadius={20} />
+          ))}
+        </View>
+        <Skeleton width="100%" height={200} borderRadius={20} style={{ marginBottom: 24 }} />
+      </View>
+    );
+  }
 
   const revChangeVal = getChange(stats?.monthly_revenue ?? 0, stats?.prev_revenue ?? 0);
   const revTrend = revChangeVal >= 0 ? 'up' : 'down';
@@ -221,6 +250,8 @@ export const DashboardScreen = () => {
         </View>
       </View>
 
+
+
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         <FilterTab label="This Month" active={period === 'month'} onPress={() => handlePeriodChange('month')} />
@@ -268,13 +299,132 @@ export const DashboardScreen = () => {
           <HeroChart />
 
           <View style={styles.heroFooter}>
-            <Text style={styles.heroFooterText}>View detailed analytics and insights</Text>
-            <TouchableOpacity style={styles.heroFooterArrow} onPress={() => router.push('/revenue' as any)}>
+            <Text style={styles.heroFooterText}>View detailed analytics and reports</Text>
+            <TouchableOpacity style={styles.heroFooterArrow} onPress={() => router.push('/reports' as any)}>
               <FontAwesome name="arrow-right" size={14} color="#6C4DFF" />
             </TouchableOpacity>
           </View>
         </LinearGradient>
       </TouchableOpacity>
+
+      {/* ── 1-LINE FINTECH HORIZONTAL ACTION RIBBON (Apple / CRED Style) ── */}
+      <View style={{ marginBottom: 20, marginTop: 4 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Quick Actions
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted, fontWeight: '600' }}>
+            Swipe ➔
+          </Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
+        >
+          {[
+            {
+              key: 'reports',
+              label: 'Reports',
+              icon: 'bar-chart',
+              color: '#3B82F6',
+              bg: isDark ? 'rgba(59, 130, 246, 0.15)' : '#DBEAFE',
+              onPress: () => router.push('/reports' as any)
+            },
+            {
+              key: 'plans',
+              label: 'Plans',
+              icon: 'star',
+              color: '#F59E0B',
+              bg: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7',
+              onPress: () => router.push('/plans' as any)
+            },
+            {
+              key: 'offers',
+              label: 'Offers',
+              icon: 'tag',
+              color: '#DB2777',
+              bg: isDark ? 'rgba(219, 39, 119, 0.15)' : '#FCE7F3',
+              onPress: () => router.push('/offers' as any)
+            },
+            {
+              key: 'expenses',
+              label: 'Expenses',
+              icon: 'money',
+              color: '#8B5CF6',
+              bg: isDark ? 'rgba(139, 92, 246, 0.15)' : '#EDE9FE',
+              onPress: () => router.push('/expenses' as any)
+            },
+            {
+              key: 'enroll',
+              label: 'Enroll',
+              icon: 'user-plus',
+              color: '#10B981',
+              bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#D1FAE5',
+              onPress: () => router.push('/(tabs)/enroll' as any)
+            },
+            {
+              key: 'queue',
+              label: 'Queue',
+              icon: 'bell',
+              color: '#EC4899',
+              bg: isDark ? 'rgba(236, 72, 153, 0.15)' : '#FCE7F3',
+              onPress: () => router.push('/(tabs)/dues' as any)
+            },
+            {
+              key: 'trainers',
+              label: 'Trainers',
+              icon: 'users',
+              color: '#059669',
+              bg: isDark ? 'rgba(5, 150, 105, 0.15)' : '#D1FAE5',
+              onPress: () => router.push('/trainers' as any)
+            },
+            {
+              key: 'members',
+              label: 'Members',
+              icon: 'id-card-o',
+              color: '#7C3AED',
+              bg: isDark ? 'rgba(124, 58, 237, 0.15)' : '#EDE9FE',
+              onPress: () => router.push('/(tabs)/members' as any)
+            },
+          ].map(item => (
+            <TouchableOpacity
+              key={item.key}
+              activeOpacity={0.8}
+              onPress={item.onPress}
+              style={{ alignItems: 'center', width: 70 }}
+            >
+              <View style={{
+                width: 54,
+                height: 54,
+                borderRadius: 18,
+                backgroundColor: item.bg,
+                borderWidth: 1.5,
+                borderColor: `${item.color}40`,
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 6,
+                shadowColor: isDark ? 'transparent' : item.color,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: isDark ? 0 : 0.2,
+                shadowRadius: isDark ? 0 : 6,
+                elevation: isDark ? 0 : 4
+              }}>
+                <FontAwesome name={item.icon as any} size={20} color={item.color} />
+              </View>
+              <Text style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: colors.text,
+                textAlign: 'center',
+                letterSpacing: -0.2
+              }} numberOfLines={1}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* 2x2 KPI Grid */}
       <View style={styles.kpiGrid}>
@@ -283,43 +433,87 @@ export const DashboardScreen = () => {
           value={stats?.active_members ?? '0'} 
           icon="calendar-check-o" 
           color="#10B981" 
-          trend={activeTrend} trendVal={activeChangeStr} comparison={stats?.compare_label || 'All time'} 
+          trend={activeTrend} trendVal={activeChangeStr} comparison={stats?.compare_label || 'All time'}
+          onPress={() => router.push({ pathname: '/(tabs)/members', params: { filter: 'Active' } } as any)} 
         />
         <KPICard 
           title="Expired Plans" 
           value={stats?.expired_members ?? '0'} 
           icon="calendar-times-o" 
           color="#EF4444" 
-          trend={expTrend} trendVal={expChangeStr} comparison={stats?.compare_label || 'All time'} 
+          trend={expTrend} trendVal={expChangeStr} comparison={stats?.compare_label || 'All time'}
+          onPress={() => router.push({ pathname: '/(tabs)/members', params: { filter: 'Expired' } } as any)}
         />
         <KPICard 
           title="Today's Check-ins" 
           value={attendance?.length ?? 0} 
           icon="users" 
           color="#3B82F6" 
-          trend={attTrend} trendVal={attChangeStr} comparison="vs Yesterday" 
+          trend={attTrend} trendVal={attChangeStr} comparison="vs Yesterday"
+          onPress={() => router.push('/reports' as any)} 
         />
         <KPICard 
           title="Total Members" 
           value={stats?.total_members ?? 0} 
           icon="id-card-o" 
           color="#8B5CF6" 
-          trend={totalTrend} trendVal={totalChangeStr} comparison={stats?.compare_label || 'All time'} 
+          trend={totalTrend} trendVal={totalChangeStr} comparison={stats?.compare_label || 'All time'}
+          onPress={() => router.push({ pathname: '/(tabs)/members', params: { filter: 'All' } } as any)}
         />
       </View>
 
       {/* AI Insight */}
-      {stats?.expired_members > 0 && (
-        <LinearGradient colors={isDark ? ['#422006', '#713F12'] : ['#FEF3C7', '#FDE68A']} style={styles.aiCard}>
-          <View style={styles.aiIconWrapper}>
-            <FontAwesome name="magic" size={16} color="#D97706" />
-          </View>
-          <View style={styles.aiContent}>
-            <Text style={styles.aiTitle}>AI Insight</Text>
-            <Text style={styles.aiDesc}>You have {stats.expired_members} members with pending dues. Consider sending a reminder.</Text>
-          </View>
-          <FontAwesome name="angle-right" size={20} color={isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.3)"} />
-        </LinearGradient>
+      {insightsData?.insights && insightsData.insights.length > 0 ? (
+        insightsData.insights.map((insight: any, idx: number) => {
+          let gradientColors = ['#FEF3C7', '#FDE68A'];
+          let iconColor = '#D97706';
+          let iconBg = 'white';
+          
+          if (isDark) {
+             if (insight.type === 'success') gradientColors = ['#064E3B', '#047857'];
+             else if (insight.type === 'danger') gradientColors = ['#7F1D1D', '#B91C1C'];
+             else if (insight.type === 'info') gradientColors = ['#1E3A8A', '#1D4ED8'];
+             else gradientColors = ['#422006', '#713F12'];
+             
+             iconBg = 'rgba(255,255,255,0.15)';
+             if (insight.type === 'success') iconColor = '#34D399';
+             else if (insight.type === 'danger') iconColor = '#F87171';
+             else if (insight.type === 'info') iconColor = '#60A5FA';
+             else iconColor = '#FBBF24';
+          } else {
+             if (insight.type === 'success') { gradientColors = ['#D1FAE5', '#A7F3D0']; iconColor = '#059669'; }
+             else if (insight.type === 'danger') { gradientColors = ['#FEE2E2', '#FECACA']; iconColor = '#DC2626'; }
+             else if (insight.type === 'info') { gradientColors = ['#DBEAFE', '#BFDBFE']; iconColor = '#2563EB'; }
+          }
+          
+          return (
+            <TouchableOpacity key={idx} activeOpacity={0.8} onPress={() => setSelectedInsight(insight)}>
+              <LinearGradient colors={gradientColors as any} style={styles.aiCard}>
+                <View style={[styles.aiIconWrapper, { backgroundColor: iconBg }]}>
+                  <FontAwesome name={insight.icon as any || 'magic'} size={16} color={iconColor} />
+                </View>
+                <View style={styles.aiContent}>
+                  <Text style={[styles.aiTitle, { color: iconColor }]}>{insight.title}</Text>
+                  <Text style={styles.aiDesc}>{insight.message}</Text>
+                </View>
+                <FontAwesome name="angle-right" size={20} color={isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.3)"} />
+              </LinearGradient>
+            </TouchableOpacity>
+          );
+        })
+      ) : stats?.expired_members > 0 && (
+        <TouchableOpacity activeOpacity={0.8} onPress={() => router.push({ pathname: '/(tabs)/members', params: { filter: 'Expired' } } as any)}>
+          <LinearGradient colors={isDark ? ['#422006', '#713F12'] : ['#FEF3C7', '#FDE68A']} style={styles.aiCard}>
+            <View style={styles.aiIconWrapper}>
+              <FontAwesome name="magic" size={16} color="#D97706" />
+            </View>
+            <View style={styles.aiContent}>
+              <Text style={styles.aiTitle}>AI Insight</Text>
+              <Text style={styles.aiDesc}>You have {stats.expired_members} members with pending dues. Consider sending a reminder.</Text>
+            </View>
+            <FontAwesome name="angle-right" size={20} color={isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.3)"} />
+          </LinearGradient>
+        </TouchableOpacity>
       )}
 
       {/* Recent Check-ins */}
@@ -392,26 +586,7 @@ export const DashboardScreen = () => {
         )}
       </View>
 
-      {/* Quick Actions */}
-      <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
-        {[
-          { title: 'Add Member', icon: 'user-plus', color: '#8B5CF6' },
-          { title: 'New Payment', icon: 'money', color: '#10B981' },
-          { title: 'Send Reminder', icon: 'bell-o', color: '#F59E0B' },
-          { title: 'Reports', icon: 'file-text-o', color: '#3B82F6' },
-          { title: 'More', icon: 'ellipsis-h', color: colors.textSecondary },
-        ].map((action, i) => (
-          <TouchableOpacity key={i} style={styles.actionItem}>
-            <View style={[styles.actionIconBox, { backgroundColor: isDark ? `${action.color}20` : `${action.color}15` }]}>
-              <FontAwesome name={action.icon as any} size={20} color={action.color} />
-            </View>
-            <Text style={styles.actionTitle}>{action.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+
 
       {/* Message Modal */}
       <Modal
@@ -456,6 +631,70 @@ export const DashboardScreen = () => {
                   <FontAwesome name="whatsapp" size={18} color="white" style={{ marginRight: 8 }} />
                   <Text style={styles.resendBtnText}>Open Chat & Resend</Text>
                 </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* AI Insight Details Modal */}
+      <Modal
+        visible={!!selectedInsight}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedInsight(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selectedInsight?.title}</Text>
+              <TouchableOpacity onPress={() => setSelectedInsight(null)}>
+                <FontAwesome name="times" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {selectedInsight && (
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.messageBox}>
+                  <Text style={styles.messageText}>{selectedInsight.message}</Text>
+                </View>
+
+                {/* Specific Insight Details */}
+                {selectedInsight.type === 'danger' && selectedInsight.icon === 'user-times' && insightsData?.churn_risk?.length > 0 && (
+                  <View style={{ marginTop: 24 }}>
+                    <Text style={[styles.modalLabel, { marginBottom: 12 }]}>High Risk Members</Text>
+                    {insightsData.churn_risk.map((m: any, idx: number) => (
+                      <View key={idx} style={styles.listItem}>
+                        <View style={[styles.listAvatar, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                          <Text style={[styles.listAvatarInitials, { color: '#EF4444' }]}>{m.full_name?.substring(0,2).toUpperCase()}</Text>
+                        </View>
+                        <View style={styles.listInfo}>
+                          <Text style={styles.listName}>{m.full_name}</Text>
+                          <Text style={styles.listSubtitle}>Absent for {m.days_absent} days</Text>
+                        </View>
+                        <TouchableOpacity 
+                          style={[styles.statusTag, { backgroundColor: 'rgba(37, 211, 102, 0.15)', paddingVertical: 8, paddingHorizontal: 12 }]}
+                          onPress={() => sendWhatsAppMessage(m.phone, `Hi ${m.full_name}, we haven't seen you at the gym in a while! Hope everything is okay. Let us know if you need any help getting back on track.`)}
+                        >
+                          <FontAwesome name="whatsapp" size={14} color="#25D366" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Action Buttons based on type */}
+                {(selectedInsight.title?.toLowerCase().includes('revenue') || selectedInsight.title?.toLowerCase().includes('forecast')) && (
+                  <TouchableOpacity style={styles.resendBtn} onPress={() => { setSelectedInsight(null); router.push('/reports' as any); }}>
+                    <FontAwesome name="bar-chart" size={18} color="white" style={{ marginRight: 8 }} />
+                    <Text style={styles.resendBtnText}>View Detailed Reports</Text>
+                  </TouchableOpacity>
+                )}
+                {selectedInsight.title?.toLowerCase().includes('expiring') && (
+                  <TouchableOpacity style={styles.resendBtn} onPress={() => { setSelectedInsight(null); router.push({ pathname: '/(tabs)/members', params: { filter: 'Due' } } as any); }}>
+                    <FontAwesome name="clock-o" size={18} color="white" style={{ marginRight: 8 }} />
+                    <Text style={styles.resendBtnText}>View Due Members</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
             )}
           </View>
@@ -542,6 +781,57 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   statusTag: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   statusTagText: { fontSize: 10, fontWeight: '700' },
 
+  qaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 8,
+  },
+  qaCard: {
+    width: (width - 40 - 12) / 2,
+    backgroundColor: isDark ? '#171A22' : '#fff',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: isDark ? '#2A2D3A' : '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.2 : 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    minHeight: 130,
+    justifyContent: 'space-between',
+  },
+  qaIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  qaLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 3,
+    letterSpacing: -0.2,
+  },
+  qaSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+    marginBottom: 10,
+  },
+  qaArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  // Legacy horizontal scroll styles kept for safety
   quickActionsScroll: { gap: 16, paddingBottom: 10 },
   actionItem: { alignItems: 'center', width: 72 },
   actionIconBox: { width: 60, height: 60, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
@@ -552,12 +842,13 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '100%', backgroundColor: isDark ? '#171A22' : 'white', borderRadius: 24, padding: 24, ...shadows.premium },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
-  modalLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600', marginBottom: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text },
+  modalBody: { paddingBottom: 24 },
+  modalLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 4 },
   modalValue: { fontSize: 15, color: colors.text, fontWeight: '700' },
   messageBox: { backgroundColor: isDark ? '#0F1117' : '#F8FAFC', padding: 16, borderRadius: 12, marginTop: 4, borderWidth: 1, borderColor: isDark ? '#2A2D3A' : '#E2E8F0' },
   messageText: { color: colors.text, fontSize: 14, lineHeight: 22 },
   resendBtn: { backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 16, marginTop: 24 },
   resendBtnText: { color: 'white', fontSize: 15, fontWeight: '700' },
-});
 
+});

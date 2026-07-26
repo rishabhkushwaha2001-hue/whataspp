@@ -88,12 +88,16 @@ async def get_expenses(month: int = Query(None), year: int = Query(None)) -> Any
     db = get_database()
     query = {}
     
-    if month and year:
-        start_date = datetime(year, month, 1, tzinfo=timezone.utc)
-        if month == 12:
-            end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    if year:
+        if month and month > 0:
+            start_date = datetime(year, month, 1, tzinfo=timezone.utc)
+            if month == 12:
+                end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            else:
+                end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
         else:
-            end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+            start_date = datetime(year, 1, 1, tzinfo=timezone.utc)
+            end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
         query["date"] = {"$gte": start_date, "$lt": end_date}
         
     cursor = db["expenses"].find(query).sort("date", -1)

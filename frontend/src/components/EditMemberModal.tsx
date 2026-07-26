@@ -109,8 +109,9 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   // Plan Dates
   const [joiningDate, setJoiningDate] = useState('');
   const [nextDueDate, setNextDueDate] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [datePickerType, setDatePickerType] = useState<'joining' | 'nextDue'>('joining');
+  const [datePickerType, setDatePickerType] = useState<'joining' | 'nextDue' | 'dob'>('joining');
 
   // Timing — start + end with AM/PM (like RenewalModal)
   const [timingStartHour, setTimingStartHour] = useState('');
@@ -127,6 +128,10 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   const [saving, setSaving] = useState(false);
   const [businessType, setBusinessType] = useState('gym');
   const [enableHours, setEnableHours] = useState(false);
+
+  const [trainerAssigned, setTrainerAssigned] = useState('General Coach');
+  const [trainers, setTrainers] = useState<any[]>([]);
+  const [trainerDropdownVisible, setTrainerDropdownVisible] = useState(false);
 
   useEffect(() => {
     AsyncStorage.multiGet(['businessType', 'enableHours']).then(pairs => {
@@ -182,6 +187,13 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
     } catch (e) {}
   };
 
+  const fetchTrainers = async () => {
+    try {
+      const res = await api.get('/trainers/');
+      setTrainers(res.data || []);
+    } catch (e) {}
+  };
+
   useEffect(() => {
     if (visible && member) {
       setFullName(member.full_name || '');
@@ -195,6 +207,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       setAge(member.age ? String(member.age) : '');
       setWeight(member.weight ? String(member.weight) : '');
       setNotes(member.notes || '');
+      setTrainerAssigned(member.trainer_assigned || 'General Coach');
       
       const getLocalDateStr = (dateStr: string) => {
         if (!dateStr) return '';
@@ -203,10 +216,12 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       };
       setJoiningDate(getLocalDateStr(member.joining_date));
       setNextDueDate(getLocalDateStr(member.next_due_date));
+      setDateOfBirth(getLocalDateStr(member.date_of_birth || ''));
       
       parseTiming(member.timing || '');
       fetchSeats();
       fetchWifi();
+      fetchTrainers();
     }
   }, [visible, member]);
 
@@ -261,6 +276,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         phone: phone.trim(),
         address: address.trim(),
         aadhaar_number: aadhaarNumber.trim(),
+        trainer_assigned: trainerAssigned,
       };
       if (timingStr) payload.timing = timingStr;
       if (dailyHours) payload.daily_hours = parseInt(dailyHours);
@@ -273,6 +289,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       
       if (joiningDate) payload.joining_date = new Date(joiningDate).toISOString();
       if (nextDueDate) payload.next_due_date = new Date(nextDueDate).toISOString();
+      if (dateOfBirth) payload.date_of_birth = new Date(dateOfBirth).toISOString();
 
       const res = await api.put(`/members/${memberId}`, payload);
       showSuccess('Success', 'Member details updated successfully!', () => {
@@ -343,6 +360,69 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
                 <InputRow colors={colors} label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" />
               </View>
             </View>
+
+            {/* Date of Birth */}
+            <View style={fieldStyles.inputGroup}>
+              <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>🎂 Date of Birth</Text>
+              <TouchableOpacity
+                onPress={() => { setDatePickerType('dob'); setShowDatePicker(true); }}
+                style={[fieldStyles.input, { borderColor: dateOfBirth ? '#EC4899' : colors.border, backgroundColor: colors.surfaceLight, justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 }]}
+              >
+                <FontAwesome name="birthday-cake" size={14} color={dateOfBirth ? '#EC4899' : colors.textMuted} />
+                <Text style={{ color: dateOfBirth ? colors.text : colors.textMuted, flex: 1 }}>
+                  {dateOfBirth ? dateOfBirth.split('-').reverse().join(' / ') : 'Select Date of Birth (Optional)'}
+                </Text>
+                {dateOfBirth && (
+                  <TouchableOpacity onPress={() => setDateOfBirth('')}>
+                    <FontAwesome name="times-circle" size={14} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
+              {dateOfBirth && (() => {
+                const today = new Date();
+                const dob = new Date(dateOfBirth);
+                let age = today.getFullYear() - dob.getFullYear();
+                const m = today.getMonth() - dob.getMonth();
+                if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+                const isToday = dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    <FontAwesome name="info-circle" size={11} color="#EC4899" />
+                    <Text style={{ color: '#EC4899', fontSize: 11, fontWeight: '600' }}>
+                      {age} years old{isToday ? ' 🎉 Birthday today!' : ''}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
+
+            {/* Trainer Assignment */}
+            {businessType === 'gym' && (
+              <>
+                <Text style={[styles.section, { color: colors.text }]}>💪 Trainer Assignment</Text>
+                <View style={fieldStyles.inputGroup}>
+                  <Text style={[fieldStyles.label, { color: colors.textSecondary }]}>Assigned Coach</Text>
+                  <TouchableOpacity
+                    onPress={() => setTrainerDropdownVisible(true)}
+                    style={[fieldStyles.input, styles.dropdownBtn, {
+                      borderColor: colors.primary,
+                      backgroundColor: colors.surfaceLight,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <FontAwesome name="user-circle-o" size={14} color={colors.primary} />
+                      <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+                        {trainerAssigned}
+                      </Text>
+                    </View>
+                    <FontAwesome name="caret-down" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
 
             {/* Plan Dates */}
             <Text style={[styles.section, { color: colors.text }]}>📅 Plan Dates</Text>
@@ -438,9 +518,13 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
                 {/* Daily Hours */}
                 <InputRow
                   colors={colors}
-                  label="Daily Hours"
+                  label="Daily Hours (Max 24)"
                   value={dailyHours}
-                  onChangeText={setDailyHours}
+                  onChangeText={(val: string) => {
+                    const num = parseInt(val);
+                    if (!isNaN(num) && num > 24) setDailyHours('24');
+                    else setDailyHours(val);
+                  }}
                   keyboardType="numeric"
                   placeholder="e.g. 8"
                 />
@@ -563,15 +647,24 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         onClose={() => setWifiDropdownVisible(false)}
       />
 
+      <DropdownModal
+        visible={trainerDropdownVisible}
+        title="Select Trainer"
+        items={['General Coach', ...trainers.map(t => t.name)]}
+        onSelect={(val) => { setTrainerAssigned(val); setTrainerDropdownVisible(false); }}
+        onClose={() => setTrainerDropdownVisible(false)}
+      />
+
       <DatePickerModal
         visible={showDatePicker}
         onClose={() => setShowDatePicker(false)}
         onSelect={(date) => {
           if (datePickerType === 'joining') setJoiningDate(date);
+          else if (datePickerType === 'dob') setDateOfBirth(date);
           else setNextDueDate(date);
           setShowDatePicker(false);
         }}
-        initialDate={datePickerType === 'joining' ? joiningDate : nextDueDate}
+        initialDate={datePickerType === 'joining' ? joiningDate : datePickerType === 'dob' ? dateOfBirth : nextDueDate}
       />
 
       <AlertModal />

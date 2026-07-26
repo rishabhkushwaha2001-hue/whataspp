@@ -1,4 +1,4 @@
-import { Redirect } from 'expo-router';
+import { ExpensesScreen } from '../src/screens/ExpensesScreen';
 export default function Expenses() {
-  return <Redirect href={'/(tabs)' as any} />;
+  return <ExpensesScreen />;
 }

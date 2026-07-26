@@ -32,15 +32,15 @@ export const fetchMessageTemplates = async () => {
       businessType: response.data.business_type || 'gym',
       enableHours: response.data.enable_hours_feature || false,
       gymName: response.data.gym_name || 'Gym',
-      joiningTemplate: null, // Force premium format
-      renewalTemplate: null, // Force premium format
-      reminderTemplate: null, // Force premium format
+      joiningTemplate: null as string | null, // Force premium format
+      renewalTemplate: null as string | null, // Force premium format
+      reminderTemplate: null as string | null, // Force premium format
       wifiNetworks: response.data.wifi_networks || [],
     };
   } catch {
     const gymName = await AsyncStorage.getItem('gymName') || 'Gym';
     const businessType = await AsyncStorage.getItem('businessType') || 'gym';
-    return { businessType, enableHours: false, gymName, joiningTemplate: null, renewalTemplate: null, reminderTemplate: null, wifiNetworks: [] };
+    return { businessType, enableHours: false, gymName, joiningTemplate: null as string | null, renewalTemplate: null as string | null, reminderTemplate: null as string | null, wifiNetworks: [] };
   }
 };
 
@@ -56,14 +56,14 @@ export const getDefaultTemplates = (businessType: string) => {
     };
   } else if (businessType === 'general') {
     return {
-      joining: `*{business_name} - SERVICE ACTIVATED ✅*\n\nHello *{name}*!\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Date:* {joining_date}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for choosing {business_name}! 🙏`,
-      renewal: `*{business_name} - PLAN RENEWED ✅*\n\nHello *{name}*! Your plan has been renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for continuing with {business_name}! 🙏`,
+      joining: `*{business_name} - SERVICE ACTIVATED ✅*\n\nHello *{name}*!\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Date:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for choosing {business_name}! 🙏`,
+      renewal: `*{business_name} - PLAN RENEWED ✅*\n\nHello *{name}*! Your plan has been renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for continuing with {business_name}! 🙏`,
       reminder: `*{business_name} - PAYMENT REMINDER 🔔*\n\nHello *{name}*,\n\nThis is a friendly reminder that your payment is due.\n\n*AMOUNT DUE:* ₹{fees}\n*DUE DATE:* {date}\n\nPlease contact us for renewal. Thank you! 🙏`
     };
   }
   return {
-    joining: `*{gym_name} - WELCOME KIT 🧾*\n\nHello *{name}*, welcome to {gym_name}! 💪\n\n*MEMBERSHIP DETAILS:*\n━━━━━━━━━━━━━━━━━━━━\n📱 *Phone:* {phone}\n📅 *Joining Date:* {joining_date}\n💰 *Amount Paid:* ₹{fees}\n📅 *Expiry Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\n*Stay Strong & Crush Your Goals!* 🚀`,
-    renewal: `*{gym_name} - MEMBERSHIP RENEWED 🔄*\n\nHello *{name}*, thank you for continuing your journey! 💪\n\n*RENEWAL DETAILS:*\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n💰 *Amount Paid:* ₹{fees}\n📅 *New Expiry:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\n*Let's push your limits again!* 🚀`,
+    joining: `*{gym_name} - WELCOME KIT 🧾*\n\nHello *{name}*, welcome to {gym_name}! 💪\n\n*MEMBERSHIP DETAILS:*\n━━━━━━━━━━━━━━━━━━━━\n📱 *Phone:* {phone}\n📅 *Joining Date:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *Expiry Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\n*Stay Strong & Crush Your Goals!* 🚀`,
+    renewal: `*{gym_name} - MEMBERSHIP RENEWED 🔄*\n\nHello *{name}*, thank you for continuing your journey! 💪\n\n*RENEWAL DETAILS:*\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *New Expiry:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\n*Let's push your limits again!* 🚀`,
     reminder: `*{gym_name} - RENEWAL REMINDER 🔔*\n\nHello *{name}* 💪,\n\nYour membership is due for renewal.\n\n*PENDING FEES:* ₹{fees} 💰\n*DUE DATE:* {date} 📅\n━━━━━━━━━━━━━━━━━━━━\n\n*Don't break the momentum!* 🚀\n\nSee you at the gym! 🏋️‍♂️`
   };
 };
@@ -83,6 +83,7 @@ export const fillTemplate = (template: string, vars: {
   gym?: string;
   seat?: string;
   wifi?: string;
+  plan_name?: string;
 }): string => {
   let result = template
     .replace(/\{name\}/g, vars.name || '')
@@ -94,12 +95,14 @@ export const fillTemplate = (template: string, vars: {
     .replace(/\{timing\}/g, vars.timing || '')
     .replace(/\{seat\}/g, vars.seat || 'Unassigned')
     .replace(/\{wifi\}/g, vars.wifi || 'N/A')
+    .replace(/\{plan_name\}/g, vars.plan_name && vars.plan_name !== 'Custom' ? vars.plan_name : 'Custom Plan')
     .replace(/\{gym\}|\{library_name\}|\{business_name\}|\{gym_name\}/g, vars.gym || '');
 
   // Auto-inject joining_date, timing, and hours if they exist but template is missing them
-  if ((vars.joining_date && !template.includes('{joining_date}')) || (vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}')) || (vars.seat && !template.includes('{seat}')) || (vars.wifi && !template.includes('{wifi}'))) {
+  if ((vars.joining_date && !template.includes('{joining_date}')) || (vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}')) || (vars.seat && !template.includes('{seat}')) || (vars.wifi && !template.includes('{wifi}')) || (vars.plan_name && vars.plan_name !== 'Custom' && !template.includes('{plan_name}'))) {
     let extraStr = '';
     if (vars.joining_date && !template.includes('{joining_date}')) extraStr += `\n📅 *Date:* ${vars.joining_date}`;
+    if (vars.plan_name && vars.plan_name !== 'Custom' && !template.includes('{plan_name}')) extraStr += `\n⭐ *Plan:* ${vars.plan_name}`;
     if (vars.hours && !template.includes('{hours}')) extraStr += `\n⏰ *Hours:* ${vars.hours} Hrs`;
     if (vars.timing && !template.includes('{timing}')) extraStr += `\n🌞 *Timing:* ${vars.timing}`;
     if (vars.seat && !template.includes('{seat}')) extraStr += `\n🪑 *Assigned Seat:* ${vars.seat}`;
@@ -143,6 +146,7 @@ export const buildJoiningMessage = (
     durationDays?: number;
     seat?: string;
     wifi?: string;
+    plan_name?: string;
   }
 ): string => {
   const totalAmount = Number(vars.fees);
@@ -188,6 +192,7 @@ export const buildJoiningMessage = (
     `\n━━━━━━━━━━━━━━━━━━━━\n` +
     `📆 *PLAN DETAILS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.plan_name && vars.plan_name !== 'Custom' ? `⭐ *Plan:* ${vars.plan_name}\n` : '') +
     (vars.durationDays ? `🗓️ *Plan Period:* ${vars.durationDays} Days\n` : '') +
     `🔚 *Valid Till:* ${vars.date}\n` +
     `\n━━━━━━━━━━━━━━━━━━━━\n` +
@@ -223,6 +228,7 @@ export const buildRenewalMessage = (
     durationMonths?: number;
     seat?: string;
     wifi?: string;
+    plan_name?: string;
   }
 ): string => {
   const totalAmount = Number(vars.fees);
@@ -270,6 +276,7 @@ export const buildRenewalMessage = (
     `\n━━━━━━━━━━━━━━━━━━━━\n` +
     `📆 *PLAN DETAILS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.plan_name && vars.plan_name !== 'Custom' ? `⭐ *Plan:* ${vars.plan_name}\n` : '') +
     (vars.durationMonths ? `🗓️ *Plan Period:* ${vars.durationMonths} Month(s)\n` : '') +
     `▶️ *Start Date:* ${renewalDate}\n` +
     `🔚 *Expiry Date:* ${expiryDate}\n` +
@@ -306,6 +313,7 @@ export const buildPaymentReceiptMessage = (
     timing?: string;
     seat?: string;
     wifi?: string;
+    plan_name?: string;
   }
 ): string => {
   const gymUp = vars.gym.toUpperCase();
@@ -347,6 +355,7 @@ export const buildPaymentReceiptMessage = (
     `\n━━━━━━━━━━━━━━━━━━━━\n` +
     `📆 *PLAN DETAILS*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.plan_name && vars.plan_name !== 'Custom' ? `⭐ *Plan:* ${vars.plan_name}\n` : '') +
     `🗓️ *Plan Period:* ${vars.durationDays} Days\n` +
     `▶️ *Start Date:* ${vars.startDate}\n` +
     `🔚 *Expiry Date:* ${vars.expiryDate}\n` +

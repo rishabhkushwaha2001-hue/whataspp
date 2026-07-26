@@ -28,7 +28,9 @@ interface RenewalModalProps {
     timing?: string,
     allocatedSeat?: string,
     wifiDetails?: string,
-    amountPaid?: number
+    amountPaid?: number,
+    appliedOfferName?: string,
+    planName?: string
   ) => Promise<{ success: boolean, message?: string } | void> | void;
   businessType?: string;
 }
@@ -66,34 +68,96 @@ export const RenewalModal = ({
   const [wifiOptions, setWifiOptions] = useState<any[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  const [offers, setOffers] = useState<any[]>([]);
+  const [selectedOffer, setSelectedOffer] = useState<any>(null);
+  const [baseAmount, setBaseAmount] = useState('');
+
+  const [plans, setPlans] = useState<any[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('custom');
+
+  const [isOpen, setIsOpen] = useState(false);
+
   useEffect(() => {
     if (visible && member) {
-      setStep('edit');
-      setIsSaving(false);
-      setWhatsappMsg('');
-      setAmount(member.monthly_fees ? String(member.monthly_fees) : (member.plan_fee ? String(member.plan_fee) : ''));
-      const oldExp = member.next_due_date || new Date().toISOString();
-      const isExp = new Date(oldExp) < new Date();
-      let startD = new Date();
-      if (!isExp) startD = new Date(oldExp);
-      
-      const startStr = startD.toISOString().split('T')[0];
-      setRenewalStartDate(startStr);
-      
-      const endD = new Date(startD);
-      endD.setMonth(endD.getMonth() + 1);
-      setRenewalEndDate(endD.toISOString().split('T')[0]);
-      setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
-      setTiming(member.timing || '');
-      setAllocatedSeat(member.allocated_seat || '');
-      setWifiDetails(member.wifi_details || '');
+      if (!isOpen) {
+        setIsOpen(true);
+        setStep('edit');
+        setIsSaving(false);
+        setWhatsappMsg('');
+        setSelectedPlanId('custom');
+        setSelectedOffer(null);
+        const defaultAmt = member.monthly_fees ? String(member.monthly_fees) : (member.plan_fee ? String(member.plan_fee) : '');
+        setAmount(defaultAmt);
+        setBaseAmount(defaultAmt);
+        const oldExp = member.next_due_date || new Date().toISOString();
+        const startD = new Date(oldExp);
+        
+        const startStr = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}-${String(startD.getDate()).padStart(2, '0')}`;
+        setRenewalStartDate(startStr);
+        
+        const endD = new Date(startD);
+        endD.setMonth(endD.getMonth() + 1);
+        const endStr = `${endD.getFullYear()}-${String(endD.getMonth() + 1).padStart(2, '0')}-${String(endD.getDate()).padStart(2, '0')}`;
+        setRenewalEndDate(endStr);
+        
+        setDailyHours(member.daily_hours ? String(member.daily_hours) : '');
+        setTiming(member.timing || '');
+        setAllocatedSeat(member.allocated_seat || '');
+        setWifiDetails(member.wifi_details || '');
 
-      if (enableHours) {
-        api.get('/settings/').then(res => setWifiOptions(res.data.wifi_networks || [])).catch(() => {});
-        api.get('/seats/').then(res => setAvailableSeats(Array.isArray(res.data) ? res.data : res.data?.seats || [])).catch(() => {});
+        const fetchOffersAndPlans = async () => {
+          try {
+            const [offersRes, plansRes] = await Promise.all([
+              api.get('/offers/'),
+              api.get('/plans/'),
+            ]);
+            setOffers(offersRes.data.filter((o: any) => o.is_active));
+            setPlans(plansRes.data.filter((p: any) => p.is_active));
+          } catch (e) {
+            console.log('Failed to fetch offers/plans', e);
+          }
+        };
+        fetchOffersAndPlans();
+
+        if (enableHours) {
+          api.get('/settings/').then(res => setWifiOptions(res.data.wifi_networks || [])).catch(() => {});
+          api.get('/seats/').then(res => setAvailableSeats(Array.isArray(res.data) ? res.data : res.data?.seats || [])).catch(() => {});
+        }
+      }
+    } else {
+      if (isOpen) {
+        setIsOpen(false);
       }
     }
-  }, [visible, member, enableHours]);
+  }, [visible, member, enableHours, isOpen]);
+
+  const applyOffer = (offer: any, baseAmtStr: string) => {
+    setSelectedOffer(offer);
+    if (!baseAmtStr || isNaN(parseFloat(baseAmtStr))) {
+      setAmount('');
+      return;
+    }
+    
+    const base = parseFloat(baseAmtStr);
+    let finalAmt = base;
+    if (offer) {
+      if (offer.discount_type === 'Percentage') {
+        finalAmt = base - (base * (offer.discount_value / 100));
+      } else {
+        finalAmt = Math.max(0, base - offer.discount_value);
+      }
+    }
+    setAmount(finalAmt.toString());
+  };
+
+  const selectPredefinedPlan = (plan: any) => {
+    setSelectedPlanId(plan._id);
+    setBaseAmount(plan.price.toString());
+    applyOffer(selectedOffer, plan.price.toString());
+    const d = new Date(renewalStartDate);
+    d.setDate(d.getDate() + (plan.duration_days || 30));
+    setRenewalEndDate(d.toISOString().split('T')[0]);
+  };
 
   const durationDays = renewalStartDate && renewalEndDate ? Math.round((new Date(renewalEndDate).getTime() - new Date(renewalStartDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
 
@@ -120,7 +184,9 @@ export const RenewalModal = ({
 
     const res = await onConfirm(
       durationMonths, finalAmount, paymentMode, renewalEndDate, renewalStartDate,
-      parseInt(dailyHours) || undefined, timing, allocatedSeat, wifiDetails, finalAmountPaid
+      parseInt(dailyHours) || undefined, timing, allocatedSeat, wifiDetails, finalAmountPaid,
+      selectedOffer ? selectedOffer.name : undefined,
+      plans.find(p => p._id === selectedPlanId)?.name || 'Custom'
     );
     
     if (res && res.success) {
@@ -238,15 +304,119 @@ export const RenewalModal = ({
                 {/* Fee */}
                 <Text style={styles.sectionTitle}>2. Membership Fee</Text>
                 <View style={styles.card}>
-                  <Text style={styles.inputLabel}>Final Amount (₹)</Text>
+
+                  {/* ── Membership Plans selector ── */}
+                  {plans.length > 0 && (
+                    <View style={{ marginBottom: 16 }}>
+                      <Text style={[styles.inputLabel, { marginBottom: 8 }]}>Select Membership Plan</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', paddingBottom: 8 }}>
+                        {/* Custom / manual option */}
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          style={[
+                            { width: 120, height: 95, padding: 12, borderRadius: 16, borderWidth: 1, marginRight: 12, justifyContent: 'center', alignItems: 'center' },
+                            selectedPlanId === 'custom'
+                              ? { backgroundColor: colors.surface, borderColor: colors.primary }
+                              : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }
+                          ]}
+                          onPress={() => {
+                            setSelectedPlanId('custom');
+                          }}
+                        >
+                          <FontAwesome name="pencil-square-o" size={24} color={selectedPlanId === 'custom' ? colors.primary : colors.textMuted} style={{ marginBottom: 6 }} />
+                          <Text style={{ fontSize: 13, fontWeight: selectedPlanId === 'custom' ? '700' : '500', color: selectedPlanId === 'custom' ? colors.primary : colors.textSecondary }}>Custom</Text>
+                        </TouchableOpacity>
+
+                        {plans.map(plan => {
+                          const isSelected = selectedPlanId === plan._id;
+                          return (
+                            <TouchableOpacity activeOpacity={0.9} key={plan._id} onPress={() => selectPredefinedPlan(plan)} style={{ marginRight: 12 }}>
+                              <LinearGradient
+                                colors={isSelected ? (isDark ? ['#10B981', '#059669'] : ['#34D399', '#10B981']) : (isDark ? ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : ['#F9FAFB', '#F3F4F6'])}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                style={{ width: 150, height: 95, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isSelected ? 'transparent' : colors.border, justifyContent: 'space-between' }}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <View style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                                    <Text style={{ fontSize: 12, fontWeight: '800', color: isSelected ? '#fff' : colors.primary }}>₹{plan.price}</Text>
+                                  </View>
+                                  {isSelected
+                                    ? <FontAwesome name="check-circle" size={18} color="#fff" />
+                                    : <FontAwesome name={plan.icon || 'star'} size={16} color={plan.color || colors.textMuted} />}
+                                </View>
+                                <View>
+                                  <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#fff' : colors.text }} numberOfLines={1}>{plan.name}</Text>
+                                  <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.9)' : colors.textMuted, marginTop: 2, fontWeight: '600' }} numberOfLines={1}>{plan.duration_days} Days</Text>
+                                </View>
+                              </LinearGradient>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  <Text style={styles.inputLabel}>Base Amount (₹)</Text>
                   <TextInput
                     style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
                     keyboardType="numeric"
-                    value={amount}
-                    onChangeText={setAmount}
-                    placeholder="Enter amount"
+                    value={baseAmount}
+                    onChangeText={(val) => {
+                      setBaseAmount(val);
+                      setSelectedPlanId('custom');
+                      applyOffer(selectedOffer, val);
+                    }}
+                    placeholder="Enter base amount"
                     placeholderTextColor={colors.textMuted}
                   />
+
+                  {offers.length > 0 && (
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={[styles.inputLabel, { marginBottom: 8 }]}>Apply Promotional Offer</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8, paddingBottom: 8 }}>
+                         <TouchableOpacity 
+                           activeOpacity={0.8}
+                           style={[{ width: 120, height: 85, padding: 12, borderRadius: 16, borderWidth: 1, marginRight: 12, justifyContent: 'center', alignItems: 'center' }, !selectedOffer ? { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F9FAFB', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' } : { backgroundColor: colors.surface, borderColor: colors.border }]}
+                           onPress={() => applyOffer(null, baseAmount)}
+                         >
+                           <FontAwesome name="times-circle" size={24} color={!selectedOffer ? colors.textSecondary : colors.textMuted} style={{ marginBottom: 6 }} />
+                           <Text style={{ fontSize: 13, fontWeight: !selectedOffer ? '700' : '500', color: !selectedOffer ? colors.text : colors.textSecondary }}>No Offer</Text>
+                         </TouchableOpacity>
+                         {offers.map(offer => {
+                           const isSelected = selectedOffer?._id === offer._id;
+                           return (
+                             <TouchableOpacity activeOpacity={0.9} key={offer._id} onPress={() => applyOffer(offer, baseAmount)} style={{ marginRight: 12 }}>
+                               <LinearGradient
+                                 colors={isSelected ? (isDark ? ['#7C3AED', '#4F46E5'] : ['#8B5CF6', '#6366F1']) : (isDark ? ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)'] : ['#F9FAFB', '#F3F4F6'])}
+                                 start={{x:0, y:0}} end={{x:1, y:1}}
+                                 style={{ width: 160, height: 85, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: isSelected ? 'transparent' : colors.border, justifyContent: 'space-between', ...(!isDark && isSelected ? shadows.light : {}) }}
+                               >
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <View style={{ backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                                      <Text style={{ fontSize: 12, fontWeight: '800', color: isSelected ? '#fff' : colors.primary }}>
+                                        {offer.discount_type === 'Percentage' ? `${offer.discount_value}% OFF` : `₹${offer.discount_value} OFF`}
+                                      </Text>
+                                    </View>
+                                    {isSelected ? <FontAwesome name="check-circle" size={18} color="#fff" /> : <FontAwesome name="gift" size={16} color={colors.textMuted} />}
+                                  </View>
+                                  <View>
+                                    <Text style={{ fontSize: 14, fontWeight: '800', color: isSelected ? '#fff' : colors.text }} numberOfLines={1}>{offer.name}</Text>
+                                    {offer.description ? <Text style={{ fontSize: 10, color: isSelected ? 'rgba(255,255,255,0.8)' : colors.textMuted, marginTop: 2 }} numberOfLines={1}>{offer.description}</Text> : null}
+                                  </View>
+                               </LinearGradient>
+                             </TouchableOpacity>
+                           );
+                         })}
+                      </ScrollView>
+                      
+                      {selectedOffer && (
+                        <View style={{ marginTop: 8, padding: 12, backgroundColor: '#ECFDF5', borderRadius: 8, borderWidth: 1, borderColor: '#10B981', flexDirection: 'row', justifyContent: 'space-between' }}>
+                           <Text style={{ color: '#059669', fontWeight: '600', fontSize: 13 }}>Final Amount after Discount:</Text>
+                           <Text style={{ color: '#059669', fontWeight: '800', fontSize: 14 }}>₹{amount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                 </View>
 
                 {/* Status */}
@@ -337,6 +507,19 @@ export const RenewalModal = ({
 
                   <View style={styles.reviewDivider} />
 
+                  {/* Selected plan badge */}
+                  {selectedPlanId !== 'custom' && plans.find(p => p._id === selectedPlanId) && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, padding: 12, borderRadius: 12, backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ECFDF5', borderWidth: 1, borderColor: '#10B981' }}>
+                      <FontAwesome name="star" size={14} color="#F59E0B" style={{ marginRight: 8 }} />
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#34D399' : '#059669', flex: 1 }}>
+                        {plans.find(p => p._id === selectedPlanId)?.name}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: isDark ? '#6EE7B7' : '#065F46', fontWeight: '600' }}>
+                        {plans.find(p => p._id === selectedPlanId)?.duration_days} Days
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={styles.reviewRow}>
                     <Text style={styles.reviewRowLabel}>New Expiry Date</Text>
                     <Text style={styles.reviewRowValue}>
@@ -420,7 +603,32 @@ export const RenewalModal = ({
             </View>
           )}
 
-          <DatePickerModal visible={showDatePicker} initialDate={datePickerType === 'start' ? renewalStartDate : renewalEndDate} onSelect={(d) => { if (datePickerType === 'start') setRenewalStartDate(d); else setRenewalEndDate(d); setShowDatePicker(false); }} onClose={() => setShowDatePicker(false)} />
+          <DatePickerModal
+            visible={showDatePicker}
+            initialDate={datePickerType === 'start' ? renewalStartDate : renewalEndDate}
+            onSelect={(d) => {
+              if (datePickerType === 'start') {
+                setRenewalStartDate(d);
+                const selectedPlan = plans.find((p: any) => p._id === selectedPlanId);
+                if (selectedPlan && selectedPlan.duration_days) {
+                  const endD = new Date(d);
+                  endD.setDate(endD.getDate() + selectedPlan.duration_days);
+                  setRenewalEndDate(endD.toISOString().split('T')[0]);
+                } else {
+                  const oldStart = new Date(renewalStartDate || d);
+                  const oldEnd = new Date(renewalEndDate || d);
+                  const diffDays = Math.round((oldEnd.getTime() - oldStart.getTime()) / (1000 * 60 * 60 * 24));
+                  const endD = new Date(d);
+                  endD.setDate(endD.getDate() + (diffDays > 0 ? diffDays : 30));
+                  setRenewalEndDate(endD.toISOString().split('T')[0]);
+                }
+              } else {
+                setRenewalEndDate(d);
+              }
+              setShowDatePicker(false);
+            }}
+            onClose={() => setShowDatePicker(false)}
+          />
           <DropdownModal visible={showSeatModal} items={availableSeats.map(s => s.seat_number)} onSelect={(val) => { setAllocatedSeat(val); setShowSeatModal(false); }} onClose={() => setShowSeatModal(false)} title="Select Seat" />
           <DropdownModal visible={showWifiModal} items={wifiOptions} onSelect={(val) => { setWifiDetails(val); setShowWifiModal(false); }} onClose={() => setShowWifiModal(false)} title="Select WiFi" />
         </SafeAreaView>

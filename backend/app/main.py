@@ -17,6 +17,11 @@ from api.seats import router as seats_router
 from api.feedback import router as feedback_router
 from api.attendance import router as attendance_router
 from api.student_auth import router as student_auth_router
+from api.analytics import router as analytics_router
+from api.reminders import router as reminders_router
+from api.offers import router as offers_router
+from api.expenses import router as expenses_router
+from api.trainers import router as trainers_router
 from database import client, tenant_db_var, super_admin_db
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
@@ -121,6 +126,11 @@ app.include_router(seats_router, prefix="/api/v1/seats", tags=["seats"])
 app.include_router(feedback_router, prefix="/api/v1/feedback", tags=["feedback"])
 app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
 app.include_router(student_auth_router, prefix="/api/v1/student", tags=["student"])
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["analytics"])
+app.include_router(reminders_router, prefix="/api/v1/reminders", tags=["reminders"])
+app.include_router(offers_router, prefix="/api/v1/offers", tags=["offers"])
+app.include_router(expenses_router, prefix="/api/v1/expenses", tags=["expenses"])
+app.include_router(trainers_router, prefix="/api/v1/trainers", tags=["trainers"])
 
 @app.get("/")
 async def root():

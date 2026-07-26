@@ -9,6 +9,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useTheme, shadows } from '../src/theme/theme';
 import { api } from '../src/services/api';
 import Svg, { Path, Circle } from 'react-native-svg';
+import { Skeleton } from '../src/components/Skeleton';
 
 const { width } = Dimensions.get('window');
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -175,8 +176,24 @@ export default function RevenueScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: isDark ? '#0F1117' : '#F7F8FC', justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#6C4DFF" />
+      <View style={[styles.container, styles.content]}>
+        <View style={styles.header}>
+          <Skeleton width={40} height={40} borderRadius={20} />
+          <View style={{ flex: 1, marginLeft: 16 }}>
+            <Skeleton width={150} height={24} style={{ marginBottom: 4 }} />
+            <Skeleton width={100} height={14} />
+          </View>
+        </View>
+        
+        <Skeleton width="100%" height={220} borderRadius={24} style={{ marginBottom: 24 }} />
+        
+        <View style={styles.grid}>
+          {[1, 2, 3, 4].map(i => (
+            <Skeleton key={i} width={(width - 40 - 16) / 2} height={110} borderRadius={20} />
+          ))}
+        </View>
+        
+        <Skeleton width="100%" height={250} borderRadius={20} style={{ marginBottom: 24 }} />
       </View>
     );
   }

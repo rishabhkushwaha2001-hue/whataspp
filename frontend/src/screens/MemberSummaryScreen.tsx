@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Image, Linking, Modal, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { CustomAlert } from '../components/CustomAlert';
+import { useAppAlert } from '../hooks/useAppAlert';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { EditMemberModal } from '../components/EditMemberModal';
 import { EditPaymentModal } from '../components/EditPaymentModal';
@@ -12,7 +13,8 @@ import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
 import { invalidateCache } from '../hooks/useDataStore';
-import { fetchMessageTemplates, buildPaymentReceiptMessage, getDefaultTemplates } from '../services/messageTemplates';
+import { fetchMessageTemplates, buildPaymentReceiptMessage, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
+import { Skeleton } from '../components/Skeleton';
 
 const { width } = Dimensions.get('window');
 
@@ -39,6 +41,8 @@ export const MemberSummaryScreen = () => {
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [editPaymentState, setEditPaymentState] = useState<{ visible: boolean; payment: any }>({ visible: false, payment: null });
+  const [showPlanTooltip, setShowPlanTooltip] = useState(false);
+  const [showTopPlanTooltip, setShowTopPlanTooltip] = useState(false);
 
   const refreshMember = async () => {
     const cleanId = Array.isArray(id) ? id[0] : id;
@@ -77,7 +81,7 @@ export const MemberSummaryScreen = () => {
         setEnableHours(templates.enableHours);
         const defaults = getDefaultTemplates(templates.businessType);
         const dbRenewal = templates.renewalTemplate;
-        setRenewalTemplate((dbRenewal && dbRenewal.trim()) ? dbRenewal : null);
+        setRenewalTemplate(dbRenewal && typeof dbRenewal === 'string' && dbRenewal.trim() ? dbRenewal : null);
       } catch (e) {
         const storedName = await AsyncStorage.getItem('gymName');
         if (storedName) setGymName(storedName);
@@ -87,14 +91,135 @@ export const MemberSummaryScreen = () => {
   }, [id]);
 
   if (loading) return (
-    <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color={colors.primary} />
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+          <FontAwesome name="arrow-left" size={16} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Member Details</Text>
+        <View style={[styles.iconBtn, { marginLeft: 'auto', marginRight: 8, opacity: 0.5 }]} />
+        <View style={[styles.iconBtn, { opacity: 0.5 }]} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: spacing.m }} showsVerticalScrollIndicator={false}>
+        <View style={styles.profileSection}>
+          <View style={[styles.profileGradient, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6', borderColor: 'transparent' }]}>
+            <View style={styles.profileTopRow}>
+              <Skeleton width={72} height={72} borderRadius={36} style={{ marginRight: 16 }} />
+              <View style={styles.profileInfoBox}>
+                <Skeleton width={150} height={24} style={{ marginBottom: 8 }} />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <Skeleton width={80} height={14} />
+                  <Skeleton width={60} height={14} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+                  <Skeleton width={70} height={20} borderRadius={4} />
+                  <Skeleton width={90} height={20} borderRadius={4} />
+                </View>
+              </View>
+            </View>
+          </View>
+          <View style={styles.mainActionsRow}>
+            <Skeleton width={80} height={40} borderRadius={borderRadius.m} style={{ flex: 1 }} />
+            <Skeleton width={80} height={40} borderRadius={borderRadius.m} style={{ flex: 1 }} />
+            <Skeleton width={100} height={40} borderRadius={borderRadius.m} style={{ flex: 1.5 }} />
+          </View>
+        </View>
+
+        <Skeleton width={140} height={18} style={{ marginBottom: spacing.m, marginLeft: 4 }} />
+        <View style={styles.card}>
+          <View style={styles.planDateRow}>
+            <Skeleton width={160} height={20} />
+            <Skeleton width={44} height={44} borderRadius={22} />
+          </View>
+          <Skeleton width="100%" height={6} borderRadius={3} style={{ marginBottom: 8 }} />
+          <View style={styles.progressLabels}>
+            <Skeleton width={80} height={14} />
+            <Skeleton width={80} height={14} />
+          </View>
+          <View style={styles.grid2x2}>
+            {[1, 2, 3, 4].map(i => (
+              <View key={i} style={styles.gridItem}>
+                <Skeleton width={32} height={32} borderRadius={16} />
+                <View>
+                  <Skeleton width={50} height={12} style={{ marginBottom: 4 }} />
+                  <Skeleton width={70} height={16} />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <Skeleton width={120} height={18} style={{ marginBottom: spacing.m, marginLeft: 4 }} />
+        <View style={styles.quickActionsGrid}>
+          {[1, 2, 3, 4].map(i => (
+            <View key={i} style={styles.quickActionCard}>
+              <Skeleton width={36} height={36} borderRadius={10} style={{ marginBottom: 6 }} />
+              <Skeleton width={50} height={12} />
+            </View>
+          ))}
+        </View>
+
+        <Skeleton width={130} height={18} style={{ marginBottom: spacing.m, marginLeft: 4 }} />
+        <View style={styles.card}>
+          {[1, 2, 3].map(i => (
+            <View key={i} style={[styles.detailItem, { borderBottomWidth: i === 3 ? 0 : 1, borderBottomColor: colors.border }]}>
+              <Skeleton width={14} height={14} style={{ marginRight: 8 }} />
+              <Skeleton width={100} height={14} style={{ flex: 1 }} />
+              <Skeleton width={120} height={14} style={{ flex: 1, alignItems: 'flex-end' }} />
+            </View>
+          ))}
+        </View>
+      </ScrollView>
     </View>
   );
   if (!member) return <View style={styles.container}><Text style={{ color: colors.text }}>Member not found</Text></View>;
 
-  const expiryDate = member?.next_due_date ? new Date(member.next_due_date) : null;
-  const startDate = member?.joining_date ? new Date(member.joining_date) : null;
+  // Sort payments by start_date ascending to identify active and upcoming plans
+  const sortedPayments = useMemo(() => {
+    return (member?.payment_history || []).slice().sort((a: any, b: any) => {
+      return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+    });
+  }, [member?.payment_history]);
+
+  const now = new Date();
+
+  // Find active and upcoming plans
+  const { activePlan, upcomingPlans } = useMemo(() => {
+    let active: any = null;
+    let upcoming: any[] = [];
+    
+    if (sortedPayments.length > 0) {
+      // Find the one that matches today's date
+      for (let i = 0; i < sortedPayments.length; i++) {
+        const p = sortedPayments[i];
+        const sDate = new Date(p.start_date);
+        const eDate = new Date(p.end_date);
+        if (now >= sDate && now <= eDate) {
+          active = p;
+          upcoming = sortedPayments.slice(i + 1);
+          break;
+        }
+      }
+
+      // If no plan matches the current date (e.g. member is expired or has not started yet)
+      if (!active) {
+        // Find if all plans are in the past (expired)
+        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
+        if (allPast.length > 0) {
+          active = allPast[allPast.length - 1];
+          upcoming = sortedPayments.filter((p: any) => new Date(p.start_date) > new Date(active.end_date));
+        } else {
+          // If all plans are in the future, then the first future plan is active, others upcoming
+          active = sortedPayments[0];
+          upcoming = sortedPayments.slice(1);
+        }
+      }
+    }
+    return { activePlan: active, upcomingPlans: upcoming };
+  }, [sortedPayments]);
+
+  const expiryDate = member?.next_due_date ? new Date(member.next_due_date) : (activePlan?.end_date ? new Date(activePlan.end_date) : null);
+  const startDate = member?.joining_date ? new Date(member.joining_date) : (activePlan?.start_date ? new Date(activePlan.start_date) : null);
   
   const daysRemaining = expiryDate ? Math.ceil((expiryDate.getTime() - new Date().getTime()) / 86400000) : 0;
   const isExpired = daysRemaining < 0;
@@ -134,13 +259,13 @@ export const MemberSummaryScreen = () => {
   const confirmRenewal = async (
     durationMonths: number, amount: number, paymentMode: string,
     nextDueDate?: string, joiningDate?: string, hours?: number,
-    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number
+    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number, appliedOfferName?: string, planName?: string
   ) => {
     try {
       await api.post(`/members/${member._id}/renew`, {
         plan_duration_months: durationMonths, amount, amount_paid: amountPaid ?? null, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
-        daily_hours: hours, timing, allocated_seat: allocatedSeat,
+        daily_hours: hours, timing, allocated_seat: allocatedSeat, applied_offer_name: appliedOfferName, plan_name: planName
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       refreshMember();
@@ -152,6 +277,7 @@ export const MemberSummaryScreen = () => {
         hours: hours ?? member.daily_hours, timing: timing ?? member.timing, gym: gymName, durationMonths,
         seat: businessType === 'library' ? (allocatedSeat || member.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || member.wifi_details || 'Not Provided') : undefined,
+        plan_name: planName,
       });
       return { success: true, message: msg };
     } catch {
@@ -190,6 +316,7 @@ export const MemberSummaryScreen = () => {
       timing: member.timing,
       seat: businessType === 'library' ? (member.allocated_seat || undefined) : undefined,
       wifi: businessType === 'library' ? (member.wifi_details || undefined) : undefined,
+      plan_name: payment.plan_name || member.plan_name,
     });
     sendWhatsAppMessage(member.phone, msg);
   };
@@ -246,9 +373,59 @@ export const MemberSummaryScreen = () => {
                   <Text style={styles.idText}>{member.member_id}</Text>
                   <Text style={[styles.statusMiniText, { color: statusColor }]}>{statusLabel}</Text>
                 </View>
-                <View style={styles.planBadge}>
-                  <FontAwesome name="star" size={10} color="#F59E0B" />
-                  <Text style={styles.planBadgeText}>{member.plan_duration_months}M Plan</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  <View style={{ position: 'relative', zIndex: 999 }}>
+                    <TouchableOpacity
+                      activeOpacity={0.75}
+                      onPress={() => setShowTopPlanTooltip(!showTopPlanTooltip)}
+                      style={[styles.planBadge, { maxWidth: 200 }]}
+                    >
+                      <FontAwesome name="star" size={10} color="#F59E0B" style={{ flexShrink: 0 }} />
+                      <Text style={styles.planBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                        {member.plan_name && member.plan_name !== 'Custom' ? member.plan_name : `${member.plan_duration_months}M Plan`}
+                      </Text>
+                    </TouchableOpacity>
+                    {showTopPlanTooltip && (
+                      <View style={{
+                        position: 'absolute',
+                        top: 26,
+                        left: 0,
+                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.15)',
+                        zIndex: 9999,
+                        width: 240,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 6,
+                        elevation: 5
+                      }}>
+                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>
+                          {member.plan_name && member.plan_name !== 'Custom' ? member.plan_name : `${member.plan_duration_months} Month Plan`}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  {member.applied_offer_name && (
+                    <View style={[styles.planBadge, { backgroundColor: '#ECFDF5', borderColor: '#10B981', maxWidth: 160 }]}>
+                      <FontAwesome name="tag" size={10} color="#10B981" style={{ flexShrink: 0 }} />
+                      <Text style={[styles.planBadgeText, { color: '#059669' }]} numberOfLines={1} ellipsizeMode="tail">
+                        {member.applied_offer_name}
+                      </Text>
+                    </View>
+                  )}
+                  {member.trainer_assigned && member.trainer_assigned !== 'General' && member.trainer_assigned !== 'General Coach' && (
+                    <View style={[styles.planBadge, { backgroundColor: '#EDE9FE', borderColor: '#7C3AED', maxWidth: 180 }]}>
+                      <FontAwesome name="user" size={10} color="#7C3AED" style={{ flexShrink: 0 }} />
+                      <Text style={[styles.planBadgeText, { color: '#6D28D9' }]} numberOfLines={1} ellipsizeMode="tail">
+                        Coach: {member.trainer_assigned}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -309,9 +486,43 @@ export const MemberSummaryScreen = () => {
             </View>
             <View style={styles.gridItem}>
               <View style={[styles.iconCircleSm, { backgroundColor: `#F59E0B15` }]}><FontAwesome name="star" size={12} color="#F59E0B" /></View>
-              <View>
-                <Text style={styles.gridLabel}>Plan Type</Text>
-                <Text style={styles.gridValue}>{member.plan_duration_months} Month</Text>
+              <View style={{ flex: 1, position: 'relative', zIndex: 99 }}>
+                <TouchableOpacity 
+                  activeOpacity={0.75} 
+                  onPress={() => setShowPlanTooltip(!showPlanTooltip)}
+                  style={{ width: '100%' }}
+                >
+                  <Text style={styles.gridLabel}>Plan Type</Text>
+                  {member.plan_name && member.plan_name !== 'Custom' ? (
+                    <Text style={[styles.gridValue, { color: '#D97706', fontSize: 12 }]} numberOfLines={1} ellipsizeMode="tail">{member.plan_name}</Text>
+                  ) : (
+                    <Text style={styles.gridValue}>{member.plan_duration_months} Month</Text>
+                  )}
+                </TouchableOpacity>
+                {showPlanTooltip && (
+                  <View style={{
+                    position: 'absolute',
+                    bottom: 38,
+                    right: 0,
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.15)',
+                    zIndex: 999,
+                    width: 250,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 6,
+                    elevation: 5
+                  }}>
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>
+                      {member.plan_name && member.plan_name !== 'Custom' ? member.plan_name : `${member.plan_duration_months} Month Plan`}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
             <View style={styles.gridItem}>
@@ -329,7 +540,89 @@ export const MemberSummaryScreen = () => {
               </View>
             </View>
           </View>
+
+          {/* Trainer / Coach Assigned Banner */}
+          <View style={{
+            marginTop: 14,
+            padding: 12,
+            backgroundColor: isDark ? 'rgba(124, 58, 237, 0.15)' : '#F3E8FF',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(124, 58, 237, 0.3)' : '#DDD6FE',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#7C3AED', justifyContent: 'center', alignItems: 'center' }}>
+                <FontAwesome name="user-circle-o" size={18} color="#fff" />
+              </View>
+              <View>
+                <Text style={{ fontSize: 11, color: isDark ? '#DDD6FE' : '#6D28D9', fontWeight: '600' }}>ASSIGNED TRAINER / COACH</Text>
+                <Text style={{ fontSize: 14, color: isDark ? '#fff' : '#4C1D95', fontWeight: '800' }}>
+                  {member.trainer_assigned || 'General Coach'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={{
+                backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#fff',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#7C3AED50'
+              }}
+              onPress={() => setEditModalVisible(true)}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#7C3AED' }}>Change</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Upcoming Plans Section */}
+        {upcomingPlans.length > 0 && (
+          <View style={{ marginBottom: spacing.m }}>
+            <Text style={styles.sectionTitle}>Upcoming Plans</Text>
+            {upcomingPlans.map((upPlan: any, idx: number) => {
+              const upStart = upPlan.start_date ? new Date(upPlan.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+              const upEnd = upPlan.end_date ? new Date(upPlan.end_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+              return (
+                <View 
+                  key={upPlan.id || idx} 
+                  style={[
+                    styles.card, 
+                    { 
+                      borderColor: colors.primary, 
+                      borderWidth: 1, 
+                      borderStyle: 'dashed', 
+                      backgroundColor: isDark ? 'rgba(59, 130, 246, 0.05)' : '#F0F9FF',
+                      marginBottom: 8,
+                      padding: 12
+                    }
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(59, 130, 246, 0.15)', justifyContent: 'center', alignItems: 'center' }}>
+                        <FontAwesome name="rocket" size={11} color="#0284C7" />
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: colors.text }} numberOfLines={1}>
+                        {upPlan.plan_name || `${upPlan.plan_months}M Plan`}
+                      </Text>
+                    </View>
+                    <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#10B981' }}>Paid • ₹{upPlan.amount}</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, fontWeight: '600' }}>
+                    Starts: {upStart} ➔ Ends: {upEnd}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
 
         {/* Quick Actions Grid */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -488,115 +781,130 @@ const DetailItem = ({ icon, label, value, colors, styles, hideBorder = false }: 
 );
 
 const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: isDark ? '#090D16' : '#F8FAFC' },
   content: { padding: spacing.m, paddingTop: 50 },
   
   // Header
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.l },
   iconBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: isDark ? '#1F2937' : '#F3F4F6',
+    width: 40, height: 40, borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#fff',
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: colors.border,
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+    ...(!isDark ? shadows.light : {}),
   },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
-
+  headerTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.text, textAlign: 'center', letterSpacing: -0.3 },
+  
   // Profile Section
   profileSection: { marginBottom: spacing.l },
   profileGradient: {
-    borderRadius: borderRadius.xl,
-    padding: spacing.m,
+    borderRadius: 24,
+    padding: spacing.l,
     marginBottom: spacing.m,
-    borderWidth: 1, borderColor: isDark ? '#312e81' : '#E0E7FF',
+    borderWidth: 1, borderColor: isDark ? 'rgba(99, 102, 241, 0.25)' : '#E0E7FF',
+    ...(!isDark ? shadows.card : {}),
   },
   profileTopRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarLargeImage: { width: 72, height: 72, borderRadius: 36, borderWidth: 2, borderColor: '#fff', marginRight: 16 },
-  avatarLarge: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff', marginRight: 16 },
-  avatarText: { color: 'white', fontSize: 28, fontWeight: '800' },
+  avatarLargeImage: { width: 76, height: 76, borderRadius: 38, borderWidth: 3, borderColor: '#fff', marginRight: 16 },
+  avatarLarge: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff', marginRight: 16 },
+  avatarText: { color: 'white', fontSize: 30, fontWeight: '900' },
   profileInfoBox: { flex: 1 },
-  name: { fontSize: 20, fontWeight: '800', color: isDark ? '#fff' : '#111827', letterSpacing: -0.5 },
-  idText: { fontSize: 13, color: isDark ? '#cbd5e1' : '#64748b' },
-  statusMiniText: { fontSize: 11, fontWeight: '700', marginLeft: 8 },
+  name: { fontSize: 22, fontWeight: '900', color: isDark ? '#fff' : '#0F172A', letterSpacing: -0.6 },
+  idText: { fontSize: 12, color: isDark ? '#94A3B8' : '#64748B', fontWeight: '600', marginTop: 2 },
+  statusMiniText: { fontSize: 11, fontWeight: '800', marginLeft: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   planBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: borderRadius.s, alignSelf: 'flex-start',
-    marginTop: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.12)' : '#FEF3C7',
+    paddingHorizontal: 9, paddingVertical: 4.5,
+    borderRadius: 8, alignSelf: 'flex-start',
+    marginTop: 10,
+    borderWidth: 1, borderColor: isDark ? 'rgba(245, 158, 11, 0.2)' : 'rgba(245, 158, 11, 0.3)',
   },
-  planBadgeText: { fontSize: 11, fontWeight: '700', color: '#F59E0B' },
+  planBadgeText: { fontSize: 11, fontWeight: '800', color: '#D97706' },
 
   // Main Actions Row (Call, WA, Renew)
-  mainActionsRow: { flexDirection: 'row', gap: 8 },
+  mainActionsRow: { flexDirection: 'row', gap: 10 },
   actionGhostBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 12, borderRadius: borderRadius.m,
-    backgroundColor: isDark ? '#1F2937' : '#fff',
-    borderWidth: 1, borderColor: colors.border,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 13, borderRadius: 16,
+    backgroundColor: isDark ? '#1E293B' : '#fff',
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+    ...(!isDark ? shadows.light : {}),
   },
-  actionGhostText: { fontSize: 13, fontWeight: '600' },
-  renewActionBtn: { flex: 1.5, borderRadius: borderRadius.m, overflow: 'hidden' },
+  actionGhostText: { fontSize: 13, fontWeight: '700', color: colors.text },
+  renewActionBtn: { flex: 1.5, borderRadius: 16, overflow: 'hidden', ...(!isDark ? shadows.card : {}) },
   renewActionGradient: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    paddingVertical: 13,
   },
-  renewActionText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  renewActionText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 
   // Card general
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.xl,
-    padding: spacing.m,
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: isDark ? '#131A2A' : '#fff',
+    borderRadius: 20,
+    padding: spacing.l,
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0',
     marginBottom: spacing.l,
     ...shadows.card,
   },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: spacing.m, marginLeft: 4 },
+  sectionTitle: { fontSize: 14, fontWeight: '800', color: isDark ? '#94A3B8' : '#475569', marginBottom: spacing.m, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   // Current Plan Details
   planDateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  iconCircleSm: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  planDateText: { fontSize: 13, fontWeight: '600', color: colors.text },
-  progressCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 3, alignItems: 'center', justifyContent: 'center' },
-  progressPercent: { fontSize: 12, fontWeight: '800', color: colors.text },
+  iconCircleSm: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  planDateText: { fontSize: 14, fontWeight: '800', color: colors.text, letterSpacing: -0.2 },
+  progressCircle: { width: 46, height: 46, borderRadius: 23, borderWidth: 3.5, alignItems: 'center', justifyContent: 'center' },
+  progressPercent: { fontSize: 12, fontWeight: '900', color: colors.text },
   
-  progressBarBg: { height: 6, backgroundColor: colors.border, borderRadius: 3, marginBottom: 8, overflow: 'hidden' },
-  progressBarFill: { height: 6, borderRadius: 3 },
-  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  progressLabelText: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
+  progressBarBg: { height: 7, backgroundColor: isDark ? '#1E293B' : '#E2E8F0', borderRadius: 4, marginBottom: 8, overflow: 'hidden' },
+  progressBarFill: { height: 7, borderRadius: 4 },
+  progressLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 22 },
+  progressLabelText: { fontSize: 11, color: colors.textMuted, fontWeight: '700' },
 
-  grid2x2: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  gridItem: { width: '45%', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  gridLabel: { fontSize: 11, color: colors.textMuted },
-  gridValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+  grid2x2: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+  gridItem: { 
+    width: '47%', 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 10,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#F8FAFC',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9'
+  },
+  gridLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3 },
+  gridValue: { fontSize: 13, fontWeight: '800', color: colors.text, marginTop: 1 },
 
   // Quick Actions Grid
   quickActionsGrid: { flexDirection: 'row', gap: 12, marginBottom: spacing.l, flexWrap: 'wrap' },
   quickActionCard: {
     width: (width - 32 - 36) / 4, // 4 items per row
-    backgroundColor: colors.surface, borderRadius: borderRadius.m,
-    paddingVertical: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: isDark ? '#131A2A' : '#fff', borderRadius: 16,
+    paddingVertical: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0',
+    ...(!isDark ? shadows.light : {}),
   },
-  quickActionIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  quickActionLabel: { fontSize: 10, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
+  quickActionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  quickActionLabel: { fontSize: 10, fontWeight: '700', color: colors.textSecondary, textAlign: 'center' },
 
   // Personal Details
-  detailItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
-  detailLabel: { flex: 1, fontSize: 13, paddingLeft: 8 },
-  detailValue: { fontSize: 13, fontWeight: '600', textAlign: 'right', flex: 1 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  detailLabel: { flex: 1, fontSize: 13, paddingLeft: 8, fontWeight: '600', color: colors.textSecondary },
+  detailValue: { fontSize: 13, fontWeight: '700', textAlign: 'right', flex: 1, color: colors.text },
 
   // Timeline
   timeline: { paddingLeft: 8, marginTop: 8 },
   timelineItem: { flexDirection: 'row', marginBottom: 16 },
   timelineDot: { width: 10, height: 10, borderRadius: 5, marginTop: 12, marginRight: 16, zIndex: 1 },
   timelineCard: { 
-    flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.m, 
-    padding: 12, borderWidth: 1, borderColor: colors.border, ...shadows.card 
+    flex: 1, backgroundColor: isDark ? '#131A2A' : '#fff', borderRadius: 16, 
+    padding: 14, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0', ...shadows.card 
   },
   timelineAmount: { fontSize: 16, fontWeight: '800', color: colors.text },
-  timelineDate: { fontSize: 12, color: colors.textMuted, fontWeight: '600' },
-  timelineSubtitle: { fontSize: 11, color: colors.textSecondary },
+  timelineDate: { fontSize: 12, color: colors.textMuted, fontWeight: '700' },
+  timelineSubtitle: { fontSize: 11, color: colors.textSecondary, fontWeight: '500' },
   partialAlert: { padding: 6, borderRadius: 4, marginTop: 8, alignItems: 'center' },
-  partialAlertText: { fontSize: 11, fontWeight: '700' },
+  partialAlertText: { fontSize: 11, fontWeight: '800' },
 });

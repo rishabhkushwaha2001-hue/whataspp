@@ -9,6 +9,7 @@ import { api } from '../../src/services/api';
 import { useFocusEffect, useRouter } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useAppAlert } from '../../src/hooks/useAppAlert';
+import { Skeleton } from '../../src/components/Skeleton';
 
 const { width } = Dimensions.get('window');
 const SEAT_SIZE = (width - spacing.l * 2 - spacing.m * 3) / 4;
@@ -436,7 +437,11 @@ export default function SeatsScreen() {
       )}
 
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 50 }} />
+        <View style={styles.grid}>
+          {[...Array(12)].map((_, i) => (
+             <Skeleton key={i} width={SEAT_SIZE} height={SEAT_SIZE} borderRadius={borderRadius.m} />
+          ))}
+        </View>
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}

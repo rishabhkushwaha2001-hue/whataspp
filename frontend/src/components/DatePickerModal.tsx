@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useTheme, spacing, borderRadius } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
@@ -11,9 +11,10 @@ interface DatePickerProps {
   onSelect: (date: string) => void;
   initialDate?: string;
   title?: string;
+  maxDate?: string;
 }
 
-export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title }: DatePickerProps) => {
+export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title, maxDate }: DatePickerProps) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const current = initialDate ? new Date(initialDate) : new Date();
@@ -42,6 +43,14 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title
 
   const handleConfirm = () => {
     const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isDob = title && (title.toLowerCase().includes('birth') || title.toLowerCase().includes('dob'));
+    const maxAllowed = maxDate || (isDob ? todayStr : undefined);
+
+    if (maxAllowed && formattedDate > maxAllowed) {
+      Alert.alert('Invalid Date of Birth', 'Date of Birth cannot be a future date! Please select today or a previous date.');
+      return;
+    }
     onSelect(formattedDate);
     onClose();
   };

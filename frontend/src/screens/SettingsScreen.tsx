@@ -312,7 +312,7 @@ export const SettingsScreen = () => {
 
         {/* Quick Actions */}
         <Text style={styles.sectionHeading}>Quick Actions</Text>
-        <View style={styles.quickActionsGrid}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsScroll}>
           <TouchableOpacity style={styles.actionGridItem} onPress={handleLogoSelect}>
             <View style={[styles.actionGridIcon, { backgroundColor: '#F3E8FF' }]}>
               <FontAwesome name="image" size={20} color="#9333EA" />
@@ -337,7 +337,7 @@ export const SettingsScreen = () => {
             </View>
             <Text style={styles.actionGridText}>Restore Data</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         {/* Business Information */}
         <View style={styles.sectionHeaderRow}>
@@ -406,18 +406,8 @@ export const SettingsScreen = () => {
           </View>
         </View>
 
-        {/* WhatsApp Settings */}
-        <Text style={[styles.sectionHeading, { marginTop: 24 }]}>WhatsApp Settings</Text>
-        <View style={styles.listContainer}>
-          <TouchableOpacity style={[styles.listItem, { borderBottomWidth: 0 }]} onPress={() => router.push('/custom-messages')}>
-            <View style={[styles.listIcon, { backgroundColor: '#DCFCE7' }]}><FontAwesome name="whatsapp" size={18} color="#22C55E" /></View>
-            <View style={styles.listContent}>
-              <Text style={styles.listLabel}>Message Templates</Text>
-              <Text style={styles.listValue}>Manage templates for reminders</Text>
-            </View>
-            <FontAwesome name="angle-right" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
+
+
 
         {/* Data Management */}
         <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Data Management</Text>
@@ -597,12 +587,53 @@ const getStyles = (colors: any) => StyleSheet.create({
     marginBottom: 16,
     marginTop: 24,
   },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+  quickActionsScroll: {
+    gap: 20,
+    paddingBottom: 8,
+    paddingTop: 4,
   },
+  qaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  qaIconGrad: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  qaTextCol: {
+    flex: 1,
+  },
+  qaLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  qaSub: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  // legacy kept for safety
   actionGridItem: {
     width: '23%',
     alignItems: 'center',
