@@ -739,6 +739,11 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "monthly_fees": payload.amount  # Update to latest plan amount
     }
     
+    # If renewal start date is today or in the past, update member's joining_date to renewal_start_date.
+    # If renewal start date is in the future (advance renewal), keep original joining_date so current plan remains active and new plan stays upcoming.
+    if renewal_start_date <= now:
+        update_fields["joining_date"] = renewal_start_date
+    
     if payload.daily_hours is not None:
         update_fields["daily_hours"] = payload.daily_hours
     if payload.timing is not None:

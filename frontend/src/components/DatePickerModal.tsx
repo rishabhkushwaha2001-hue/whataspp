@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { useTheme, spacing, borderRadius } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { useAppAlert } from '../hooks/useAppAlert';
 
 const { height } = Dimensions.get('window');
 
@@ -12,11 +13,13 @@ interface DatePickerProps {
   initialDate?: string;
   title?: string;
   maxDate?: string;
+  minDate?: string;
 }
 
-export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title, maxDate }: DatePickerProps) => {
+export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title, maxDate, minDate }: DatePickerProps) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
+  const { showError, AlertModal } = useAppAlert();
   const current = initialDate ? new Date(initialDate) : new Date();
   const [year, setYear] = useState(current.getFullYear());
   const [month, setMonth] = useState(current.getMonth());
@@ -47,8 +50,14 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title
     const isDob = title && (title.toLowerCase().includes('birth') || title.toLowerCase().includes('dob'));
     const maxAllowed = maxDate || (isDob ? todayStr : undefined);
 
+    if (minDate && formattedDate < minDate) {
+      const formattedMin = minDate.split('-').reverse().join('/');
+      showError(`Renewal start date cannot be before previous plan's end date (${formattedMin})!`, 'Invalid Start Date');
+      return;
+    }
+
     if (maxAllowed && formattedDate > maxAllowed) {
-      Alert.alert('Invalid Date of Birth', 'Date of Birth cannot be a future date! Please select today or a previous date.');
+      showError('Date of Birth cannot be a future date! Please select today or a previous date.', 'Invalid Date of Birth');
       return;
     }
     onSelect(formattedDate);
@@ -121,6 +130,7 @@ export const DatePickerModal = ({ visible, onClose, onSelect, initialDate, title
           </View>
         </View>
       </View>
+      <AlertModal />
     </Modal>
   );
 };

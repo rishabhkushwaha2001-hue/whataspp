@@ -10,6 +10,7 @@ import { DropdownModal } from './DropdownModal';
 import { api } from '../services/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { sendWhatsAppMessage } from '../services/whatsapp';
+import { useAppAlert } from '../hooks/useAppAlert';
 
 const { height, width } = Dimensions.get('window');
 
@@ -41,6 +42,7 @@ export const RenewalModal = ({
   const { colors, theme } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(colors, isDark);
+  const { showError, AlertModal } = useAppAlert();
 
   // States
   const [step, setStep] = useState<'edit' | 'review' | 'success'>('edit');
@@ -89,8 +91,10 @@ export const RenewalModal = ({
         const defaultAmt = member.monthly_fees ? String(member.monthly_fees) : (member.plan_fee ? String(member.plan_fee) : '');
         setAmount(defaultAmt);
         setBaseAmount(defaultAmt);
-        const oldExp = member.next_due_date || new Date().toISOString();
-        const startD = new Date(oldExp);
+        const nowD = new Date();
+        const oldExpD = member.next_due_date ? new Date(member.next_due_date) : nowD;
+        // Default renewal start date to previous plan's end date (next_due_date)
+        const startD = oldExpD;
         
         const startStr = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}-${String(startD.getDate()).padStart(2, '0')}`;
         setRenewalStartDate(startStr);
@@ -166,13 +170,21 @@ export const RenewalModal = ({
   if (paymentStatus === 'pending') finalAmountPaid = 0;
   if (paymentStatus === 'partial') finalAmountPaid = parseFloat(amountPaid) || 0;
 
+  // Calculate min start date allowed: if active plan exists, previous end_date; else member joining_date
+  const minStartDate = member?.next_due_date ? member.next_due_date.split('T')[0] : undefined;
+
   const handleReview = () => {
     if (!renewalStartDate || !renewalEndDate) {
-      alert("Please select both start and end dates.");
+      showError("Please select both start and end dates.", "Invalid Dates");
+      return;
+    }
+    if (minStartDate && renewalStartDate < minStartDate) {
+      const formattedMin = minStartDate.split('-').reverse().join('/');
+      showError(`Start date cannot be before previous plan's end date (${formattedMin}).`, "Invalid Start Date");
       return;
     }
     if (new Date(renewalEndDate) <= new Date(renewalStartDate)) {
-      alert("End date must be after the start date.");
+      showError("End date must be after the start date.", "Invalid End Date");
       return;
     }
     setStep('review');
@@ -193,7 +205,7 @@ export const RenewalModal = ({
       if (res.message) setWhatsappMsg(res.message);
       setStep('success');
     } else if (res && !res.success) {
-      alert("Failed to update membership.");
+      showError("Failed to update membership.", "Renewal Failed");
       setStep('edit');
     } else {
       // Fallback if no promise returned
@@ -606,6 +618,7 @@ export const RenewalModal = ({
           <DatePickerModal
             visible={showDatePicker}
             initialDate={datePickerType === 'start' ? renewalStartDate : renewalEndDate}
+            minDate={datePickerType === 'start' ? minStartDate : undefined}
             onSelect={(d) => {
               if (datePickerType === 'start') {
                 setRenewalStartDate(d);
@@ -631,6 +644,7 @@ export const RenewalModal = ({
           />
           <DropdownModal visible={showSeatModal} items={availableSeats.map(s => s.seat_number)} onSelect={(val) => { setAllocatedSeat(val); setShowSeatModal(false); }} onClose={() => setShowSeatModal(false)} title="Select Seat" />
           <DropdownModal visible={showWifiModal} items={wifiOptions} onSelect={(val) => { setWifiDetails(val); setShowWifiModal(false); }} onClose={() => setShowWifiModal(false)} title="Select WiFi" />
+          <AlertModal />
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Modal>
