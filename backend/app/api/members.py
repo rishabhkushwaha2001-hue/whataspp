@@ -160,19 +160,37 @@ async def get_all_members() -> Any:
     # Efficiently fetch pending amounts for all members in one query
     member_ids = [str(m["_id"]) for m in members]
     
-    # Get the latest payment per member that has a partial amount_paid
-    # We look at all payments with amount_paid set and compute pending
+    # Fetch all payments for these members to build payment_history and pending_map
     payments_cursor = db["payments"].find(
-        {"member_id": {"$in": member_ids}},
-        {"member_id": 1, "amount": 1, "amount_paid": 1, "payment_date": 1}
-    ).sort("payment_date", -1)
-    all_payments = await payments_cursor.to_list(length=5000)
+        {"member_id": {"$in": member_ids}}
+    ).sort("payment_date", 1)
+    all_payments = await payments_cursor.to_list(length=10000)
     
-    # Build a map: member_id -> latest payment's pending amount
+    # Build maps per member
+    history_map: dict = {}
     seen_members: set = set()
     pending_map: dict = {}
     paid_map: dict = {}
+    
     for p in all_payments:
+        mid = p.get("member_id")
+        if not mid: continue
+        if mid not in history_map:
+            history_map[mid] = []
+        history_map[mid].append({
+            "id": str(p["_id"]),
+            "amount": p.get("amount", 0),
+            "amount_paid": p.get("amount_paid", None),
+            "date": p.get("payment_date"),
+            "start_date": p.get("start_date"),
+            "end_date": p.get("end_date"),
+            "plan_months": p.get("plan_duration", 1),
+            "payment_mode": p.get("payment_method", "Cash"),
+            "type": p.get("type", "Payment")
+        })
+
+    # Find latest payment per member for pending amounts
+    for p in reversed(all_payments):
         mid = p.get("member_id")
         if mid and mid not in seen_members:
             seen_members.add(mid)
@@ -191,6 +209,7 @@ async def get_all_members() -> Any:
         m["_id"] = str(m["_id"])
         m["pending_amount"] = pending_map.get(m["_id"], 0)
         m["amount_paid"] = paid_map.get(m["_id"], m.get("amount_paid", 0))
+        m["payment_history"] = history_map.get(m["_id"], [])
     return members
 
 @router.get("/status/due", response_model=List[Any])

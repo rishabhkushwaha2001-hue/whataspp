@@ -67,6 +67,7 @@ export const MembersScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
+      refreshMembers();
       const loadSettings = async () => {
         try {
           const templates = await fetchMessageTemplates();
@@ -82,7 +83,7 @@ export const MembersScreen = () => {
         }
       };
       loadSettings();
-    }, [])
+    }, [refreshMembers])
   );
 
 
@@ -124,7 +125,39 @@ export const MembersScreen = () => {
 
   const renderMember = ({ item }: { item: any }) => {
     const now = new Date();
-    const dueDate = new Date(item.next_due_date);
+    
+    // Sort payments by start_date ascending (exact same logic as MemberSummaryScreen)
+    const sortedPayments = (item.payment_history || []).slice().sort((a: any, b: any) => {
+      return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+    });
+
+    let activePlan: any = null;
+    if (sortedPayments.length > 0) {
+      // 1. Find the payment plan that includes today's date
+      for (let i = 0; i < sortedPayments.length; i++) {
+        const p = sortedPayments[i];
+        const sDate = new Date(p.start_date);
+        const eDate = new Date(p.end_date);
+        if (now >= sDate && now <= eDate) {
+          activePlan = p;
+          break;
+        }
+      }
+
+      // 2. If no plan matches current date (e.g. member is expired or plans are in future)
+      if (!activePlan) {
+        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
+        if (allPast.length > 0) {
+          activePlan = allPast[allPast.length - 1];
+        } else {
+          activePlan = sortedPayments[0];
+        }
+      }
+    }
+
+    const dueDate = activePlan?.end_date ? new Date(activePlan.end_date) : (item.next_due_date ? new Date(item.next_due_date) : new Date());
+    const startDateObj = activePlan?.start_date ? new Date(activePlan.start_date) : (item.joining_date ? new Date(item.joining_date) : null);
+    
     const isExpired = dueDate < now;
     const daysLeft = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
     const isDueSoon = !isExpired && daysLeft <= 7;
@@ -137,8 +170,8 @@ export const MembersScreen = () => {
     const statusLabel = isExpired ? 'Expired' : isDueSoon ? 'Due Soon' : 'Active';
     const statusColor = isExpired ? colors.error : isDueSoon ? (colors.warning || '#F59E0B') : colors.success;
 
-    const joiningDateStr = item.joining_date
-      ? new Date(item.joining_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    const joiningDateStr = startDateObj
+      ? startDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
       : null;
     const dueDateStr = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 

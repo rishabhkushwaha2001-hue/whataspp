@@ -189,27 +189,25 @@ export const MemberSummaryScreen = () => {
     let upcoming: any[] = [];
     
     if (sortedPayments.length > 0) {
-      // Find the one that matches today's date
+      // Find the payment plan that includes today's date
       for (let i = 0; i < sortedPayments.length; i++) {
         const p = sortedPayments[i];
         const sDate = new Date(p.start_date);
         const eDate = new Date(p.end_date);
         if (now >= sDate && now <= eDate) {
           active = p;
-          upcoming = sortedPayments.slice(i + 1);
+          upcoming = sortedPayments.filter((item: any) => new Date(item.start_date) > new Date(active.end_date));
           break;
         }
       }
 
-      // If no plan matches the current date (e.g. member is expired or has not started yet)
+      // If no plan matches current date (e.g. member is expired or plans are in future)
       if (!active) {
-        // Find if all plans are in the past (expired)
         const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
         if (allPast.length > 0) {
           active = allPast[allPast.length - 1];
           upcoming = sortedPayments.filter((p: any) => new Date(p.start_date) > new Date(active.end_date));
         } else {
-          // If all plans are in the future, then the first future plan is active, others upcoming
           active = sortedPayments[0];
           upcoming = sortedPayments.slice(1);
         }
@@ -218,8 +216,8 @@ export const MemberSummaryScreen = () => {
     return { activePlan: active, upcomingPlans: upcoming };
   }, [sortedPayments]);
 
-  const expiryDate = member?.next_due_date ? new Date(member.next_due_date) : (activePlan?.end_date ? new Date(activePlan.end_date) : null);
-  const startDate = member?.joining_date ? new Date(member.joining_date) : (activePlan?.start_date ? new Date(activePlan.start_date) : null);
+  const expiryDate = activePlan?.end_date ? new Date(activePlan.end_date) : (member?.next_due_date ? new Date(member.next_due_date) : null);
+  const startDate = activePlan?.start_date ? new Date(activePlan.start_date) : (member?.joining_date ? new Date(member.joining_date) : null);
   
   const daysRemaining = expiryDate ? Math.ceil((expiryDate.getTime() - new Date().getTime()) / 86400000) : 0;
   const isExpired = daysRemaining < 0;

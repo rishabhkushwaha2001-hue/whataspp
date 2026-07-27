@@ -214,8 +214,32 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         const d = new Date(dateStr);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       };
-      setJoiningDate(getLocalDateStr(member.joining_date));
-      setNextDueDate(getLocalDateStr(member.next_due_date));
+
+      // Determine active plan from payment_history if available
+      const history = (member.payment_history || []).slice().sort((a: any, b: any) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime());
+      const now = new Date();
+      let activePlan: any = null;
+      if (history.length > 0) {
+        for (const p of history) {
+          const sD = new Date(p.start_date);
+          const eD = new Date(p.end_date);
+          if (now >= sD && now <= eD) {
+            activePlan = p;
+            break;
+          }
+        }
+        if (!activePlan) {
+          const past = history.filter((p: any) => new Date(p.end_date) < now);
+          if (past.length > 0) activePlan = past[past.length - 1];
+          else activePlan = history[0];
+        }
+      }
+
+      const activeStart = activePlan?.start_date || member.joining_date;
+      const activeEnd = activePlan?.end_date || member.next_due_date;
+
+      setJoiningDate(getLocalDateStr(activeStart));
+      setNextDueDate(getLocalDateStr(activeEnd));
       setDateOfBirth(getLocalDateStr(member.date_of_birth || ''));
       
       parseTiming(member.timing || '');
@@ -287,7 +311,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       if (notes) payload.notes = notes;
 
       
-      if (joiningDate) payload.joining_date = new Date(joiningDate).toISOString();
+      // Update member details
       if (nextDueDate) payload.next_due_date = new Date(nextDueDate).toISOString();
       if (dateOfBirth) payload.date_of_birth = new Date(dateOfBirth).toISOString();
 
