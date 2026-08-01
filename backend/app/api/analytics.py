@@ -381,7 +381,145 @@ async def get_profit_loss(year: int = None):
 
 
 # ─────────────────────────────────────────
-# 11. SMART AI INSIGHTS  (gym intelligence)
+# 11. MEMBER ACTIVITY  (new + renewals per day)
+# ─────────────────────────────────────────
+@router.get("/member-activity")
+async def get_member_activity(month: str = None):
+    """
+    Returns a list of days (for the given month YYYY-MM) with:
+      - new_members: list of members who joined that day (joining_date falls in this day)
+      - renewals:    list of members who renewed that day (payment recorded on this day)
+    Each member object includes: _id, full_name, phone, member_id, category
+    """
+    db = get_database()
+    IST = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(IST)
+
+    # Parse month string → year & month int
+    if month:
+        try:
+            yr, mo = int(month.split("-")[0]), int(month.split("-")[1])
+        except Exception:
+            yr, mo = now_ist.year, now_ist.month
+    else:
+        yr, mo = now_ist.year, now_ist.month
+
+    # Build UTC range for the whole month
+    month_start_ist = datetime(yr, mo, 1, 0, 0, 0, tzinfo=IST)
+    if mo == 12:
+        month_end_ist = datetime(yr + 1, 1, 1, 0, 0, 0, tzinfo=IST)
+    else:
+        month_end_ist = datetime(yr, mo + 1, 1, 0, 0, 0, tzinfo=IST)
+
+    month_start_utc = month_start_ist.astimezone(timezone.utc)
+    month_end_utc   = month_end_ist.astimezone(timezone.utc)
+
+    import calendar
+    days_in_month = calendar.monthrange(yr, mo)[1]
+
+    # ── Fetch new members (joining_date in this month) ──────────────────────
+    new_cursor = db["members"].find(
+        {
+            "joining_date": {
+                "$gte": month_start_utc,
+                "$lt":  month_end_utc,
+            }
+        },
+        {"_id": 1, "full_name": 1, "phone": 1, "member_id": 1, "category": 1, "joining_date": 1}
+    )
+    new_members_raw = await new_cursor.to_list(1000)
+
+    # Group by day (IST)
+    new_by_day: Dict[int, list] = {d: [] for d in range(1, days_in_month + 1)}
+    for m in new_members_raw:
+        jd = m.get("joining_date")
+        if jd:
+            jd_ist = jd.astimezone(IST)
+            day_ist = jd_ist.day
+            if 1 <= day_ist <= days_in_month:
+                new_by_day[day_ist].append({
+                    "_id":          str(m["_id"]),
+                    "full_name":    m.get("full_name", ""),
+                    "phone":        m.get("phone", ""),
+                    "member_id":    m.get("member_id", ""),
+                    "category":     m.get("category", "New"),
+                    "joining_time": jd_ist.strftime("%I:%M %p"),  # e.g. 03:45 PM
+                })
+
+    # ── Fetch renewals (payment_date in this month) ──────────────────────────
+    # payments collection: payment_date, member_id (ref), amount, payment_mode
+    renewal_cursor = db["payments"].find(
+        {
+            "payment_date": {
+                "$gte": month_start_utc,
+                "$lt":  month_end_utc,
+            }
+        },
+        {"_id": 1, "member_id": 1, "payment_date": 1, "amount": 1}
+    )
+    payments_raw = await renewal_cursor.to_list(5000)
+
+    # Collect unique member IDs from payments
+    from bson import ObjectId
+    member_ids_in_payments = list({p["member_id"] for p in payments_raw if p.get("member_id")})
+
+    # Fetch member details for those IDs
+    members_for_payments = {}
+    if member_ids_in_payments:
+        try:
+            oid_list = [ObjectId(mid) for mid in member_ids_in_payments]
+            cursor = db["members"].find(
+                {"_id": {"$in": oid_list}},
+                {"_id": 1, "full_name": 1, "phone": 1, "member_id": 1, "category": 1}
+            )
+            async for mem in cursor:
+                members_for_payments[str(mem["_id"])] = {
+                    "_id":       str(mem["_id"]),
+                    "full_name": mem.get("full_name", ""),
+                    "phone":     mem.get("phone", ""),
+                    "member_id": mem.get("member_id", ""),
+                    "category":  mem.get("category", ""),
+                }
+        except Exception:
+            pass
+
+    # Group renewals by day (allow multiple payments from same member on same day)
+    renewals_by_day: Dict[int, list] = {d: [] for d in range(1, days_in_month + 1)}
+    for p in payments_raw:
+        pd = p.get("payment_date")
+        mid = str(p.get("member_id", ""))
+        if pd and mid:
+            pd_ist = pd.astimezone(IST)
+            day_ist = pd_ist.day
+            if 1 <= day_ist <= days_in_month:
+                mem_info = members_for_payments.get(mid)
+                if mem_info:
+                    renewals_by_day[day_ist].append({
+                        **mem_info,
+                        "amount":           p.get("amount", 0),
+                        "payment_time":     pd_ist.strftime("%I:%M %p"),   # e.g. 03:45 PM
+                        "payment_datetime": pd_ist.strftime("%d %b, %I:%M %p"),  # e.g. 15 Jul, 03:45 PM
+                    })
+
+    # ── Build response: only include days that have activity ────────────────
+    result = []
+    for day in range(1, days_in_month + 1):
+        new_list    = new_by_day[day]
+        renew_list  = renewals_by_day[day]
+        if new_list or renew_list:
+            date_str = f"{yr:04d}-{mo:02d}-{day:02d}"
+            result.append({
+                "date":         date_str,
+                "day":          day,
+                "new_members":  new_list,
+                "renewals":     renew_list,
+            })
+
+    return result
+
+
+# ─────────────────────────────────────────
+# 12. SMART AI INSIGHTS  (gym intelligence)
 # ─────────────────────────────────────────
 @router.get("/insights")
 async def get_insights():

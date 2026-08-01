@@ -74,7 +74,7 @@ export const OffersScreen = () => {
     setName(offer.name);
     setDescription(offer.description || '');
     setDiscountType(offer.discount_type || 'Percentage');
-    setDiscountValue(offer.discount_value.toString());
+    setDiscountValue((offer.discount_value ?? '').toString());
     setValidUntil(offer.valid_until ? new Date(offer.valid_until).toISOString().split('T')[0] : '');
     setIsActive(offer.is_active);
     setShowModal(true);
@@ -86,18 +86,27 @@ export const OffersScreen = () => {
       return;
     }
     
+    const parsedVal = parseFloat(discountValue);
+    if (isNaN(parsedVal) || parsedVal < 0) {
+      showError('Invalid Discount', 'Please enter a valid numeric discount value.');
+      return;
+    }
+
     setSaving(true);
     try {
       const payload: any = {
         name,
         description,
         discount_type: discountType,
-        discount_value: parseFloat(discountValue),
-        is_active: isActive
+        discount_value: parsedVal,
+        is_active: isActive,
+        valid_until: validUntil ? new Date(validUntil).toISOString() : null
       };
-      
-      if (validUntil) {
-        payload.valid_until = new Date(validUntil).toISOString();
+
+      if (editingOffer) {
+        await api.put(`/offers/${editingOffer._id}`, payload);
+      } else {
+        await api.post('/offers/', payload);
       }
 
       setShowModal(false);

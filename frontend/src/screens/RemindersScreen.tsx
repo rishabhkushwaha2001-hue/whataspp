@@ -168,7 +168,7 @@ export const RemindersScreen = () => {
       const interval = setInterval(fetchDueMembers, 60000);
 
       return () => clearInterval(interval);
-    }, [fetchDueMembers])
+    }, [fetchDueMembers, fetchQueue])
   );
 
   const handleSearch = (text: string) => {
@@ -365,7 +365,7 @@ export const RemindersScreen = () => {
       {mainTab === 'due' && (
         <FlatList
           data={filteredMembers}
-          keyExtractor={(item) => item.id || item._id}
+          keyExtractor={(item, idx) => `${item.id || item._id || 'item'}_${idx}`}
           contentContainerStyle={[styles.content, { paddingTop: 10 }]}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={fetchDueMembers} tintColor={colors.primary} />}

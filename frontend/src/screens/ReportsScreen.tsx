@@ -219,7 +219,7 @@ const PaymentMethodBar = ({ data, colors }: any) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
 // ═══════════════════════════════════════════════════════════════════════════
-type TabKey = 'Overview' | 'Revenue' | 'Members' | 'Attendance' | 'Finance' | 'AI';
+type TabKey = 'Overview' | 'Revenue' | 'Members' | 'Attendance' | 'Finance' | 'AI' | 'Activity' | 'Retention';
 
 export const ReportsScreen = () => {
   const { colors, theme } = useTheme();
@@ -231,6 +231,7 @@ export const ReportsScreen = () => {
   const [endDateObj,   setEndDateObj]   = useState<Date | null>(null);
   const [expiryDays, setExpiryDays] = useState(30);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const now    = new Date();
   // Selected month state — default = current month
@@ -261,6 +262,7 @@ export const ReportsScreen = () => {
     { key: `an_plan_${curMo}`,      endpoint: `/analytics/plan-breakdown?month=${curMo}` },
     { key: `an_pl_${curYr}`,        endpoint: `/analytics/profit-loss?year=${curYr}` },
     { key: 'an_insights',           endpoint: '/analytics/insights' },
+    { key: `an_activity_${curMo}`,  endpoint: `/analytics/member-activity?month=${curMo}` },
   ], [curMo, curYr, revPeriod, sd, ed, expiryDays, dailyKey]);
 
   const { results, loading, refresh } = useCachedParallelFetch(fetchConfig);
@@ -839,7 +841,7 @@ export const ReportsScreen = () => {
           {expiry.length > 0 ? expiry.map((m: any, i: number) => {
             const isRed = m.days_left <= 3;
             return (
-              <View key={i} style={{
+              <View key={`${m._id || m.id || 'exp'}_${i}`} style={{
                 flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
                 paddingHorizontal: spacing.m, paddingVertical: 14,
                 borderBottomWidth: i < expiry.length - 1 ? 1 : 0, borderBottomColor: colors.border,
@@ -1214,7 +1216,7 @@ export const ReportsScreen = () => {
             <View style={[aiStyles.churnCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               {churnRisk.map((m: any, i: number) => (
                 <View
-                  key={i}
+                  key={`${m._id || m.id || 'churn'}_${i}`}
                   style={[aiStyles.churnRow,
                     { borderBottomColor: colors.border, borderBottomWidth: i < churnRisk.length - 1 ? 1 : 0 }
                   ]}
@@ -1252,11 +1254,541 @@ export const ReportsScreen = () => {
     );
   };
 
+  // ── TAB: Activity (New Members + Renewals per day) ──────────────────────
+  const renderActivity = () => {
+    const activityData: any[] = results?.[`an_activity_${curMo}`] || [];
+    const monthLabel = `${monthNames[selMonth]} ${selYear}`;
+
+    const totalNew   = activityData.reduce((s: number, d: any) => s + (d.new_members?.length || 0), 0);
+    const totalRenew = activityData.reduce((s: number, d: any) => s + (d.renewals?.length || 0), 0);
+
+    // ── Inline Month-Year Picker ──────────────────────────────────────────
+    // Last 5 years, oldest first
+    const actYears = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 4 + i);
+
+    // Filter state: null = all, 'new' = only new, 'renewal' = only renewals
+    const actFilter: 'new' | 'renewal' | null = (expandedSections['__actFilter'] as any) ?? null;
+    const setActFilter = (f: 'new' | 'renewal' | null) =>
+      setExpandedSections(prev => ({ ...prev, __actFilter: f as any }));
+
+    const MonthYearPicker = () => (
+      <View style={{
+        backgroundColor: colors.surface, borderRadius: borderRadius.l,
+        borderWidth: 1, borderColor: colors.border,
+        padding: spacing.m, marginBottom: spacing.m,
+      }}>
+        {/* Year row — horizontally scrollable (5 years) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexDirection: 'row', gap: 8, paddingBottom: 2 }}
+          style={{ marginBottom: 10 }}
+        >
+          {actYears.map(y => (
+            <TouchableOpacity
+              key={y}
+              onPress={() => setSelYear(y)}
+              style={{
+                paddingHorizontal: 18, paddingVertical: 7, borderRadius: borderRadius.s,
+                alignItems: 'center',
+                backgroundColor: selYear === y ? colors.primary : colors.background,
+                borderWidth: 1, borderColor: selYear === y ? colors.primary : colors.border,
+              }}
+            >
+              <Text style={{ color: selYear === y ? '#fff' : colors.text, fontWeight: '700', fontSize: 13 }}>{y}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {/* Month grid */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {monthNames.map((mn, i) => {
+            const isActive = selMonth === i;
+            return (
+              <TouchableOpacity
+                key={i}
+                onPress={() => { setSelMonth(i); setRevPeriod('month'); }}
+                style={{
+                  width: '22%', paddingVertical: 8, borderRadius: borderRadius.s,
+                  alignItems: 'center',
+                  backgroundColor: isActive ? colors.primary : colors.background,
+                  borderWidth: 1, borderColor: isActive ? colors.primary : colors.border,
+                }}
+              >
+                <Text style={{ color: isActive ? '#fff' : colors.text, fontWeight: '600', fontSize: 12 }}>{mn}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+
+    // ── Member Row (clickable → member details) ───────────────────────────
+    const MemberRow = ({ member, type }: { member: any; type: 'new' | 'renewal' }) => {
+      const isNew = type === 'new';
+      const color = isNew ? '#8B5CF6' : '#10B981';
+      const initials = (member.full_name || '?').substring(0, 2).toUpperCase();
+      const timeStr = isNew ? member.joining_time : member.payment_time;
+      return (
+        <TouchableOpacity
+          activeOpacity={0.75}
+          onPress={() => router.push(`/members/${member._id}` as any)}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: 10,
+            paddingVertical: 10, paddingHorizontal: 12,
+            backgroundColor: colors.background,
+            borderRadius: 10, marginBottom: 5,
+            borderWidth: 1, borderColor: `${color}25`,
+          }}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${color}18`, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color, fontWeight: '800', fontSize: 13 }}>{initials}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>{member.full_name}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{member.phone}</Text>
+            {timeStr ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 3 }}>
+                <FontAwesome name="clock-o" size={10} color={color} />
+                <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{timeStr}</Text>
+              </View>
+            ) : null}
+          </View>
+          {!isNew && member.amount ? (
+            <View style={{ alignItems: 'flex-end', gap: 2 }}>
+              <Text style={{ color, fontWeight: '800', fontSize: 14 }}>₹{member.amount}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 10 }}>collected</Text>
+            </View>
+          ) : null}
+          <FontAwesome name="chevron-right" size={11} color={colors.textMuted} />
+        </TouchableOpacity>
+      );
+    };
+
+
+    // ── Collapsible Section (New / Renewal) ──────────────────────────────
+    const CollapsibleSection = ({
+      label, count, color, icon, members, type, dayKey,
+    }: {
+      label: string; count: number; color: string; icon: string;
+      members: any[]; type: 'new' | 'renewal'; dayKey: string;
+    }) => {
+      const sectionKey = `${dayKey}_${type}`;
+      const isOpen = expandedSections[sectionKey] !== false; // default open
+      return (
+        <View style={{
+          backgroundColor: colors.surface, borderRadius: 12,
+          borderWidth: 1, borderColor: `${color}25`,
+          marginBottom: 8, overflow: 'hidden',
+        }}>
+          {/* Section header — tap to toggle */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() =>
+              setExpandedSections(prev => ({ ...prev, [sectionKey]: !isOpen }))
+            }
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              paddingVertical: 10, paddingHorizontal: 12,
+              backgroundColor: `${color}10`,
+            }}
+          >
+            <View style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: `${color}20`,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <FontAwesome name={icon as any} size={13} color={color} />
+            </View>
+            <Text style={{ color, fontWeight: '800', fontSize: 13, flex: 1 }}>
+              {label}
+            </Text>
+            <View style={{
+              backgroundColor: color, borderRadius: 12,
+              paddingHorizontal: 8, paddingVertical: 2, minWidth: 24, alignItems: 'center',
+            }}>
+              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 11 }}>{count}</Text>
+            </View>
+            <FontAwesome
+              name={isOpen ? 'chevron-up' : 'chevron-down'}
+              size={11} color={color}
+              style={{ marginLeft: 4 }}
+            />
+          </TouchableOpacity>
+          {/* Members list */}
+          {isOpen && (
+            <View style={{ padding: 8, paddingTop: 6 }}>
+              {members.map((m: any, idx: number) => (
+                <MemberRow key={`${m._id || m.id || 'mem'}_${idx}`} member={m} type={type} />
+              ))}
+            </View>
+          )}
+        </View>
+      );
+    };
+
+    return (
+      <>
+        {/* Inline Month-Year Picker */}
+        <MonthYearPicker />
+
+        {/* ── Clickable Filter Cards ── */}
+        <View style={{ flexDirection: 'row', gap: spacing.m, marginBottom: spacing.m }}>
+          {/* New Members */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setActFilter(actFilter === 'new' ? null : 'new')}
+            style={{
+              flex: 1, borderRadius: borderRadius.l, padding: spacing.m,
+              alignItems: 'center',
+              backgroundColor: actFilter === 'new' ? '#8B5CF6' : '#8B5CF610',
+              borderWidth: 2,
+              borderColor: actFilter === 'new' ? '#8B5CF6' : '#8B5CF630',
+            }}
+          >
+            <Text style={{ color: actFilter === 'new' ? '#fff' : '#8B5CF6', fontSize: 28, fontWeight: '800' }}>{totalNew}</Text>
+            <Text style={{ color: actFilter === 'new' ? '#ffffffcc' : colors.textMuted, fontSize: 12, marginTop: 2, fontWeight: '600' }}>🆕 New Members</Text>
+            <Text style={{ color: actFilter === 'new' ? '#ffffff88' : '#8B5CF680', fontSize: 10, marginTop: 2 }}>
+              {actFilter === 'new' ? 'tap to show all' : 'tap to filter'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Renewals */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setActFilter(actFilter === 'renewal' ? null : 'renewal')}
+            style={{
+              flex: 1, borderRadius: borderRadius.l, padding: spacing.m,
+              alignItems: 'center',
+              backgroundColor: actFilter === 'renewal' ? '#10B981' : '#10B98110',
+              borderWidth: 2,
+              borderColor: actFilter === 'renewal' ? '#10B981' : '#10B98130',
+            }}
+          >
+            <Text style={{ color: actFilter === 'renewal' ? '#fff' : '#10B981', fontSize: 28, fontWeight: '800' }}>{totalRenew}</Text>
+            <Text style={{ color: actFilter === 'renewal' ? '#ffffffcc' : colors.textMuted, fontSize: 12, marginTop: 2, fontWeight: '600' }}>🔄 Renewals</Text>
+            <Text style={{ color: actFilter === 'renewal' ? '#ffffff88' : '#10B98180', fontSize: 10, marginTop: 2 }}>
+              {actFilter === 'renewal' ? 'tap to show all' : 'tap to filter'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Month + active filter label */}
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: spacing.m, marginLeft: 2 }}>
+          {'📅 '}<Text style={{ fontWeight: '700', color: colors.text }}>{monthLabel}</Text>
+          {actFilter === 'new' ? <Text style={{ color: '#8B5CF6' }}>{' — new members only'}</Text>
+           : actFilter === 'renewal' ? <Text style={{ color: '#10B981' }}>{' — renewals only'}</Text>
+           : ''}
+        </Text>
+
+        {activityData.length === 0 ? (
+          <View style={{
+            alignItems: 'center', paddingVertical: 60,
+            backgroundColor: colors.surface, borderRadius: borderRadius.l,
+            borderWidth: 1, borderColor: colors.border,
+          }}>
+            <Text style={{ fontSize: 40 }}>📭</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, marginTop: 12 }}>No Activity</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+              No joins or renewals in {monthLabel}
+            </Text>
+          </View>
+        ) : (
+          activityData.map((dayItem: any, idx: number) => {
+            const newList   = dayItem.new_members || [];
+            const renewList = dayItem.renewals    || [];
+            // Apply active filter
+            const showNew   = actFilter !== 'renewal' && newList.length   > 0;
+            const showRenew = actFilter !== 'new'     && renewList.length > 0;
+            if (!showNew && !showRenew) return null;
+
+            const dateObj  = new Date(dayItem.date + 'T00:00:00');
+            const dayLabel = dateObj.toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short' });
+            const visibleCount = (showNew ? newList.length : 0) + (showRenew ? renewList.length : 0);
+
+            return (
+              <View key={`${dayItem.date}_${idx}`} style={{ marginBottom: spacing.m }}>
+                {/* Date header */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+                  <View style={{ backgroundColor: colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>{dayLabel}</Text>
+                  </View>
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    {visibleCount} member{visibleCount !== 1 ? 's' : ''}
+                  </Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                </View>
+
+                {showNew && (
+                  <CollapsibleSection dayKey={dayItem.date} label="New Members" count={newList.length} color="#8B5CF6" icon="user-plus" members={newList} type="new" />
+                )}
+                {showRenew && (
+                  <CollapsibleSection dayKey={dayItem.date} label="Renewals" count={renewList.length} color="#10B981" icon="refresh" members={renewList} type="renewal" />
+                )}
+              </View>
+            );
+          })
+        )}
+      </>
+    );
+  };
+
+  // ── TAB: Retention & Churn Risk (Gym Owner Intelligence) ─────────────────
+  const renderRetention = () => {
+    const st         = results?.['an_status'] || {};
+    const insights   = results?.['an_insights'] || {};
+    const expiryList = results?.[`an_expiry_${expiryDays}`] || [];
+    const churnRisk  = insights.churn_risk || [];
+
+    const active   = st.active || 0;
+    const expired  = st.expired || 0;
+    const totalMem = active + expired;
+    const retRate  = totalMem > 0 ? Math.round((active / totalMem) * 100) : 100;
+    const due7     = expiryList.filter((m: any) => (m.days_left ?? 99) <= 7);
+
+    return (
+      <>
+        {/* Pro-Tip Banner */}
+        <View style={{
+          backgroundColor: '#8B5CF612', borderRadius: borderRadius.l,
+          padding: spacing.m, marginBottom: spacing.m,
+          borderWidth: 1, borderColor: '#8B5CF630',
+          flexDirection: 'row', alignItems: 'center', gap: 12,
+        }}>
+          <View style={{
+            width: 40, height: 40, borderRadius: 20, backgroundColor: '#8B5CF625',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <FontAwesome name="lightbulb-o" size={18} color="#8B5CF6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#8B5CF6', fontWeight: '800', fontSize: 13 }}>
+              Gym Owner Pro-Tip
+            </Text>
+            <Text style={{ color: colors.text, fontSize: 11, marginTop: 2, lineHeight: 16 }}>
+              Members contacted 3 days before expiry are 45% more likely to renew. Tap any member below to open details or message on WhatsApp!
+            </Text>
+          </View>
+        </View>
+
+        {/* KPI Scorecard */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.l }}>
+          <View style={{
+            flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.m,
+            padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+          }}>
+            <Text style={{ color: retRate >= 75 ? '#10B981' : '#F59E0B', fontSize: 22, fontWeight: '800' }}>
+              {retRate}%
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2, fontWeight: '600' }}>
+              Retention Rate
+            </Text>
+          </View>
+          <View style={{
+            flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.m,
+            padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+          }}>
+            <Text style={{ color: '#EF4444', fontSize: 22, fontWeight: '800' }}>
+              {churnRisk.length}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2, fontWeight: '600' }}>
+              Ghost (30d+)
+            </Text>
+          </View>
+          <View style={{
+            flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.m,
+            padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+          }}>
+            <Text style={{ color: '#F59E0B', fontSize: 22, fontWeight: '800' }}>
+              {due7.length}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2, fontWeight: '600' }}>
+              Due in 7d
+            </Text>
+          </View>
+          <View style={{
+            flex: 1, backgroundColor: colors.surface, borderRadius: borderRadius.m,
+            padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+          }}>
+            <Text style={{ color: '#8B5CF6', fontSize: 22, fontWeight: '800' }}>
+              {expired}
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2, fontWeight: '600' }}>
+              Total Expired
+            </Text>
+          </View>
+        </View>
+
+        {/* SECTION 1: Silent Churners (Active but Absent 30+ Days) */}
+        <SectionTitle color={colors.text}>🚨 Ghost Members (Absent 30+ Days)</SectionTitle>
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10, marginTop: -4 }}>
+          Active memberships with zero gym visits in 30 days. Call or WhatsApp to re-engage!
+        </Text>
+        {churnRisk.length === 0 ? (
+          <View style={{
+            padding: spacing.l, borderRadius: borderRadius.l, alignItems: 'center',
+            backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.l,
+          }}>
+            <Text style={{ fontSize: 28 }}>✨</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 8 }}>
+              Excellent Engagement!
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+              All active members are visiting regularly.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginBottom: spacing.l }}>
+            {churnRisk.map((m: any, idx: number) => (
+              <TouchableOpacity
+                key={`${m._id || m.id || 'churn'}_${idx}`}
+                activeOpacity={0.75}
+                onPress={() => router.push(`/members/${m._id}` as any)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  padding: 12, backgroundColor: colors.surface,
+                  borderRadius: borderRadius.m, marginBottom: 6,
+                  borderWidth: 1, borderColor: '#EF444425',
+                }}
+              >
+                <View style={{
+                  width: 38, height: 38, borderRadius: 19,
+                  backgroundColor: '#EF444415', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 13 }}>
+                    {(m.full_name || '?').substring(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                    {m.full_name}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                    {m.phone}
+                  </Text>
+                  {m.days_absent != null && (
+                    <View style={{
+                      alignSelf: 'flex-start', backgroundColor: '#EF444415',
+                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, marginTop: 4,
+                    }}>
+                      <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '700' }}>
+                        Absent {m.days_absent} days
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={{
+                    width: 36, height: 36, borderRadius: 18, backgroundColor: '#25D366',
+                    alignItems: 'center', justifyContent: 'center',
+                  }}
+                  onPress={() => {
+                    const phone = (m.phone || '').replace(/\D/g, '');
+                    const msg = `Hi ${m.full_name}, we miss seeing you at the gym! Come back and crush your fitness goals 💪`;
+                    Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                  }}
+                >
+                  <FontAwesome name="whatsapp" size={18} color="white" />
+                </TouchableOpacity>
+                <FontAwesome name="chevron-right" size={11} color={colors.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* SECTION 2: Urgent Renewals (Due within 7 Days) */}
+        <SectionTitle color={colors.text}>⏰ Immediate Action: Expiring Within 7 Days</SectionTitle>
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 10, marginTop: -4 }}>
+          Memberships ending soon. Reach out before they expire!
+        </Text>
+        {due7.length === 0 ? (
+          <View style={{
+            padding: spacing.l, borderRadius: borderRadius.l, alignItems: 'center',
+            backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.l,
+          }}>
+            <Text style={{ fontSize: 28 }}>🎉</Text>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14, marginTop: 8 }}>
+              No Urgent Expiries
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+              No memberships expiring in the next 7 days.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginBottom: spacing.l }}>
+            {due7.map((m: any, idx: number) => {
+              const dLeft = m.days_left ?? 0;
+              const isOver = dLeft < 0;
+              const badgeColor = isOver ? '#EF4444' : '#F59E0B';
+              return (
+                <TouchableOpacity
+                  key={`${m._id || m.id || 'due'}_${idx}`}
+                  activeOpacity={0.75}
+                  onPress={() => router.push(`/members/${m._id}` as any)}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 12,
+                    padding: 12, backgroundColor: colors.surface,
+                    borderRadius: borderRadius.m, marginBottom: 6,
+                    borderWidth: 1, borderColor: `${badgeColor}25`,
+                  }}
+                >
+                  <View style={{
+                    width: 38, height: 38, borderRadius: 19,
+                    backgroundColor: `${badgeColor}15`, alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Text style={{ color: badgeColor, fontWeight: '800', fontSize: 13 }}>
+                      {(m.full_name || '?').substring(0, 2).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                      {m.full_name}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                      {m.phone}
+                    </Text>
+                    <View style={{
+                      alignSelf: 'flex-start', backgroundColor: `${badgeColor}15`,
+                      paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, marginTop: 4,
+                    }}>
+                      <Text style={{ color: badgeColor, fontSize: 10, fontWeight: '700' }}>
+                        {isOver ? `Expired ${Math.abs(dLeft)}d ago` : dLeft === 0 ? 'Expires Today' : `Expires in ${dLeft}d`}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', marginRight: 4 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
+                      ₹{m.monthly_fees || 0}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 10 }}>fee</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={{
+                      width: 36, height: 36, borderRadius: 18, backgroundColor: '#25D366',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onPress={() => {
+                      const phone = (m.phone || '').replace(/\D/g, '');
+                      const msg = `Hi ${m.full_name}, your gym membership ${isOver ? 'has expired' : 'is expiring soon'}. Please renew to keep your fitness journey going strong 💪`;
+                      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                    }}
+                  >
+                    <FontAwesome name="whatsapp" size={18} color="white" />
+                  </TouchableOpacity>
+                  <FontAwesome name="chevron-right" size={11} color={colors.textMuted} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </>
+    );
+  };
+
   // ── Tab Config ────────────────────────────────────────────────────────────
   const TABS: { key: TabKey; icon: string; label: string }[] = [
     { key: 'Overview',    icon: 'home',        label: 'Overview' },
     { key: 'Revenue',     icon: 'rupee',       label: 'Revenue' },
     { key: 'Members',     icon: 'users',       label: 'Members' },
+    { key: 'Activity',    icon: 'user-plus',   label: 'Activity' },
+    { key: 'Retention',   icon: 'heartbeat',   label: 'Retention' },
     { key: 'Attendance',  icon: 'calendar',    label: 'Attend.' },
     { key: 'Finance',     icon: 'line-chart',  label: 'Finance' },
     { key: 'AI',          icon: 'magic',       label: 'AI' },
@@ -1276,20 +1808,25 @@ export const ReportsScreen = () => {
       </View>
 
       {/* Tabs */}
-      <View style={[styles.tabs, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        {TABS.map(t => (
-          <TouchableOpacity
-            key={t.key}
-            style={[styles.tab, activeTab === t.key && { borderBottomColor: colors.primary }]}
-            onPress={() => setActiveTab(t.key)}
-          >
-            <FontAwesome name={t.icon as any} size={14} color={activeTab === t.key ? colors.primary : colors.textMuted} />
-            <Text style={[styles.tabText, { color: activeTab === t.key ? colors.primary : colors.textMuted,
-              fontWeight: activeTab === t.key ? '700' : '500' }]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 4 }}>
+          {TABS.map(t => (
+            <TouchableOpacity
+              key={t.key}
+              style={[
+                { paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center', gap: 4, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+                activeTab === t.key && { borderBottomColor: colors.primary }
+              ]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <FontAwesome name={t.icon as any} size={14} color={activeTab === t.key ? colors.primary : colors.textMuted} />
+              <Text style={[styles.tabText, { color: activeTab === t.key ? colors.primary : colors.textMuted,
+                fontWeight: activeTab === t.key ? '700' : '500' }]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Content */}
@@ -1298,6 +1835,8 @@ export const ReportsScreen = () => {
           activeTab === 'Overview'   ? renderOverview()   :
           activeTab === 'Revenue'    ? renderRevenue()    :
           activeTab === 'Members'    ? renderMembers()    :
+          activeTab === 'Activity'   ? renderActivity()   :
+          activeTab === 'Retention'  ? renderRetention()  :
           activeTab === 'Attendance' ? renderAttendance() :
           activeTab === 'AI'         ? renderAI()         :
           renderFinance()

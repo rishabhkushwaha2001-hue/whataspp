@@ -418,7 +418,7 @@ export const MembersScreen = () => {
         <FlatList
           data={filteredMembers}
           renderItem={renderMember}
-          keyExtractor={item => item.id || item._id}
+          keyExtractor={(item, idx) => `${item.id || item._id || 'mem'}_${idx}`}
           contentContainerStyle={styles.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshMembers} tintColor={colors.primary} />}
           ListEmptyComponent={() => (

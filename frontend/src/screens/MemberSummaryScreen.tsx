@@ -90,6 +90,43 @@ export const MemberSummaryScreen = () => {
     loadSettings();
   }, [id]);
 
+  // ✅ ALL hooks MUST be declared before any early returns (Rules of Hooks)
+  const sortedPayments = useMemo(() => {
+    return (member?.payment_history || []).slice().sort((a: any, b: any) => {
+      return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+    });
+  }, [member?.payment_history]);
+
+  const { activePlan, upcomingPlans } = useMemo(() => {
+    const now = new Date();
+    let active: any = null;
+    let upcoming: any[] = [];
+
+    if (sortedPayments.length > 0) {
+      for (let i = 0; i < sortedPayments.length; i++) {
+        const p = sortedPayments[i];
+        const sDate = new Date(p.start_date);
+        const eDate = new Date(p.end_date);
+        if (now >= sDate && now <= eDate) {
+          active = p;
+          upcoming = sortedPayments.filter((item: any) => new Date(item.start_date) > new Date(active.end_date));
+          break;
+        }
+      }
+      if (!active) {
+        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
+        if (allPast.length > 0) {
+          active = allPast[allPast.length - 1];
+          upcoming = sortedPayments.filter((p: any) => new Date(p.start_date) > new Date(active.end_date));
+        } else {
+          active = sortedPayments[0];
+          upcoming = sortedPayments.slice(1);
+        }
+      }
+    }
+    return { activePlan: active, upcomingPlans: upcoming };
+  }, [sortedPayments]);
+
   if (loading) return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -174,47 +211,7 @@ export const MemberSummaryScreen = () => {
   );
   if (!member) return <View style={styles.container}><Text style={{ color: colors.text }}>Member not found</Text></View>;
 
-  // Sort payments by start_date ascending to identify active and upcoming plans
-  const sortedPayments = useMemo(() => {
-    return (member?.payment_history || []).slice().sort((a: any, b: any) => {
-      return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
-    });
-  }, [member?.payment_history]);
-
   const now = new Date();
-
-  // Find active and upcoming plans
-  const { activePlan, upcomingPlans } = useMemo(() => {
-    let active: any = null;
-    let upcoming: any[] = [];
-    
-    if (sortedPayments.length > 0) {
-      // Find the payment plan that includes today's date
-      for (let i = 0; i < sortedPayments.length; i++) {
-        const p = sortedPayments[i];
-        const sDate = new Date(p.start_date);
-        const eDate = new Date(p.end_date);
-        if (now >= sDate && now <= eDate) {
-          active = p;
-          upcoming = sortedPayments.filter((item: any) => new Date(item.start_date) > new Date(active.end_date));
-          break;
-        }
-      }
-
-      // If no plan matches current date (e.g. member is expired or plans are in future)
-      if (!active) {
-        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
-        if (allPast.length > 0) {
-          active = allPast[allPast.length - 1];
-          upcoming = sortedPayments.filter((p: any) => new Date(p.start_date) > new Date(active.end_date));
-        } else {
-          active = sortedPayments[0];
-          upcoming = sortedPayments.slice(1);
-        }
-      }
-    }
-    return { activePlan: active, upcomingPlans: upcoming };
-  }, [sortedPayments]);
 
   const expiryDate = activePlan?.end_date ? new Date(activePlan.end_date) : (member?.next_due_date ? new Date(member.next_due_date) : null);
   const startDate = activePlan?.start_date ? new Date(activePlan.start_date) : (member?.joining_date ? new Date(member.joining_date) : null);

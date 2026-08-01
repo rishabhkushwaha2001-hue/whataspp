@@ -122,6 +122,12 @@ export const TrainersScreen = () => {
         experience_years: experienceYears ? parseInt(experienceYears) : 1,
       };
 
+      if (editingTrainer) {
+        await api.put(`/trainers/${editingTrainer._id}`, payload);
+      } else {
+        await api.post('/trainers/', payload);
+      }
+
       setShowModal(false);
       fetchTrainers();
       setTimeout(() => {

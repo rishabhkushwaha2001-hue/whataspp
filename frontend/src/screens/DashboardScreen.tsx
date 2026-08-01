@@ -63,14 +63,19 @@ export const DashboardScreen = () => {
   const [revealedOnce, setRevealedOnce] = useState(false);
   const [insightsData, setInsightsData] = useState<any>(null);
   const [selectedInsight, setSelectedInsight] = useState<any>(null);
+  const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
+  const [cachedGymName, setCachedGymName] = useState<string>('FitZone Gym');
+  const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
 
-  const { results, loading, refreshing, refresh: refreshDashboard } = useCachedParallelFetch([
+  const fetchConfig = React.useMemo(() => [
     { key: `dashboard_${period}`, endpoint: `/members/stats/dashboard?period=${period}` },
     { key: 'dashboard_attendance', endpoint: '/members/attendance/today' },
     { key: 'dashboard_messages', endpoint: '/messages/history?limit=4' },
     { key: 'dashboard_settings', endpoint: '/settings/' },
     { key: 'dashboard_insights', endpoint: '/analytics/insights' },
-  ]);
+  ], [period]);
+
+  const { results, loading, refreshing, refresh: refreshDashboard } = useCachedParallelFetch(fetchConfig);
 
   useEffect(() => {
     if (results[`dashboard_${period}`]) setStats(results[`dashboard_${period}`]);
@@ -86,19 +91,6 @@ export const DashboardScreen = () => {
         setHideRevenue(val === 'true');
         setRevealedOnce(false);
       });
-    }, [])
-  );
-
-  const handlePeriodChange = (newPeriod: 'month' | 'prev_month' | 'year' | 'all') => {
-    setPeriod(newPeriod);
-  };
-
-  const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
-  const [cachedGymName, setCachedGymName] = useState<string>('FitZone Gym');
-  const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
-  
-  useFocusEffect(
-    useCallback(() => {
       const loadCachedInfo = async () => {
         try {
           const name = await AsyncStorage.getItem('gymName');
@@ -110,6 +102,10 @@ export const DashboardScreen = () => {
       loadCachedInfo();
     }, [])
   );
+
+  const handlePeriodChange = (newPeriod: 'month' | 'prev_month' | 'year' | 'all') => {
+    setPeriod(newPeriod);
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();

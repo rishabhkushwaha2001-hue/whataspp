@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 
 // 🏠 LOCAL TESTING (Use this for local dev — change to true only when testing on same WiFi)
-const LOCAL_URL = 'http://192.168.1.37:8000/api/v1';
+const LOCAL_URL = 'http://192.168.1.33:8000/api/v1';
 
 // ⚠️ PRODUCTION: Keep false. Set to true ONLY for local dev testing.
 const USE_LOCAL = false; // 🚀 PRODUCTION MODE
@@ -59,19 +59,24 @@ api.interceptors.response.use(
           await AsyncStorage.clear();
 
           // Show alert and redirect on OK click
-          Alert.alert(
-            'Session Terminated',
-            errorMsg,
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  router.replace('/login');
+          if (Platform.OS === 'web') {
+            window.alert(`Session Terminated: ${errorMsg}`);
+            router.replace('/login');
+          } else {
+            Alert.alert(
+              'Session Terminated',
+              errorMsg,
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    router.replace('/login');
+                  }
                 }
-              }
-            ],
-            { cancelable: false }
-          );
+              ],
+              { cancelable: false }
+            );
+          }
         } catch (e) {
           console.error('Failed to log out user automatically', e);
         }

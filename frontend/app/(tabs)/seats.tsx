@@ -143,12 +143,12 @@ function AnimatedSeat({
   );
 }
 
-// Wrap in memo — re-renders ONLY when isSelected or isEditing changes for this seat
+// Wrap in memo — re-renders ONLY when isSelected, isEditing, or seat data changes
 const AnimatedSeatMemo = memo(AnimatedSeat, (prev, next) => {
   return (
     prev.isEditing === next.isEditing &&
     prev.isSelected === next.isSelected &&
-    prev.seat._id === next.seat._id
+    prev.seat === next.seat
   );
 });
 

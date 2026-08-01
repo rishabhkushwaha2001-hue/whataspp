@@ -116,6 +116,11 @@ export const PlansScreen = () => {
         actual_price: actualPrice ? parseFloat(actualPrice) : null,
         icon, color, features, is_active: isActive
       };
+      if (editingPlan) {
+        await api.put(`/plans/${editingPlan._id}`, payload);
+      } else {
+        await api.post('/plans/', payload);
+      }
       setShowModal(false);
       fetchPlans();
       setTimeout(() => {

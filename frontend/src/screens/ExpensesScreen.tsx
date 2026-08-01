@@ -60,6 +60,18 @@ export const ExpensesScreen = () => {
     fetchData();
   }, [month, year, filterMode]);
 
+  const totalExpense = useMemo(() => (expenses || []).reduce((sum, e) => sum + e.amount, 0), [expenses]);
+  
+  const categoryBreakdown = useMemo(() => {
+    const breakdown: Record<string, number> = {};
+    (expenses || []).forEach(e => {
+      breakdown[e.category] = (breakdown[e.category] || 0) + e.amount;
+    });
+    return Object.entries(breakdown)
+      .map(([cat, val]) => ({ category: cat, amount: val, percentage: totalExpense ? (val / totalExpense) * 100 : 0 }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [expenses, totalExpense]);
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -121,18 +133,6 @@ export const ExpensesScreen = () => {
       }}
     ]);
   };
-
-  const totalExpense = useMemo(() => (expenses || []).reduce((sum, e) => sum + e.amount, 0), [expenses]);
-  
-  const categoryBreakdown = useMemo(() => {
-    const breakdown: Record<string, number> = {};
-    (expenses || []).forEach(e => {
-      breakdown[e.category] = (breakdown[e.category] || 0) + e.amount;
-    });
-    return Object.entries(breakdown)
-      .map(([cat, val]) => ({ category: cat, amount: val, percentage: totalExpense ? (val / totalExpense) * 100 : 0 }))
-      .sort((a, b) => b.amount - a.amount);
-  }, [expenses, totalExpense]);
 
   const changeMonth = (delta: number) => {
     let newM = month + delta;
