@@ -20,6 +20,7 @@
     },
     "android": {
       "package": "com.mayankkush2001.gymmanagerwhatsapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/app_logo.png",
         "backgroundColor": "#F3F4F6"

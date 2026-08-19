@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 
 // 🏠 LOCAL TESTING (Use this for local dev — change to true only when testing on same WiFi)
-const LOCAL_URL = 'http://192.168.1.33:8000/api/v1';
+const LOCAL_URL = 'http://192.168.1.37:8000/api/v1';
 
 // ⚠️ PRODUCTION: Keep false. Set to true ONLY for local dev testing.
 const USE_LOCAL = false; // 🚀 PRODUCTION MODE
@@ -19,6 +19,8 @@ export const api = axios.create({
   timeout: 60000, // Increased to 60s for Render cold starts
 });
 
+let lastGymId: string | null = null;
+
 // Request interceptor to automatically attach the tenant ID header
 api.interceptors.request.use(
   async (config) => {
@@ -26,6 +28,17 @@ api.interceptors.request.use(
       const gymId = await AsyncStorage.getItem('gymId');
       if (gymId) {
         config.headers['X-Tenant-ID'] = gymId;
+      }
+      
+      // Auto-clear caching stores if tenant changes (login / logout / switch)
+      if (gymId !== lastGymId) {
+        try {
+          const { clearCache } = require('../hooks/useDataStore');
+          clearCache();
+        } catch (err) {
+          // Ignore if clearCache cannot be resolved during initial bootstrap
+        }
+        lastGymId = gymId;
       }
     } catch (e) {
       console.warn('Failed to fetch gymId from storage', e);

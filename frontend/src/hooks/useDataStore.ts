@@ -37,6 +37,18 @@ export const invalidateCache = (...keys: string[]) => {
 };
 
 /**
+ * Clear the entire in-memory cache.
+ * Call this when the tenant context changes (login/logout/switch).
+ */
+export const clearCache = () => {
+  Object.keys(cache).forEach(key => {
+    delete cache[key];
+  });
+  console.log('[Cache] Cache cleared completely');
+};
+
+
+/**
  * Manually update a cache key without re-fetching (optimistic update).
  */
 export const updateCache = (key: string, data: any) => {

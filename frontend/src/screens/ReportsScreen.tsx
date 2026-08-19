@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Modal, Linking,
+  Dimensions, Modal, Linking, ActivityIndicator,
 } from 'react-native';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -1802,8 +1802,12 @@ export const ReportsScreen = () => {
           <FontAwesome name="angle-left" size={28} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Reports & Analytics</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={refresh}>
-          <FontAwesome name="refresh" size={18} color={colors.textMuted} />
+        <TouchableOpacity style={styles.backBtn} onPress={refresh} disabled={loading}>
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <FontAwesome name="refresh" size={18} color={colors.textMuted} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -1831,7 +1835,7 @@ export const ReportsScreen = () => {
 
       {/* Content */}
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {loading ? renderSkeleton() : (
+        {(loading && (!results || Object.keys(results).length === 0)) ? renderSkeleton() : (
           activeTab === 'Overview'   ? renderOverview()   :
           activeTab === 'Revenue'    ? renderRevenue()    :
           activeTab === 'Members'    ? renderMembers()    :

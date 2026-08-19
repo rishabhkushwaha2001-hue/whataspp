@@ -334,8 +334,14 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     todays_collections = sum(float(p.get("amount", 0)) for p in today_payments)
     
     # Category Counts (Based on Period)
-    new_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "New"})
-    renewal_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Renewal"})
+    new_members_query = {"joining_date": {"$gte": start_of_period, "$lt": end_of_period}}
+    new_members = await db["members"].count_documents(new_members_query)
+    
+    # Fallback for members missing joining_date
+    fallback_new = await db["members"].count_documents({"joining_date": {"$exists": False}, "created_at": {"$gte": start_of_period, "$lt": end_of_period}})
+    new_members += fallback_new
+
+    renewal_members = await db["payments"].count_documents({"start_date": {"$gte": start_of_period, "$lt": end_of_period}, "type": "Renewal"})
     manual_members = await db["members"].count_documents({"created_at": {"$gte": start_of_period, "$lt": end_of_period}, "category": "Manual"})
     
     # Prev Total Members
@@ -391,15 +397,40 @@ async def get_today_attendance() -> Any:
     
     cursor = db["attendance"].find({"check_in_time": {"$gte": today_start}}).sort("check_in_time", -1)
     logs = await cursor.to_list(length=100)
+    
+    # Batch fetch member names and phones in one query
+    member_ids_to_fetch = [
+        l.get("member_id")
+        for l in logs
+        if ("member_name" not in l or not l["member_name"]) and l.get("member_id")
+    ]
+    
+    member_details = {}
+    if member_ids_to_fetch:
+        members_cursor = db["members"].find({"member_id": {"$in": member_ids_to_fetch}})
+        members_list = await members_cursor.to_list(length=len(member_ids_to_fetch))
+        for m in members_list:
+            mid = m.get("member_id")
+            if mid:
+                member_details[mid] = {
+                    "full_name": m.get("full_name", mid),
+                    "phone": m.get("phone", "")
+                }
+
     for l in logs:
         l["id"] = str(l["_id"])
         # Fetch member info if missing
         if "member_name" not in l or not l["member_name"]:
-            member = await db["members"].find_one({"member_id": l.get("member_id")})
-            if member:
-                l["member_name"] = member.get("full_name", l.get("member_id"))
-                l["member_phone"] = member.get("phone", "")
+            mid = l.get("member_id")
+            m_info = member_details.get(mid)
+            if m_info:
+                l["member_name"] = m_info["full_name"]
+                l["member_phone"] = m_info["phone"]
+            else:
+                l["member_name"] = mid or "Unknown"
+                l["member_phone"] = ""
     return logs
+
 
 @router.post("/admin/reset-database")
 async def reset_database():
@@ -594,15 +625,29 @@ async def member_checkin(member_id: str) -> Any:
         "check_in_time": datetime.now(timezone.utc)
     }
     await db["attendance"].insert_one(attendance)
+
+    push_token = member.get("push_token")
+    if push_token:
+        from services.notifications import send_push_notification
+        import asyncio
+        # Run notification request asynchronously to avoid blocking API response
+        asyncio.create_task(
+            send_push_notification(
+                expo_token=push_token,
+                title="Attendance Marked 📍",
+                body=f"Hi {member['full_name']}, you checked in successfully at {datetime.now(timezone.utc).strftime('%I:%M %p')}!"
+            )
+        )
+
     return {"message": f"Checked in {member['full_name']}"}
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class EditMemberPayload(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[int] = Field(None, le=999)
     weight: Optional[float] = None
     gender: Optional[str] = None
     daily_hours: Optional[int] = None
@@ -619,6 +664,8 @@ class EditMemberPayload(BaseModel):
     plan_duration_months: Optional[int] = None
     plan_name: Optional[str] = None
     status: Optional[str] = None
+    photo_url: Optional[str] = None
+
 
 @router.put("/{member_id}")
 async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
@@ -788,6 +835,18 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "type": "Renewal"
     }
     await db["payments"].insert_one(payment_log)
+    
+    push_token = member.get("push_token")
+    if push_token:
+        from services.notifications import send_push_notification
+        import asyncio
+        asyncio.create_task(
+            send_push_notification(
+                expo_token=push_token,
+                title="Membership Renewed 🎉",
+                body=f"Hi {member['full_name']}, your membership was successfully renewed until {new_due_date.strftime('%d-%m-%Y')}! Amount Paid: ₹{payload.amount_paid if payload.amount_paid is not None else payload.amount}."
+            )
+        )
     
     updated_member = await db["members"].find_one({"_id": member["_id"]})
     updated_member["_id"] = str(updated_member["_id"])
@@ -1015,4 +1074,28 @@ async def delete_member(member_id: str) -> Any:
     
     return {"message": "Member and all related data deleted successfully"}
 
-# (export/csv and import/csv routes moved above /{member_id} — see above)
+@router.post("/{member_id}/push-token")
+async def update_member_push_token(member_id: str, payload: dict) -> Any:
+    db = get_database()
+    push_token = payload.get("push_token")
+    if not push_token:
+        raise HTTPException(status_code=400, detail="push_token is required")
+        
+    member = None
+    if len(member_id) == 24:
+        try:
+            member = await db["members"].find_one({"_id": ObjectId(member_id)})
+        except: pass
+    if not member:
+        member = await db["members"].find_one({"member_id": member_id})
+    if not member:
+        member = await db["members"].find_one({"_id": member_id})
+        
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+        
+    await db["members"].update_one(
+        {"_id": member["_id"]},
+        {"$set": {"push_token": push_token}}
+    )
+    return {"status": "success", "message": "Push token updated successfully"}

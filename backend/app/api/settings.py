@@ -40,6 +40,26 @@ async def get_settings(request: Request) -> Any:
                     plan_expiry_date = expiry.strftime("%Y-%m-%d")
                     days_left = (expiry - datetime.now(timezone.utc)).days
                     plan_days_left = days_left if days_left >= 0 else 0
+                    
+                    # Admin Plan Expiry Alert (starts 3 days before expiry)
+                    if plan_days_left is not None and plan_days_left <= 3 and plan_days_left > 0:
+                        push_token = gym_info.get("push_token")
+                        last_notified = gym_info.get("last_notified_expiry")
+                        if push_token and last_notified != plan_expiry_date:
+                            from services.notifications import send_push_notification
+                            import asyncio
+                            asyncio.create_task(
+                                send_push_notification(
+                                    expo_token=push_token,
+                                    title="Your App Plan is Expiring! ⚠️",
+                                    body=f"Hi {gym_info.get('owner_name')}, only {plan_days_left} days are left for your subscription plan. Please renew soon to avoid service suspension!"
+                                )
+                            )
+                            # Record notification status
+                            await super_admin_db["gyms"].update_one(
+                                {"gym_id": gym_id},
+                                {"$set": {"last_notified_expiry": plan_expiry_date}}
+                            )
 
     if not settings:
         if 'default_settings' not in locals():
@@ -70,3 +90,19 @@ async def update_settings(settings_in: GymSettings) -> Any:
     )
     
     return settings_dict
+
+@router.post("/push-token")
+async def update_gym_push_token(request: Request, payload: dict) -> Any:
+    gym_id = request.headers.get("X-Tenant-ID")
+    if not gym_id or gym_id == "super_admin":
+        raise HTTPException(status_code=400, detail="Invalid or missing tenant ID")
+        
+    push_token = payload.get("push_token")
+    if not push_token:
+        raise HTTPException(status_code=400, detail="push_token is required")
+        
+    await super_admin_db["gyms"].update_one(
+        {"gym_id": gym_id},
+        {"$set": {"push_token": push_token}}
+    )
+    return {"status": "success", "message": "Admin push token updated successfully"}

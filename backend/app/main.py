@@ -95,6 +95,13 @@ async def startup_db_client():
     except Exception as e:
         print(f"Could not connect to MongoDB: {e}")
         
+    # Initialize indexes for the super admin database on startup
+    try:
+        from database import create_indexes_async, super_admin_db
+        asyncio.create_task(create_indexes_async(super_admin_db))
+    except Exception as e:
+        print(f"Failed to create indexes for super admin db on startup: {e}")
+        
     # Start the keep-alive background task
     asyncio.create_task(keep_alive_task())
 

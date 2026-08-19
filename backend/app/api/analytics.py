@@ -214,26 +214,57 @@ async def get_member_growth(year: int = None):
     s   = datetime(yr, 1, 1, tzinfo=timezone.utc)
     e   = datetime(yr + 1, 1, 1, tzinfo=timezone.utc)
 
-    pipeline = [
-        {"$match": {"created_at": {"$gte": s, "$lt": e}}},
+    # 1. New Members (from members collection based on joining_date)
+    new_pipeline = [
+        {"$match": {
+            "joining_date": {"$gte": s, "$lt": e}
+        }},
         {"$group": {
-            "_id": {
-                "month": {"$month": "$created_at"},
-                "category": {"$ifNull": ["$category", "New"]},
-            },
+            "_id": {"month": {"$month": "$joining_date"}},
             "count": {"$sum": 1},
         }},
     ]
-    rows = await db["members"].aggregate(pipeline).to_list(100)
+    new_rows = await db["members"].aggregate(new_pipeline).to_list(100)
+
+    # Fallback to created_at if joining_date is missing
+    new_pipeline_fallback = [
+        {"$match": {
+            "joining_date": {"$exists": False},
+            "created_at": {"$gte": s, "$lt": e}
+        }},
+        {"$group": {
+            "_id": {"month": {"$month": "$created_at"}},
+            "count": {"$sum": 1},
+        }},
+    ]
+    new_fallback_rows = await db["members"].aggregate(new_pipeline_fallback).to_list(100)
+
+    # 2. Renewals (from payments collection based on start_date)
+    renewal_pipeline = [
+        {"$match": {
+            "type": "Renewal",
+            "start_date": {"$gte": s, "$lt": e}
+        }},
+        {"$group": {
+            "_id": {"month": {"$month": "$start_date"}},
+            "count": {"$sum": 1},
+        }},
+    ]
+    renewal_rows = await db["payments"].aggregate(renewal_pipeline).to_list(100)
 
     monthly: Dict[int, Dict] = {i: {"month": i, "new": 0, "renewal": 0} for i in range(1, 13)}
-    for r in rows:
+    
+    for r in new_rows:
         m = r["_id"]["month"]
-        cat = (r["_id"]["category"] or "New").lower()
-        if "renewal" in cat:
-            monthly[m]["renewal"] += r["count"]
-        else:
-            monthly[m]["new"] += r["count"]
+        if m in monthly: monthly[m]["new"] += r["count"]
+        
+    for r in new_fallback_rows:
+        m = r["_id"]["month"]
+        if m in monthly: monthly[m]["new"] += r["count"]
+
+    for r in renewal_rows:
+        m = r["_id"]["month"]
+        if m in monthly: monthly[m]["renewal"] += r["count"]
 
     return list(monthly.values())
 
@@ -565,26 +596,54 @@ async def get_insights():
 
     # ── Churn risk: active but absent 30+ days ────────────────────────────────
     thirty_days_ago = now - timedelta(days=30)
-    active_members  = await db["members"].find({"status": "active"}).to_list(1000)
+    active_members  = await db["members"].find({"status": "active"}).to_list(5000)
+
+    # Fetch latest check-in time for all members using a single aggregation query
+    pipeline = [
+        {"$group": {
+            "_id": "$member_id",
+            "last_check_in": {"$max": "$check_in_time"}
+        }}
+    ]
+    cursor = db["attendance"].aggregate(pipeline)
+    att_results = await cursor.to_list(length=10000)
+    
+    last_att_map = {}
+    for r in att_results:
+        mid = r.get("_id")
+        if mid:
+            last_att_map[str(mid)] = r.get("last_check_in")
 
     churn_risk = []
     for m in active_members:
-        mid = str(m.get("member_id") or m.get("_id", ""))
-        last_att = await db["attendance"].find_one(
-            {"member_id": {"$in": [mid, m.get("member_id")]}},
-            sort=[("check_in_time", -1)]
-        )
-        if not last_att or last_att.get("check_in_time", now) < thirty_days_ago:
-            last_seen = last_att.get("check_in_time") if last_att else None
-            days_absent = (now - last_seen).days if last_seen else None
+        mid_str = str(m.get("_id", ""))
+        member_id = m.get("member_id")
+        
+        last_seen = last_att_map.get(mid_str)
+        if not last_seen and member_id:
+            last_seen = last_att_map.get(member_id)
+            
+        if last_seen:
+            last_seen_aware = last_seen.replace(tzinfo=timezone.utc) if last_seen.tzinfo is None else last_seen
+            is_churn = last_seen_aware < thirty_days_ago
+        else:
+            last_seen_aware = None
+            is_churn = True
+            
+        if is_churn:
+            days_absent = (now - last_seen_aware).days if last_seen_aware else None
             churn_risk.append({
-                "_id": str(m["_id"]),
+                "_id": mid_str,
                 "full_name": m.get("full_name", ""),
                 "phone": m.get("phone", ""),
                 "days_absent": days_absent,
                 "next_due_date": m.get("next_due_date").isoformat() if m.get("next_due_date") else None,
             })
+            
+    # Sort churn risk: put members with higher absence days first, then members with None (never checked in)
+    churn_risk.sort(key=lambda x: (x["days_absent"] is not None, x["days_absent"]), reverse=True)
     churn_risk = churn_risk[:20]  # top 20
+
 
     # ── Best month this year ──────────────────────────────────────────────────
     yr_start = datetime(now.year, 1, 1, tzinfo=timezone.utc)

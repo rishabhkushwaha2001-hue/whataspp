@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "666432862723",
+    "project_id": "whatasppnotifications",
+    "storage_bucket": "whatasppnotifications.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666432862723:android:f4cca333a83a8bd2a62c36",
+        "android_client_info": {
+          "package_name": "com.atheron.whatsappnotifications"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUTxg_DvNX-WYe5njilS_BE7Bj-vXrNyk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

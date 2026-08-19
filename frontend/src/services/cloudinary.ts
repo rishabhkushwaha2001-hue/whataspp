@@ -1,4 +1,11 @@
-export const uploadToCloudinary = async (imageUri: string, cloudName: string, uploadPreset: string): Promise<string | null> => {
+const DEFAULT_CLOUD_NAME = 'dtyyymnny';
+const DEFAULT_UPLOAD_PRESET = 'ml_default';
+
+export const uploadToCloudinary = async (
+  imageUri: string, 
+  cloudName: string = DEFAULT_CLOUD_NAME, 
+  uploadPreset: string = DEFAULT_UPLOAD_PRESET
+): Promise<string | null> => {
   try {
     const data = new FormData();
     const filename = imageUri.split('/').pop() || 'photo.jpg';
@@ -30,3 +37,4 @@ export const uploadToCloudinary = async (imageUri: string, cloudName: string, up
     return null;
   }
 };
+

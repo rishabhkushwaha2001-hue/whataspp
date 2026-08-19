@@ -76,15 +76,19 @@ export function useAppAlert() {
     setVisible(true);
   }, []);
 
+  const stateRef = React.useRef({ config, visible, hideAlert });
+  stateRef.current = { config, visible, hideAlert };
+
   /** Render this component once at the bottom of your screen's JSX */
-  function AlertModal() {
+  const AlertModal = useCallback(() => {
+    const { config, visible, hideAlert } = stateRef.current;
     if (!config) return null;
     return React.createElement(AppAlertModal, {
       visible,
       onClose: hideAlert,
       ...config,
     });
-  }
+  }, []);
 
   return { showAlert, showSuccess, showError, showWarning, showConfirm, AlertModal, hideAlert };
 }

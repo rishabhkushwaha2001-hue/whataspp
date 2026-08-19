@@ -4,6 +4,7 @@ import { useTheme, spacing, borderRadius } from '../../src/theme/theme';
 import { GlassCard } from '../../src/components/GlassCard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { syncPushTokenWithBackend } from '../../src/services/notifications';
 
 export default function StudentDashboard() {
   const { colors } = useTheme();
@@ -42,6 +43,8 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     loadData();
+    // Register device for push notifications
+    syncPushTokenWithBackend().catch((err) => console.warn('Notification registration failed:', err));
   }, []);
 
   return (

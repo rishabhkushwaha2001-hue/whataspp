@@ -52,6 +52,24 @@ async def get_todays_reminders(
                     dob_month, dob_day = dt_ist.month, dt_ist.day
 
                 if dob_month == today_month and dob_day == today_day:
+                    push_token = m.get("push_token")
+                    current_year = now_ist.year
+                    last_bday_notified = m.get("last_birthday_notified_year")
+                    if push_token and last_bday_notified != current_year:
+                        from services.notifications import send_push_notification
+                        import asyncio
+                        asyncio.create_task(
+                            send_push_notification(
+                                expo_token=push_token,
+                                title="Happy Birthday! 🎂🎉",
+                                body=f"Happy Birthday {m.get('full_name')}! Wishing you a fantastic day and a great year ahead! 💪"
+                            )
+                        )
+                        await db["members"].update_one(
+                            {"_id": m["_id"]},
+                            {"$set": {"last_birthday_notified_year": current_year}}
+                        )
+
                     birthday_members.append({
                         "_id":       str(m["_id"]),
                         "full_name": m.get("full_name", ""),
@@ -80,6 +98,26 @@ async def get_todays_reminders(
         due_ist = due + timedelta(hours=5, minutes=30) if due else None
         days_left = (due_ist.date() - now_ist.date()).days if due_ist else 0
         urgency = "high" if days_left <= 2 else "medium" if days_left <= 4 else "low"
+        
+        # Trigger automatic push notification alert if 5 or fewer days are left
+        push_token = m.get("push_token")
+        if push_token and days_left <= 5 and days_left > 0:
+            last_notified = m.get("last_notified_due_date")
+            if last_notified != due:
+                from services.notifications import send_push_notification
+                import asyncio
+                asyncio.create_task(
+                    send_push_notification(
+                        expo_token=push_token,
+                        title="Membership Expiring Soon! ⏰",
+                        body=f"Hi {m.get('full_name')}, your membership plan will expire in {days_left} days. Please renew to keep your slot active!"
+                    )
+                )
+                await db["members"].update_one(
+                    {"_id": m["_id"]},
+                    {"$set": {"last_notified_due_date": due}}
+                )
+
         expiring_members.append({
             "_id":          str(m["_id"]),
             "full_name":    m.get("full_name", ""),
@@ -120,6 +158,26 @@ async def get_todays_reminders(
         due_ist = due + timedelta(hours=5, minutes=30) if due else None
         days_overdue = max(0, (now_ist.date() - due_ist.date()).days) if due_ist else 0
         is_today = (days_overdue == 0)
+        
+        # Trigger push notification if membership expired today
+        push_token = m.get("push_token")
+        if push_token and is_today:
+            last_expired_notified = m.get("last_expired_notified_due_date")
+            if last_expired_notified != due:
+                from services.notifications import send_push_notification
+                import asyncio
+                asyncio.create_task(
+                    send_push_notification(
+                        expo_token=push_token,
+                        title="Membership Expired! ❌",
+                        body=f"Hi {m.get('full_name')}, your membership plan expired today. Please renew to continue your training!"
+                    )
+                )
+                await db["members"].update_one(
+                    {"_id": m["_id"]},
+                    {"$set": {"last_expired_notified_due_date": due}}
+                )
+
         overdue_members.append({
             "_id":           mid,
             "full_name":     m.get("full_name", ""),

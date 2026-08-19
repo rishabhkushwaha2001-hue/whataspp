@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  ActivityIndicator, Linking, RefreshControl, ScrollView, Dimensions,
+  ActivityIndicator, Linking, RefreshControl, ScrollView, Dimensions, Image, Platform, Modal,
 } from 'react-native';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,13 +33,14 @@ export const MembersScreen = () => {
   const [showRenewModal, setShowRenewModal] = useState(false);
   const [gymName, setGymName] = useState('Gym');
   const [businessType, setBusinessType] = useState('gym');
+  const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
   const [enableHours, setEnableHours] = useState(false);
   const [renewalTemplate, setRenewalTemplate] = useState<string | null>(null);
 
   const { data: membersRaw, loading, refreshing, refresh: refreshMembers } = useCachedFetch<any[]>('members', '/members/');
   const members: any[] = Array.isArray(membersRaw) ? membersRaw : [];
 
-  const isInitialLoading = loading || membersRaw === null || (loading && members.length === 0);
+  const isInitialLoading = loading && (membersRaw === null || members.length === 0);
 
   const filteredMembers = useMemo(() => {
     const safeData = Array.isArray(members) ? members : [];
@@ -182,9 +183,18 @@ export const MembersScreen = () => {
         style={[styles.card, { marginBottom: spacing.m }]}
       >
         {/* Avatar */}
-        <View style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40` }]}>
-          <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
-        </View>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => setZoomImageUri(item.photo_url)}
+          disabled={!item.photo_url}
+          style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40`, overflow: 'hidden' }]}
+        >
+          {item.photo_url ? (
+            <Image source={{ uri: item.photo_url }} style={{ width: '100%', height: '100%' }} />
+          ) : (
+            <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+          )}
+        </TouchableOpacity>
 
         {/* Main content */}
         <View style={styles.cardBody}>
@@ -432,6 +442,18 @@ export const MembersScreen = () => {
           )}
         />
       )}
+
+      {/* Image Zoom Modal */}
+      <Modal visible={!!zoomImageUri} transparent animationType="fade" onRequestClose={() => setZoomImageUri(null)}>
+        <TouchableOpacity activeOpacity={1} style={styles.zoomContainer} onPress={() => setZoomImageUri(null)}>
+          <View style={styles.zoomCloseBtn}>
+            <FontAwesome name="times" size={20} color="#fff" />
+          </View>
+          {zoomImageUri && (
+            <Image source={{ uri: zoomImageUri }} style={styles.zoomImage} resizeMode="contain" />
+          )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -562,4 +584,31 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   emptyIcon: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
   emptySubtitle: { fontSize: 14, color: colors.textMuted },
+
+  // Zoom styles
+  zoomContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  zoomCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 25,
+    zIndex: 999,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: {
+    width: Dimensions.get('window').width * 0.95,
+    height: Dimensions.get('window').width * 0.95,
+    borderRadius: 16,
+  },
 });

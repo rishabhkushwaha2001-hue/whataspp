@@ -16,7 +16,7 @@ class MemberCreate(BaseModel):
     plan_name: Optional[str] = "Custom"
     applied_offer_name: Optional[str] = None
     plan_type: str = "Monthly" # Monthly, Quarterly, Half-Yearly, Yearly, Custom
-    age: Optional[int] = None
+    age: Optional[int] = Field(None, le=999)
     weight: Optional[float] = None
     trainer_assigned: Optional[str] = "General"
     payment_mode: Optional[str] = "Cash"

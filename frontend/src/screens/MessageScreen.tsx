@@ -16,6 +16,10 @@ import { fetchMessageTemplates, buildJoiningMessage, getDefaultTemplates } from 
 import { invalidateCache } from '../hooks/useDataStore';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadToCloudinary } from '../services/cloudinary';
+import { Alert } from 'react-native';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 // Utilities for time formatting
 const getHoursDifference = (startH: string, startAmPm: string, endH: string, endAmPm: string) => {
@@ -81,6 +85,8 @@ export const MessageScreen = () => {
   // State
   const [step, setStep] = useState(1); // 1: Plan, 2: Details, 3: Payment, 4: Success
   const [searchPlan, setSearchPlan] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
   
   // Member Details State
   const [name, setName] = useState('');
@@ -108,6 +114,62 @@ export const MessageScreen = () => {
   const [timingEndHour, setTimingEndHour] = useState('');
   const [timingEndAmPm, setTimingEndAmPm] = useState('PM');
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+
+  // Custom photo picker sheet is inlined directly inside JSX below
+
+  const handlePickImage = async (useCamera: boolean) => {
+    try {
+      if (useCamera) {
+        const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+          return;
+        }
+      } else {
+        const libraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (libraryStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Media library permission is required to pick photos.');
+          return;
+        }
+      }
+
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.2,
+      };
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync(pickerOptions)
+        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (result.canceled) return;
+
+      const rawUri = result.assets[0].uri;
+      setPhotoUploading(true);
+
+      // Force resize to 300x300 pixels and compress to 50% quality (safely yields around 25-35 KB file sizes!)
+      const manipulatedResult = await ImageManipulator.manipulateAsync(
+        rawUri,
+        [{ resize: { width: 300, height: 300 } }],
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const uploadedUrl = await uploadToCloudinary(manipulatedResult.uri);
+      if (uploadedUrl) {
+        setPhotoUrl(uploadedUrl);
+      } else {
+        Alert.alert('Upload Failed', 'Failed to upload photo to Cloudinary.');
+      }
+    } catch (err) {
+      console.error('Error selecting photo:', err);
+      Alert.alert('Error', 'Failed to pick or capture photo.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
   const [expiryDate, setExpiryDate] = useState(getNextMonthDate(new Date().toISOString().split('T')[0]));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerType, setDatePickerType] = useState<'joining' | 'expiry' | 'dob'>('joining');
@@ -367,8 +429,11 @@ export const MessageScreen = () => {
       }
 
       let welcomeMsg = '';
+      const parsedAmountPaid = paymentStatus === 'Partial'
+        ? (parseFloat(amountPaid) || 0)
+        : (paymentStatus === 'Pending' ? 0 : parsedAmount);
+
       if (!isManual) {
-        const parsedAmountPaid = paymentStatus === 'Partial' && amountPaid && parseFloat(amountPaid) > 0 ? parseFloat(amountPaid) : undefined;
         welcomeMsg = buildJoiningMessage(joiningMsgTemplate, businessType, {
           name, phone: finalPhone, date: new Date(expiryDate).toLocaleDateString(),
           joining_date: new Date(joiningDate).toLocaleDateString(), fees: amount, amountPaid: parsedAmountPaid,
@@ -393,7 +458,7 @@ export const MessageScreen = () => {
         weight: weight && !isNaN(parseFloat(weight)) ? parseFloat(weight) : undefined,
         date_of_birth: dateOfBirth ? new Date(dateOfBirth).toISOString() : undefined,
         payment_mode: paymentMode,
-        amount_paid: paymentStatus === 'Partial' && amountPaid && parseFloat(amountPaid) > 0 ? parseFloat(amountPaid) : (paymentStatus === 'Pending' ? 0 : parsedAmount),
+        amount_paid: parsedAmountPaid,
         notes: notes || '',
         category: isManual ? "Manual" : "New",
         daily_hours: (enableHours && dailyHours) ? parseInt(dailyHours) : undefined,
@@ -404,6 +469,7 @@ export const MessageScreen = () => {
         plan_name: plans.find(p => p._id === selectedPlanId)?.name || 'Custom',
         applied_offer_name: selectedOffer?.name || null,
         trainer_assigned: selectedTrainer || "General Coach",
+        photo_url: photoUrl || undefined,
       };
 
       await api.post('/members/', enrollmentData);
@@ -429,7 +495,7 @@ export const MessageScreen = () => {
   };
 
   const clearForm = () => {
-    setName(''); setPhone(''); setAmount(''); setAmountPaid(''); setAge(''); setWeight('');
+    setName(''); setPhone(''); setAmount(''); setAmountPaid(''); setAge(''); setWeight(''); setHeight('');
     setAddress(''); setDateOfBirth('');
     setAadhaar(''); setNotes(''); 
     setDailyHours(''); 
@@ -439,6 +505,13 @@ export const MessageScreen = () => {
     const todayStr = new Date().toISOString().split('T')[0];
     setJoiningDate(todayStr); setExpiryDate(getNextMonthDate(todayStr));
     setWelcomeMsgFinal('');
+    setSelectedPlanId('custom');
+    setSelectedOffer(null);
+    setBaseAmount('');
+    setSelectedTrainer('General Coach');
+    setShowReviewModal(false);
+    setShowPlanTooltip(false);
+    setPhotoUrl('');
   };
 
   // UI Components
@@ -789,6 +862,29 @@ export const MessageScreen = () => {
       <Text style={styles.stepSubtitle}>Personal details and contact info</Text>
 
       <GlassCard style={{ ...(styles.card as any), padding: 20 }}>
+        {/* Profile Photo Capture */}
+        <View style={{ alignItems: 'center', marginBottom: 20 }}>
+          <TouchableOpacity onPress={() => setPhotoModalVisible(true)} activeOpacity={0.8} style={styles.photoContainer}>
+            {photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={styles.photo} />
+            ) : (
+              <View style={[styles.photoPlaceholder, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+                <FontAwesome name="user" size={40} color={colors.textMuted} />
+              </View>
+            )}
+            {photoUploading ? (
+              <View style={styles.photoLoadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            ) : (
+              <View style={[styles.cameraIconContainer, { backgroundColor: colors.primary }]}>
+                <FontAwesome name="camera" size={10} color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, fontWeight: '600' }}>Add Profile Picture (Optional)</Text>
+        </View>
+
         <ModernInput label="Full Name *" value={name} onChangeText={setName} placeholder="e.g. Rahul Sharma" icon={<FontAwesome name="user-o" size={16} color={colors.textSecondary} />} />
         
         <ModernInput label="Phone Number *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="10 digit mobile" maxLength={10} icon={<FontAwesome name="phone" size={16} color={colors.textSecondary} />} />
@@ -814,7 +910,12 @@ export const MessageScreen = () => {
         </View>
 
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <View style={{ flex: 1 }}><ModernInput label="Age" value={age} onChangeText={setAge} keyboardType="numeric" placeholder="25" /></View>
+          <View style={{ flex: 1 }}><ModernInput label="Age" value={age} onChangeText={(val) => {
+            const cleanVal = val.replace(/[^0-9]/g, '');
+            if (cleanVal.length <= 3) {
+              setAge(cleanVal);
+            }
+          }} keyboardType="numeric" placeholder="25" maxLength={3} /></View>
           <View style={{ flex: 1 }}><ModernInput label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="numeric" placeholder="175" /></View>
           <View style={{ flex: 1 }}><ModernInput label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="numeric" placeholder="70" /></View>
         </View>
@@ -1389,6 +1490,89 @@ export const MessageScreen = () => {
       )}
 
       {renderStep4()}
+      
+      {/* Custom Profile Photo Options Sheet */}
+      <Modal visible={photoModalVisible} animationType="slide" transparent onRequestClose={() => setPhotoModalVisible(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Profile Picture</Text>
+              <TouchableOpacity onPress={() => setPhotoModalVisible(false)} style={{ padding: 8, backgroundColor: colors.surfaceLight, borderRadius: 20 }}>
+                <FontAwesome name="times" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Options */}
+            <View style={{ gap: 12 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 16,
+                  backgroundColor: colors.surfaceLight,
+                  borderRadius: 16,
+                  gap: 12
+                }}
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  handlePickImage(true);
+                }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${colors.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <FontAwesome name="camera" size={16} color={colors.primary} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Take Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 16,
+                  backgroundColor: colors.surfaceLight,
+                  borderRadius: 16,
+                  gap: 12
+                }}
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  handlePickImage(false);
+                }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${colors.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <FontAwesome name="image" size={16} color={colors.primary} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Choose from Gallery</Text>
+              </TouchableOpacity>
+
+              {photoUrl ? (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 16,
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.1)',
+                    gap: 12
+                  }}
+                  onPress={() => {
+                    setPhotoModalVisible(false);
+                    setPhotoUrl('');
+                  }}
+                >
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                    <FontAwesome name="trash" size={16} color="#EF4444" />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#EF4444' }}>Remove Photo</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={{ height: 20 }} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1475,4 +1659,47 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   manualSub: { color: colors.textSecondary, fontSize: 12, marginTop: 2 },
   
   backBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  photoContainer: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    position: 'relative',
+  },
+  photo: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+  },
+  photoPlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoLoadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 45,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
 });

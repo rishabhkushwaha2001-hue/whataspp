@@ -24,6 +24,10 @@ export default function TabLayout() {
       if (bType) setBusinessType(bType);
     };
     fetchType();
+
+    // Register admin device push token
+    const { syncPushTokenWithBackend } = require('../../src/services/notifications');
+    syncPushTokenWithBackend().catch((err: any) => console.warn('Admin notification registration failed:', err));
   }, []);
 
   return (

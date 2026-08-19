@@ -11,6 +11,9 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DropdownModal } from './DropdownModal';
 import { DatePickerModal } from './DatePickerModal';
 import { useAppAlert } from '../hooks/useAppAlert';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadToCloudinary } from '../services/cloudinary';
+import * as ImageManipulator from 'expo-image-manipulator';
 
 
 interface EditMemberModalProps {
@@ -96,6 +99,8 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
 
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   const [address, setAddress] = useState('');
   const [aadhaarNumber, setAadhaarNumber] = useState('');
@@ -208,6 +213,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       setWeight(member.weight ? String(member.weight) : '');
       setNotes(member.notes || '');
       setTrainerAssigned(member.trainer_assigned || 'General Coach');
+      setPhotoUrl(member.photo_url || '');
       
       const getLocalDateStr = (dateStr: string) => {
         if (!dateStr) return '';
@@ -286,6 +292,62 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
 
 
 
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+
+  // Custom photo picker sheet is inlined directly inside JSX below
+
+  const handlePickImage = async (useCamera: boolean) => {
+    try {
+      if (useCamera) {
+        const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+          return;
+        }
+      } else {
+        const libraryStatus = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (libraryStatus.status !== 'granted') {
+          Alert.alert('Permission Denied', 'Media library permission is required to pick photos.');
+          return;
+        }
+      }
+
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.2,
+      };
+
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync(pickerOptions)
+        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (result.canceled) return;
+
+      const rawUri = result.assets[0].uri;
+      setPhotoUploading(true);
+
+      // Force resize to 300x300 pixels and compress to 50% quality (safely yields around 25-35 KB file sizes!)
+      const manipulatedResult = await ImageManipulator.manipulateAsync(
+        rawUri,
+        [{ resize: { width: 300, height: 300 } }],
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      const uploadedUrl = await uploadToCloudinary(manipulatedResult.uri);
+      if (uploadedUrl) {
+        setPhotoUrl(uploadedUrl);
+      } else {
+        Alert.alert('Upload Failed', 'Failed to upload photo to Cloudinary.');
+      }
+    } catch (err) {
+      console.error('Error selecting photo:', err);
+      Alert.alert('Error', 'Failed to pick or capture photo.');
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!fullName.trim()) {
       Alert.alert('Missing Name', 'Name cannot be empty');
@@ -301,6 +363,7 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
         address: address.trim(),
         aadhaar_number: aadhaarNumber.trim(),
         trainer_assigned: trainerAssigned,
+        photo_url: photoUrl,
       };
       if (timingStr) payload.timing = timingStr;
       if (dailyHours) payload.daily_hours = parseInt(dailyHours);
@@ -369,6 +432,29 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
           </View>
 
           <KeyboardAwareScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" enableOnAndroid={true} extraScrollHeight={20}>
+            {/* Profile Photo */}
+            <View style={{ alignItems: 'center', marginBottom: spacing.l, marginTop: spacing.s }}>
+              <TouchableOpacity onPress={() => setPhotoModalVisible(true)} activeOpacity={0.8} style={styles.photoContainer}>
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.photo} />
+                ) : (
+                  <View style={[styles.photoPlaceholder, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+                    <FontAwesome name="user" size={48} color={colors.textMuted} />
+                  </View>
+                )}
+                {photoUploading ? (
+                  <View style={styles.photoLoadingOverlay}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                ) : (
+                  <View style={[styles.cameraIconContainer, { backgroundColor: colors.primary }]}>
+                    <FontAwesome name="camera" size={12} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 8, fontWeight: '600' }}>Profile Picture (Optional)</Text>
+            </View>
+
             {/* Basic Info */}
             <Text style={[styles.section, { color: colors.text }]}>👤 Basic Info</Text>
             <InputRow colors={colors} label="Full Name" value={fullName} onChangeText={setFullName} />
@@ -377,7 +463,12 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
             <InputRow colors={colors} label="Address" value={address} onChangeText={setAddress} />
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
-                <InputRow colors={colors} label="Age" value={age} onChangeText={setAge} keyboardType="numeric" />
+                <InputRow colors={colors} label="Age" value={age} onChangeText={(val: string) => {
+                  const cleanVal = val.replace(/[^0-9]/g, '');
+                  if (cleanVal.length <= 3) {
+                    setAge(cleanVal);
+                  }
+                }} keyboardType="numeric" maxLength={3} />
               </View>
               <View style={{ width: spacing.m }} />
               <View style={{ flex: 1 }}>
@@ -692,6 +783,89 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       />
 
       <AlertModal />
+      
+      {/* Custom Profile Photo Options Sheet */}
+      <Modal visible={photoModalVisible} animationType="slide" transparent onRequestClose={() => setPhotoModalVisible(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.text }}>Profile Picture</Text>
+              <TouchableOpacity onPress={() => setPhotoModalVisible(false)} style={{ padding: 8, backgroundColor: colors.surfaceLight, borderRadius: 20 }}>
+                <FontAwesome name="times" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Options */}
+            <View style={{ gap: 12 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 16,
+                  backgroundColor: colors.surfaceLight,
+                  borderRadius: 16,
+                  gap: 12
+                }}
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  handlePickImage(true);
+                }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${colors.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <FontAwesome name="camera" size={16} color={colors.primary} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Take Photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  padding: 16,
+                  backgroundColor: colors.surfaceLight,
+                  borderRadius: 16,
+                  gap: 12
+                }}
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  handlePickImage(false);
+                }}
+              >
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: `${colors.primary}15`, alignItems: 'center', justifyContent: 'center' }}>
+                  <FontAwesome name="image" size={16} color={colors.primary} />
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>Choose from Gallery</Text>
+              </TouchableOpacity>
+
+              {photoUrl ? (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    padding: 16,
+                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.1)',
+                    gap: 12
+                  }}
+                  onPress={() => {
+                    setPhotoModalVisible(false);
+                    setPhotoUrl('');
+                  }}
+                >
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                    <FontAwesome name="trash" size={16} color="#EF4444" />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#EF4444' }}>Remove Photo</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <View style={{ height: 20 }} />
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -736,5 +910,44 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#fde68a',
     marginTop: 4,
+  },
+  photoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    position: 'relative',
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  photoPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraIconContainer: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
 });

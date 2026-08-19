@@ -156,7 +156,7 @@ export const DashboardScreen = () => {
     return ((current - prev) / prev) * 100;
   };
 
-  if (loading) {
+  if (loading && (!stats || !insightsData)) {
     return (
       <View style={[styles.container, styles.content]}>
         <View style={styles.header}>

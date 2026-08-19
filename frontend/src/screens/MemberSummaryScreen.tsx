@@ -39,6 +39,7 @@ export const MemberSummaryScreen = () => {
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [showRenewModal, setShowRenewModal] = useState(false);
+  const [zoomModalVisible, setZoomModalVisible] = useState(false);
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [editPaymentState, setEditPaymentState] = useState<{ visible: boolean; payment: any }>({ visible: false, payment: null });
   const [showPlanTooltip, setShowPlanTooltip] = useState(false);
@@ -127,7 +128,7 @@ export const MemberSummaryScreen = () => {
     return { activePlan: active, upcomingPlans: upcoming };
   }, [sortedPayments]);
 
-  if (loading) return (
+  if (loading && !member) return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
@@ -356,7 +357,9 @@ export const MemberSummaryScreen = () => {
           >
             <View style={styles.profileTopRow}>
               {member.photo_url ? (
-                <Image source={{ uri: member.photo_url }} style={styles.avatarLargeImage} />
+                <TouchableOpacity onPress={() => setZoomModalVisible(true)} activeOpacity={0.9}>
+                  <Image source={{ uri: member.photo_url }} style={styles.avatarLargeImage} />
+                </TouchableOpacity>
               ) : (
                 <View style={[styles.avatarLarge, { backgroundColor: avatarColor }]}>
                   <Text style={styles.avatarText}>{initials}</Text>
@@ -763,6 +766,18 @@ export const MemberSummaryScreen = () => {
           refreshMember();
         }}
       />
+
+      {/* Image Zoom Modal */}
+      <Modal visible={zoomModalVisible} transparent animationType="fade" onRequestClose={() => setZoomModalVisible(false)}>
+        <TouchableOpacity activeOpacity={1} style={styles.zoomContainer} onPress={() => setZoomModalVisible(false)}>
+          <View style={styles.zoomCloseBtn}>
+            <FontAwesome name="times" size={20} color="#fff" />
+          </View>
+          {member?.photo_url && (
+            <Image source={{ uri: member.photo_url }} style={styles.zoomImage} resizeMode="contain" />
+          )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -902,4 +917,29 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   timelineSubtitle: { fontSize: 11, color: colors.textSecondary, fontWeight: '500' },
   partialAlert: { padding: 6, borderRadius: 4, marginTop: 8, alignItems: 'center' },
   partialAlertText: { fontSize: 11, fontWeight: '800' },
+  zoomContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  zoomCloseBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 25,
+    zIndex: 999,
+    padding: 10,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: {
+    width: Dimensions.get('window').width * 0.95,
+    height: Dimensions.get('window').width * 0.95,
+    borderRadius: 16,
+  },
 });

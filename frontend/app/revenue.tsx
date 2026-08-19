@@ -110,10 +110,26 @@ export default function RevenueScreen() {
   const filteredMembers = useMemo(() => {
     if (selectedMonth === null) return allMembers;
     return allMembers.filter((m: any) => {
-      const dateVal = m.joining_date || m.created_at;
-      if (!dateVal) return false;
-      const d = new Date(dateVal);
-      return d.getMonth() === selectedMonth;
+      // 1. New Join in this month
+      const jDateVal = m.joining_date || m.created_at;
+      if (jDateVal) {
+        const jd = new Date(jDateVal);
+        if (jd.getMonth() === selectedMonth && jd.getFullYear() === currentYear) {
+          return true;
+        }
+      }
+      
+      // 2. Renewal in this month
+      if (m.payment_history && m.payment_history.length > 0) {
+        return m.payment_history.some((p: any) => {
+          if ((p.type || '').toLowerCase() !== 'renewal') return false;
+          const sdVal = p.start_date || p.date;
+          if (!sdVal) return false;
+          const sd = new Date(sdVal);
+          return sd.getMonth() === selectedMonth && sd.getFullYear() === currentYear;
+        });
+      }
+      return false;
     });
   }, [allMembers, selectedMonth, currentYear]);
 
@@ -134,14 +150,32 @@ export default function RevenueScreen() {
   const newJoins = useMemo(
     () => selectedMonth === null
       ? (statsYear?.new_members_count ?? 0)
-      : filteredMembers.filter((m: any) => (m.category || '').toLowerCase() !== 'renewal').length,
+      : filteredMembers.filter((m: any) => {
+          const jDateVal = m.joining_date || m.created_at;
+          if (jDateVal) {
+            const jd = new Date(jDateVal);
+            return jd.getMonth() === selectedMonth && jd.getFullYear() === currentYear;
+          }
+          return false;
+      }).length,
     [selectedMonth, filteredMembers, statsYear],
   );
 
   const renewals = useMemo(
     () => selectedMonth === null
       ? (statsYear?.renewal_members_count ?? 0)
-      : filteredMembers.filter((m: any) => (m.category || '').toLowerCase() === 'renewal').length,
+      : filteredMembers.filter((m: any) => {
+          if (m.payment_history && m.payment_history.length > 0) {
+            return m.payment_history.some((p: any) => {
+              if ((p.type || '').toLowerCase() !== 'renewal') return false;
+              const sdVal = p.start_date || p.date;
+              if (!sdVal) return false;
+              const sd = new Date(sdVal);
+              return sd.getMonth() === selectedMonth && sd.getFullYear() === currentYear;
+            });
+          }
+          return false;
+      }).length,
     [selectedMonth, filteredMembers, statsYear],
   );
 
