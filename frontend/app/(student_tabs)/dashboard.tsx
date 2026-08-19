@@ -5,6 +5,7 @@ import { GlassCard } from '../../src/components/GlassCard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { syncPushTokenWithBackend } from '../../src/services/notifications';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function StudentDashboard() {
   const { colors } = useTheme();
@@ -48,10 +49,12 @@ export default function StudentDashboard() {
   }, []);
 
   return (
-    <ScrollView 
-      style={[styles.container, { backgroundColor: colors.background }]}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={{ padding: spacing.l, paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
+      >
       <View style={styles.header}>
         <Text style={[styles.greeting, { color: colors.textSecondary }]}>Welcome back,</Text>
         <Text style={[styles.name, { color: colors.text }]}>{name || 'Student'}</Text>
@@ -145,17 +148,14 @@ export default function StudentDashboard() {
         <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.m }}>No payment history available.</Text>
       )}
       
-      <View style={{ height: 100 }} />
-
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: spacing.l,
-    paddingTop: 60,
   },
   header: {
     marginBottom: spacing.xl,

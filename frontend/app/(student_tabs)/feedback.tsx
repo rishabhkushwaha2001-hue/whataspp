@@ -4,6 +4,7 @@ import { useTheme, spacing, borderRadius, shadows } from '../../src/theme/theme'
 import { api } from '../../src/services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GlassCard } from '../../src/components/GlassCard';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function StudentFeedback() {
   const { colors } = useTheme();
@@ -41,8 +42,9 @@ export default function StudentFeedback() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.header, { color: colors.text }]}>Submit Feedback</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <View style={styles.container}>
+        <Text style={[styles.header, { color: colors.text }]}>Submit Feedback</Text>
       
       <GlassCard style={styles.card}>
         <Text style={[styles.label, { color: colors.textSecondary }]}>Select Category</Text>
@@ -77,12 +79,13 @@ export default function StudentFeedback() {
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Submit Feedback</Text>}
         </TouchableOpacity>
       </GlassCard>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.l, paddingTop: 60 },
+  container: { flex: 1, padding: spacing.l },
   header: { fontSize: 24, fontWeight: 'bold', marginBottom: spacing.l },
   card: { padding: spacing.l, borderRadius: borderRadius.l },
   label: { fontSize: 14, fontWeight: 'bold', marginBottom: spacing.s, marginTop: spacing.m },

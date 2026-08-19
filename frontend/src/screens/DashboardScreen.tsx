@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Image, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, TouchableOpacity, Image, Modal, TextInput, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,6 +9,7 @@ import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { sendWhatsAppMessage } from '../services/whatsapp';
 import { useCachedParallelFetch, invalidateCache } from '../hooks/useDataStore';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { Skeleton } from '../components/Skeleton';
 
@@ -66,6 +67,79 @@ export const DashboardScreen = () => {
   const [alertConfig, setAlertConfig] = useState<any>({ visible: false });
   const [cachedGymName, setCachedGymName] = useState<string>('FitZone Gym');
   const [cachedAddress, setCachedAddress] = useState<string>('Premium CRM Analytics');
+
+  // Manual Check-in States
+  const [showCheckInModal, setShowCheckInModal] = useState(false);
+  const [membersList, setMembersList] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [checkInLoadingId, setCheckInLoadingId] = useState<string | null>(null);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [justCheckedInIds, setJustCheckedInIds] = useState<string[]>([]);
+
+  const openCheckIn = async () => {
+    setShowCheckInModal(true);
+    setLoadingMembers(true);
+    try {
+      const res = await api.get('/members/');
+      if (Array.isArray(res.data)) {
+        setMembersList(res.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load members for check-in:', e);
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const handleManualCheckIn = async (memberId: string) => {
+    setCheckInLoadingId(memberId);
+    try {
+      await api.post('/attendance/', { member_id: memberId });
+      
+      // Temporarily mark as checked in for green indicator
+      setJustCheckedInIds(prev => [...prev, memberId]);
+      
+      invalidateCache('members');
+      invalidateCache('dashboard_attendance');
+      await refreshDashboard();
+      
+      // Remove from list after 1.2s delay
+      setTimeout(() => {
+        setJustCheckedInIds(prev => prev.filter(id => id !== memberId));
+      }, 1200);
+    } catch (e: any) {
+      const errorMsg = e.response?.data?.detail || 'Failed to mark attendance';
+      setAlertConfig({
+        visible: true,
+        title: 'Error',
+        message: errorMsg,
+        onConfirm: () => setAlertConfig({ visible: false })
+      });
+    } finally {
+      setCheckInLoadingId(null);
+    }
+  };
+
+  const filteredCheckInMembers = React.useMemo(() => {
+    let list = membersList;
+    if (searchQuery) {
+      list = membersList.filter(m => {
+        const name = (m.full_name || '').toLowerCase();
+        const phone = (m.phone || '').toLowerCase();
+        const q = searchQuery.toLowerCase();
+        return name.includes(q) || phone.includes(q);
+      });
+    } else {
+      list = membersList.slice(0, 15);
+    }
+
+    // Filter out checked in members, except if they were just checked in in this session
+    return list.filter(m => {
+      const isCheckedIn = attendance.some((att: any) => att.member_id === m.member_id);
+      const isJustCheckedIn = justCheckedInIds.includes(m.member_id);
+      return !isCheckedIn || isJustCheckedIn;
+    });
+  }, [membersList, searchQuery, attendance, justCheckedInIds]);
 
   const fetchConfig = React.useMemo(() => [
     { key: `dashboard_${period}`, endpoint: `/members/stats/dashboard?period=${period}` },
@@ -202,12 +276,13 @@ export const DashboardScreen = () => {
   const expChangeStr = period === 'all' ? '' : `${Math.abs(expChangeVal).toFixed(1)}%`;
 
   return (
-    <ScrollView 
-      style={styles.container} 
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshDashboard()} tintColor={colors.primary} />}
-    >
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={[styles.content, { paddingTop: 10 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshDashboard()} tintColor={colors.primary} />}
+      >
       <CustomAlert 
         visible={alertConfig.visible}
         title={alertConfig.title}
@@ -515,33 +590,40 @@ export const DashboardScreen = () => {
       {/* Recent Check-ins */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Check-ins</Text>
-        <TouchableOpacity>
-          <Text style={styles.viewAllText}>View All</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+          <TouchableOpacity onPress={openCheckIn}>
+            <Text style={[styles.viewAllText, { color: colors.primary, fontWeight: '700' }]}>+ Check-in</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push({ pathname: '/(tabs)/members', params: { filter: 'All' } } as any)}>
+            <Text style={styles.viewAllText}>View All</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.listContainer}>
+      <View style={[styles.listContainer, { maxHeight: 260, paddingBottom: 0 }]}>
         {attendance.length === 0 ? (
           <Text style={styles.emptyText}>No one has checked in today.</Text>
         ) : (
-          attendance.slice(0, 4).map((att, idx) => (
-            <View key={idx} style={[styles.listItem, idx === Math.min(attendance.length, 4) - 1 && { borderBottomWidth: 0 }]}>
-              <View style={[styles.listAvatar, { backgroundColor: `${colors.primary}15` }]}>
-                <Text style={[styles.listAvatarInitials, { color: colors.primary }]}>
-                  {att.member_name ? att.member_name.substring(0, 2).toUpperCase() : 'M'}
-                </Text>
-              </View>
-              <View style={styles.listInfo}>
-                <Text style={styles.listName}>{att.member_name || att.member_id}</Text>
-                <Text style={styles.listSubtitle}>{att.member_phone}</Text>
-              </View>
-              <View style={styles.listAction}>
-                <Text style={styles.listTime}>{new Date(att.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-                <View style={styles.successBadge}>
-                  <FontAwesome name="check" size={10} color="#10B981" />
+          <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+            {attendance.map((att, idx) => (
+              <View key={idx} style={[styles.listItem, idx === attendance.length - 1 && { borderBottomWidth: 0 }]}>
+                <View style={[styles.listAvatar, { backgroundColor: `${colors.primary}15` }]}>
+                  <Text style={[styles.listAvatarInitials, { color: colors.primary }]}>
+                    {att.member_name ? att.member_name.substring(0, 2).toUpperCase() : 'M'}
+                  </Text>
+                </View>
+                <View style={styles.listInfo}>
+                  <Text style={styles.listName}>{att.member_name || att.member_id}</Text>
+                  <Text style={styles.listSubtitle}>{att.member_phone}</Text>
+                </View>
+                <View style={styles.listAction}>
+                  <Text style={styles.listTime}>{new Date(att.check_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  <View style={styles.successBadge}>
+                    <FontAwesome name="check" size={10} color="#10B981" />
+                  </View>
                 </View>
               </View>
-            </View>
-          ))
+            ))}
+          </ScrollView>
         )}
       </View>
 
@@ -697,8 +779,125 @@ export const DashboardScreen = () => {
         </View>
       </Modal>
 
+      {/* Manual Check-in Modal */}
+      <Modal
+        visible={showCheckInModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCheckInModal(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Manual Check-in</Text>
+              <TouchableOpacity onPress={() => setShowCheckInModal(false)}>
+                <FontAwesome name="times" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ paddingHorizontal: spacing.m, paddingVertical: spacing.s }}>
+              <View style={{
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                borderRadius: 12,
+                paddingHorizontal: 12,
+                height: 46, 
+                borderWidth: 1.5,
+                borderColor: colors.border,
+                backgroundColor: isDark ? '#111827' : '#F9FAFB'
+              }}>
+                <FontAwesome name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={{ flex: 1, color: colors.text }}
+                  placeholder="Search by name, phone or ID..."
+                  placeholderTextColor={colors.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery !== '' && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <FontAwesome name="times-circle" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {loadingMembers ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={colors.primary} size="large" />
+                <Text style={{ marginTop: 12, color: colors.textMuted }}>Loading members...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+                {filteredCheckInMembers.length > 0 ? (
+                  filteredCheckInMembers.map((member: any) => {
+                    const isCheckedIn = attendance.some((att: any) => att.member_id === member.member_id);
+                    const isLoading = checkInLoadingId === member.member_id;
+                    return (
+                      <View 
+                        key={member.member_id} 
+                        style={[
+                          styles.listItem, 
+                          { paddingHorizontal: spacing.s, paddingVertical: spacing.m }
+                        ]}
+                      >
+                        <View style={[styles.listAvatar, { backgroundColor: `${colors.primary}15` }]}>
+                          <Text style={[styles.listAvatarInitials, { color: colors.primary }]}>
+                            {member.full_name?.substring(0, 2).toUpperCase() || 'M'}
+                          </Text>
+                        </View>
+                        <View style={styles.listInfo}>
+                          <Text style={styles.listName}>{member.full_name}</Text>
+                          <Text style={styles.listSubtitle}>{member.phone}</Text>
+                        </View>
+                        <View style={styles.listAction}>
+                          {isCheckedIn ? (
+                            <View style={[styles.statusTag, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
+                              <Text style={{ color: '#10B981', fontSize: 11, fontWeight: '700' }}>Checked In</Text>
+                            </View>
+                          ) : (
+                            <TouchableOpacity
+                              style={{
+                                backgroundColor: colors.primary,
+                                paddingHorizontal: 12,
+                                paddingVertical: 6,
+                                borderRadius: borderRadius.s,
+                                minWidth: 75,
+                                alignItems: 'center'
+                              }}
+                              disabled={isLoading}
+                              onPress={() => handleManualCheckIn(member.member_id)}
+                            >
+                              {isLoading ? (
+                                <ActivityIndicator color="#fff" size="small" />
+                              ) : (
+                                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Check In</Text>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <Text style={{ color: colors.textMuted }}>No members found</Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <View style={{ height: 100 }} />
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 

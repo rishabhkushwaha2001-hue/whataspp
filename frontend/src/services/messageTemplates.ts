@@ -54,7 +54,7 @@ export const getDefaultTemplates = (businessType: string) => {
       renewal: `*{library_name} - MEMBERSHIP RENEWED 📚*\n\nDear *{name}*,\n\nYour library membership has been successfully renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n⏰ *Allotted Timings:* {hours} Hours/Day ({timing})\n🪑 *Assigned Seat:* {seat}\n📶 *Wi-Fi Details:* {wifi}\n💰 *Amount Paid:* ₹{fees}\n📅 *New Expiry Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nKeep reading, keep growing! 📖🚀`,
       reminder: `*{library_name} - RENEWAL REMINDER 🔔*\n\nDear *{name}* 📚,\n\nThis is a gentle reminder that your library membership is due for renewal.\n\n💰 *Pending Fees:* ₹{fees}\n📅 *Due Date:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nPlease renew your membership to continue accessing your assigned seat ({seat}) and Wi-Fi. Thank you! 🚀`
     };
-  } else if (businessType === 'general') {
+  } else if (businessType !== 'gym') {
     return {
       joining: `*{business_name} - SERVICE ACTIVATED ✅*\n\nHello *{name}*!\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Date:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for choosing {business_name}! 🙏`,
       renewal: `*{business_name} - PLAN RENEWED ✅*\n\nHello *{name}*! Your plan has been renewed.\n\n━━━━━━━━━━━━━━━━━━━━\n📅 *Renewed From:* {joining_date}\n⭐ *Plan:* {plan_name}\n💰 *Amount Paid:* ₹{fees}\n📅 *Valid Till:* {date}\n━━━━━━━━━━━━━━━━━━━━\n\nThank you for continuing with {business_name}! 🙏`,
@@ -247,15 +247,15 @@ export const buildRenewalMessage = (
 
   const header = businessType === 'library'
     ? `📚 *${gymUp}*`
-    : businessType === 'general'
-    ? `🏢 *${gymUp}*`
-    : `🏋️ *${gymUp}*`;
+    : businessType === 'gym'
+    ? `🏋️ *${gymUp}*`
+    : `🏢 *${gymUp}*`;
 
   const footer = businessType === 'library'
     ? `Keep reading, keep growing! 📖🚀`
-    : businessType === 'general'
-    ? `Thank you for continuing with us! 🙏`
-    : `Let's push your limits again! 💪🚀`;
+    : businessType === 'gym'
+    ? `Let's push your limits again! 💪🚀`
+    : `Thank you for continuing with us! 🙏`;
 
   return (
     `${header}\n` +
@@ -325,15 +325,15 @@ export const buildPaymentReceiptMessage = (
 
   const header = businessType === 'library'
     ? `📚 *${gymUp}*`
-    : businessType === 'general'
-    ? `🏢 *${gymUp}*`
-    : `🏋️ *${gymUp}*`;
+    : businessType === 'gym'
+    ? `🏋️ *${gymUp}*`
+    : `🏢 *${gymUp}*`;
 
   const footer = businessType === 'library'
     ? `Keep reading, keep growing! 📖`
-    : businessType === 'general'
-    ? `Thank you for your continued trust! 🙏`
-    : `Stay strong & crush your goals! 💪`;
+    : businessType === 'gym'
+    ? `Stay strong & crush your goals! 💪`
+    : `Thank you for your continued trust! 🙏`;
 
   return (
     `${header}\n` +
@@ -384,15 +384,15 @@ export const buildReminderMessage = (
   const gymUp = vars.gym.toUpperCase();
   const header = businessType === 'library'
     ? `📚 *${gymUp}*`
-    : businessType === 'general'
-    ? `🏢 *${gymUp}*`
-    : `🏋️ *${gymUp}*`;
+    : businessType === 'gym'
+    ? `🏋️ *${gymUp}*`
+    : `🏢 *${gymUp}*`;
 
   const footer = businessType === 'library'
     ? `Please renew soon to keep your seat! 📖`
-    : businessType === 'general'
-    ? `Please contact us for renewal. 🙏`
-    : `Don't break the momentum! See you at the gym! 💪`;
+    : businessType === 'gym'
+    ? `Don't break the momentum! See you at the gym! 💪`
+    : `Please contact us for renewal. 🙏`;
 
   const statusTitle = vars.isExpired ? `🚨 *MEMBERSHIP EXPIRED*` : `🔔 *RENEWAL REMINDER*`;
   const introText = vars.isExpired 

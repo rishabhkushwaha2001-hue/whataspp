@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Any
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from models.schemas import AttendanceBase, AttendanceInDB
 from database import get_database
 from bson import ObjectId
@@ -8,7 +8,13 @@ from bson import ObjectId
 router = APIRouter()
 
 @router.get("/", response_model=List[AttendanceInDB])
-async def get_attendance(date_str: str = None, db = Depends(get_database)):
+async def get_attendance(
+    date_str: str = None, 
+    start_date: str = None, 
+    end_date: str = None, 
+    member_id: str = None, 
+    db = Depends(get_database)
+):
     query = {}
     if date_str:
         try:
@@ -17,6 +23,21 @@ async def get_attendance(date_str: str = None, db = Depends(get_database)):
             query["check_in_time"] = {"$gte": start, "$lte": end}
         except ValueError:
             pass
+    elif start_date or end_date:
+        query["check_in_time"] = {}
+        if start_date:
+            try:
+                query["check_in_time"]["$gte"] = datetime.strptime(start_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, tzinfo=timezone.utc)
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                query["check_in_time"]["$lte"] = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+            except ValueError:
+                pass
+            
+    if member_id:
+        query["member_id"] = member_id
             
     cursor = db["attendance"].aggregate([
         {"$match": query},
@@ -32,8 +53,8 @@ async def get_attendance(date_str: str = None, db = Depends(get_database)):
         {"$unwind": {"path": "$member_info", "preserveNullAndEmptyArrays": True}},
         {
             "$addFields": {
-                "member_name": "$member_info.full_name",
-                "member_phone": "$member_info.phone"
+                "member_name": {"$ifNull": ["$member_info.full_name", "$member_name"]},
+                "member_phone": {"$ifNull": ["$member_info.phone", "$member_phone"]}
             }
         },
         {"$project": {"member_info": 0}}

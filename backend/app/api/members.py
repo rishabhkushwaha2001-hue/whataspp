@@ -334,7 +334,7 @@ async def get_dashboard_stats(period: str = 'all') -> Any:
     todays_collections = sum(float(p.get("amount", 0)) for p in today_payments)
     
     # Category Counts (Based on Period)
-    new_members_query = {"joining_date": {"$gte": start_of_period, "$lt": end_of_period}}
+    new_members_query = {"created_at": {"$gte": start_of_period, "$lt": end_of_period}}
     new_members = await db["members"].count_documents(new_members_query)
     
     # Fallback for members missing joining_date
@@ -418,7 +418,8 @@ async def get_today_attendance() -> Any:
                 }
 
     for l in logs:
-        l["id"] = str(l["_id"])
+        l["_id"] = str(l["_id"])
+        l["id"] = l["_id"]
         # Fetch member info if missing
         if "member_name" not in l or not l["member_name"]:
             mid = l.get("member_id")

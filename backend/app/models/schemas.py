@@ -74,6 +74,8 @@ class AttendanceBase(BaseModel):
 class AttendanceInDB(AttendanceBase):
     id: str = Field(alias="_id")
     photo_url: Optional[str] = None
+    member_name: Optional[str] = None
+    member_phone: Optional[str] = None
 
 class MemberInDB(MemberCreate):
     id: str = Field(alias="_id")

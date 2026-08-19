@@ -1,12 +1,14 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Modal, Linking, ActivityIndicator,
+  Dimensions, Modal, Linking, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useRouter } from 'expo-router';
 import { useCachedParallelFetch } from '../hooks/useDataStore';
+import { api } from '../services/api';
 import { Skeleton } from '../components/Skeleton';
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
@@ -240,6 +242,41 @@ export const ReportsScreen = () => {
 
   const curMo = `${selYear}-${String(selMonth + 1).padStart(2, '0')}`;
   const curYr = now.getFullYear();
+
+  // Attendance Search & Date Range Filters States
+  const [attSearch, setAttSearch] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState(curMo + '-01');
+  const getLastDay = (yrMo: string) => {
+    const [y, m] = yrMo.split('-').map(Number);
+    const d = new Date(y, m, 0).getDate();
+    return yrMo + '-' + String(d).padStart(2, '0');
+  };
+  const [endDateFilter, setEndDateFilter] = useState(getLastDay(curMo));
+  const [customLogs, setCustomLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const fetchCustomLogs = useCallback(async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await api.get(`/attendance/?start_date=${startDateFilter}&end_date=${endDateFilter}`);
+      if (Array.isArray(res.data)) {
+        setCustomLogs(res.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load custom attendance logs:', e);
+    } finally {
+      setLoadingLogs(false);
+    }
+  }, [startDateFilter, endDateFilter]);
+
+  useEffect(() => {
+    setStartDateFilter(curMo + '-01');
+    setEndDateFilter(getLastDay(curMo));
+  }, [curMo]);
+
+  useEffect(() => {
+    fetchCustomLogs();
+  }, [fetchCustomLogs]);
   const sd = startDateObj ? startDateObj.toISOString().split('T')[0] : '';
   const ed = endDateObj   ? endDateObj.toISOString().split('T')[0]   : '';
 
@@ -259,6 +296,7 @@ export const ReportsScreen = () => {
     { key: `an_growth_${curYr}`,    endpoint: `/analytics/member-growth?year=${curYr}` },
     { key: `an_expiry_${expiryDays}`, endpoint: `/analytics/expiry-alerts?days=${expiryDays}` },
     { key: `an_att_${curMo}`,       endpoint: `/analytics/attendance-stats?month=${curMo}` },
+    { key: `an_att_report_${curMo}`, endpoint: `/analytics/attendance-report?month=${curMo}` },
     { key: `an_plan_${curMo}`,      endpoint: `/analytics/plan-breakdown?month=${curMo}` },
     { key: `an_pl_${curYr}`,        endpoint: `/analytics/profit-loss?year=${curYr}` },
     { key: 'an_insights',           endpoint: '/analytics/insights' },
@@ -886,8 +924,226 @@ export const ReportsScreen = () => {
 
     return (
       <>
+        {/* Detailed Attendance Log */}
+        <SectionTitle color={colors.text} style={{ marginTop: 0 }}>Detailed Attendance Log</SectionTitle>
+        <Card colors={colors} style={{ marginBottom: spacing.m }}>
+          {/* Search Input */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+            <View style={{
+              flex: 1,
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              borderRadius: 12,
+              paddingHorizontal: 12,
+              height: 40, 
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: isDark ? '#111827' : '#F9FAFB'
+            }}>
+              <FontAwesome name="search" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+              <TextInput
+                style={{ flex: 1, color: colors.text, fontSize: 13 }}
+                placeholder="Search member name/phone..."
+                placeholderTextColor={colors.textMuted}
+                value={attSearch}
+                onChangeText={setAttSearch}
+              />
+            </View>
+          </View>
+          
+          {/* Date range inputs */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4 }}>From Date</Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 8,
+                  height: 38,
+                  color: colors.text,
+                  fontSize: 12,
+                  backgroundColor: isDark ? '#111827' : '#F9FAFB'
+                }}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                value={startDateFilter}
+                onChangeText={setStartDateFilter}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4 }}>To Date</Text>
+              <TextInput
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  paddingHorizontal: 8,
+                  height: 38,
+                  color: colors.text,
+                  fontSize: 12,
+                  backgroundColor: isDark ? '#111827' : '#F9FAFB'
+                }}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+                value={endDateFilter}
+                onChangeText={setEndDateFilter}
+              />
+            </View>
+            <TouchableOpacity 
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                height: 38,
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginTop: 18
+              }}
+              onPress={fetchCustomLogs}
+            >
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingLogs ? (
+            <View style={{ padding: 20, alignItems: 'center' }}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : (
+            <ScrollView 
+              style={{ maxHeight: 320 }} 
+              nestedScrollEnabled={true} 
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {(() => {
+                const filteredCustomLogs = customLogs.filter((log: any) => {
+                  if (!attSearch) return true;
+                  const q = attSearch.toLowerCase();
+                  const name = (log.member_name || '').toLowerCase();
+                  const phone = (log.member_phone || '').toLowerCase();
+                  return name.includes(q) || phone.includes(q);
+                });
+
+                const groupedLogs: Record<string, any[]> = {};
+                filteredCustomLogs.forEach((log: any) => {
+                  const dt = new Date(log.check_in_time);
+                  const dateKey = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                  if (!groupedLogs[dateKey]) {
+                    groupedLogs[dateKey] = [];
+                  }
+                  groupedLogs[dateKey].push(log);
+                });
+
+                const dateKeys = Object.keys(groupedLogs).sort((a, b) => {
+                  // Extract parts YYYY-MM-DD from en-GB format DD MMM YYYY if possible, or parse natively
+                  return new Date(b).getTime() - new Date(a).getTime();
+                });
+
+                if (dateKeys.length > 0) {
+                  return dateKeys.map((dateKey: string) => (
+                    <View key={dateKey} style={{ marginBottom: 16 }}>
+                      {/* Date Header Tag */}
+                      <View style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        backgroundColor: isDark ? '#1F2937' : '#EEF2F6', 
+                        paddingVertical: 6, 
+                        paddingHorizontal: 12, 
+                        borderRadius: 8,
+                        marginBottom: 8,
+                        gap: 6
+                      }}>
+                        <FontAwesome name="calendar" size={12} color={colors.primary} />
+                        <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>{dateKey}</Text>
+                        <View style={{ backgroundColor: `${colors.primary}15`, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 1, marginLeft: 'auto' }}>
+                          <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '700' }}>
+                            {groupedLogs[dateKey].length} Present
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Members list under this date */}
+                      {groupedLogs[dateKey].map((log: any, idx: number) => {
+                        const dt = new Date(log.check_in_time);
+                        const timeStr = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                        const displayName = log.member_name || "Guest Member";
+                        const displayPhone = log.member_phone || "No mobile number";
+                        
+                        // Dynamic initials
+                        const initials = displayName.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase() || 'M';
+                        const avatarBg = isDark ? 'rgba(99, 102, 241, 0.12)' : `${colors.primary}08`;
+
+                        return (
+                          <View 
+                            key={log._id || idx} 
+                            style={{ 
+                              flexDirection: 'row', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between', 
+                              paddingVertical: 12, 
+                              paddingHorizontal: 8,
+                              borderBottomWidth: 1, 
+                              borderBottomColor: colors.border 
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                              {/* Premium Initials Avatar */}
+                              <View style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 19,
+                                backgroundColor: avatarBg,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderWidth: 1,
+                                borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E8F0'
+                              }}>
+                                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>
+                                  {initials}
+                                </Text>
+                              </View>
+                              
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                                  {displayName}
+                                </Text>
+                                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>{displayPhone}</Text>
+                              </View>
+                            </View>
+                            
+                            {/* Time stamp tag */}
+                            <View style={{ 
+                              backgroundColor: isDark ? '#1F2937' : '#F3F4F6', 
+                              paddingHorizontal: 10, 
+                              paddingVertical: 4, 
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: colors.border
+                            }}>
+                              <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: '600' }}>{timeStr}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ));
+                } else {
+                  return (
+                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>No check-in records found for this query.</Text>
+                    </View>
+                  );
+                }
+              })()}
+            </ScrollView>
+          )}
+        </Card>
+
         {/* Summary KPIs */}
-        <View style={{ flexDirection: 'row', gap: spacing.m }}>
+        <View style={{ flexDirection: 'row', gap: spacing.m, marginTop: spacing.m }}>
           <View style={[kpiStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[kpiStyles.iconBox, { backgroundColor: '#8B5CF620' }]}>
               <FontAwesome name="calendar-check-o" size={16} color="#8B5CF6" />
@@ -905,7 +1161,7 @@ export const ReportsScreen = () => {
         </View>
 
         {peakDay && (
-          <Card colors={colors} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.s }}>
+          <Card colors={colors} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: spacing.s }}>
             <View>
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>Peak Day This Month</Text>
               <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginTop: 2 }}>
@@ -936,9 +1192,114 @@ export const ReportsScreen = () => {
             />
           ) : (
             <View style={{ height: 200, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: colors.textMuted }}>No attendance data this month</Text>
+              <Text style={{ color: colors.textMuted }}>No data available</Text>
             </View>
           )}
+        </Card>
+
+        {/* Member Standings Leaderboard */}
+        <SectionTitle color={colors.text} style={{ marginTop: spacing.xl }}>🏆 Member Attendance Leaderboard</SectionTitle>
+        <Card colors={colors} style={{ marginBottom: spacing.xl }}>
+          <ScrollView 
+            style={{ maxHeight: 280 }} 
+            nestedScrollEnabled={true} 
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+          >
+            {(() => {
+              const report = results?.[`an_att_report_${curMo}`] || [];
+              if (report.length > 0) {
+                const maxCount = Math.max(...report.map((r: any) => r.count), 1);
+                
+                return report.map((item: any, idx: number) => {
+                  const displayName = item.full_name || "Guest Member";
+                  const displayPhone = item.phone || "No mobile number";
+                  const initials = displayName.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase() || 'M';
+                  const pct = Math.min((item.count / maxCount) * 100, 100);
+
+                  return (
+                    <View 
+                      key={item.member_id || idx} 
+                      style={[
+                        { 
+                          paddingVertical: 14, 
+                          borderBottomWidth: 1, 
+                          borderBottomColor: colors.border 
+                        },
+                        idx === report.length - 1 && { borderBottomWidth: 0 }
+                      ]}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                          {/* Rank Badge */}
+                          <View style={{ 
+                            width: 24, 
+                            height: 24, 
+                            borderRadius: 12, 
+                            backgroundColor: idx === 0 ? '#F59E0B' : idx === 1 ? '#94A3B8' : idx === 2 ? '#B45309' : `${colors.primary}15`, 
+                            alignItems: 'center', 
+                            justifyContent: 'center' 
+                          }}>
+                            <Text style={{ 
+                              fontWeight: '800', 
+                              fontSize: 11, 
+                              color: idx <= 2 ? '#fff' : colors.primary 
+                            }}>
+                              {idx + 1}
+                            </Text>
+                          </View>
+                          
+                          {/* Avatar */}
+                          <View style={{
+                            width: 32,
+                            height: 32,
+                            borderRadius: 16,
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#EEF2F6',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }}>{initials}</Text>
+                          </View>
+
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
+                              {displayName}
+                            </Text>
+                            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+                              {displayPhone}
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        {/* Days Count badge */}
+                        <View style={{ 
+                          backgroundColor: `${colors.primary}12`, 
+                          borderRadius: 12, 
+                          paddingHorizontal: 12, 
+                          paddingVertical: 4 
+                        }}>
+                          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>
+                            {item.count} Days
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Progress Bar indicator */}
+                      <View style={{ height: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#EEF2F6', borderRadius: 2, marginTop: 10, overflow: 'hidden' }}>
+                        <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 2 }} />
+                      </View>
+                    </View>
+                  );
+                });
+              } else {
+                return (
+                  <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                    <Text style={{ color: colors.textMuted }}>No member check-in records for this month.</Text>
+                  </View>
+                );
+              }
+            })()}
+          </ScrollView>
         </Card>
       </>
     );
@@ -1795,7 +2156,11 @@ export const ReportsScreen = () => {
   ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={{ flex: 1 }}
+      >
       {/* Header */}
       <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -1849,7 +2214,8 @@ export const ReportsScreen = () => {
 
       {/* Month Picker Modal — rendered as absolute overlay */}
       <MonthPickerModal />
-    </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
@@ -1857,7 +2223,7 @@ const styles = StyleSheet.create({
   container:   { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingBottom: spacing.m, paddingHorizontal: spacing.l,
+    paddingTop: 10, paddingBottom: spacing.m, paddingHorizontal: spacing.l,
     borderBottomWidth: 1,
   },
   backBtn:     { width: 40, height: 40, justifyContent: 'center' },

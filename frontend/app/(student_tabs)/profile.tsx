@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../../src/theme/theme';
 import { GlassCard } from '../../src/components/GlassCard';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function StudentProfile() {
   const { colors } = useTheme();
@@ -23,8 +24,9 @@ export default function StudentProfile() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.header, { color: colors.text }]}>Profile</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+      <View style={styles.container}>
+        <Text style={[styles.header, { color: colors.text }]}>Profile</Text>
       
       <GlassCard style={styles.card}>
         <View style={styles.avatar}>
@@ -40,12 +42,13 @@ export default function StudentProfile() {
         </View>
         <Text style={[styles.actionText, { color: '#ef4444' }]}>Logout</Text>
       </TouchableOpacity>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.l, paddingTop: 60 },
+  container: { flex: 1, padding: spacing.l },
   header: { fontSize: 24, fontWeight: 'bold', marginBottom: spacing.l },
   card: { alignItems: 'center', padding: spacing.xl, marginBottom: spacing.xl },
   avatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#8b5cf6', alignItems: 'center', justifyContent: 'center', marginBottom: 15 },

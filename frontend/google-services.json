@@ -23,6 +23,25 @@
           "other_platform_oauth_client": []
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666432862723:android:3cef2b9902230b5ba62c36",
+        "android_client_info": {
+          "package_name": "com.mayankkush2001.gymmanagerwhatsapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUTxg_DvNX-WYe5njilS_BE7Bj-vXrNyk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
     }
   ],
   "configuration_version": "1"

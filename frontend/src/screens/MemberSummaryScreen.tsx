@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Image, Linking, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Image, Linking, Modal, Platform, TextInput, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import { CustomAlert } from '../components/CustomAlert';
@@ -44,6 +45,44 @@ export const MemberSummaryScreen = () => {
   const [editPaymentState, setEditPaymentState] = useState<{ visible: boolean; payment: any }>({ visible: false, payment: null });
   const [showPlanTooltip, setShowPlanTooltip] = useState(false);
   const [showTopPlanTooltip, setShowTopPlanTooltip] = useState(false);
+
+  // Member Attendance States & Fetcher
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [attStartDate, setAttStartDate] = useState('');
+  const [attEndDate, setAttEndDate] = useState('');
+
+  const fetchAttendanceLogs = async (start?: string, end?: string) => {
+    if (!member?.member_id) return;
+    setLoadingAttendance(true);
+    setShowAttendanceModal(true);
+
+    // Calculate current month date range as default if not provided
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    const firstDay = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDayVal = new Date(y, m, 0).getDate();
+    const lastDay = `${y}-${String(m).padStart(2, '0')}-${String(lastDayVal).padStart(2, '0')}`;
+
+    const sDate = start || firstDay;
+    const eDate = end || lastDay;
+
+    setAttStartDate(sDate);
+    setAttEndDate(eDate);
+
+    try {
+      const res = await api.get(`/attendance/?member_id=${member.member_id}&start_date=${sDate}&end_date=${eDate}`);
+      if (Array.isArray(res.data)) {
+        setAttendanceLogs(res.data);
+      }
+    } catch (e) {
+      console.warn('Failed to load attendance logs:', e);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
 
   const refreshMember = async () => {
     const cleanId = Array.isArray(id) ? id[0] : id;
@@ -322,7 +361,8 @@ export const MemberSummaryScreen = () => {
   const avatarColor = avatarColors[(member?.full_name?.charCodeAt(0) || 0) % avatarColors.length];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={[styles.container, { backgroundColor: 'transparent' }]}>
       <CustomAlert 
         visible={alertConfig.visible} title={alertConfig.title} message={alertConfig.message} type={alertConfig.type}
         showCancel={alertConfig.showCancel} confirmText={alertConfig.confirmText} cancelText={alertConfig.cancelText}
@@ -636,6 +676,7 @@ export const MemberSummaryScreen = () => {
               style={styles.quickActionCard}
               onPress={() => {
                 if (action.id === 'pay') setShowPaymentHistoryModal(true);
+                else if (action.id === 'att') fetchAttendanceLogs();
               }}
             >
               <View style={[styles.quickActionIcon, { backgroundColor: `${action.color}15` }]}>
@@ -662,6 +703,138 @@ export const MemberSummaryScreen = () => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Attendance History Modal */}
+      <Modal visible={showAttendanceModal} animationType="slide" transparent={true} onRequestClose={() => setShowAttendanceModal(false)}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={{ flex: 1, backgroundColor: colors.background }}
+        >
+          <View style={[styles.header, { paddingTop: Platform.OS === 'android' ? 40 : 16 }]}>
+            <TouchableOpacity onPress={() => setShowAttendanceModal(false)} style={styles.iconBtn}>
+              <FontAwesome name="arrow-left" size={16} color={colors.text} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Attendance Logs</Text>
+            <View style={{ width: 32 }} />
+          </View>
+
+          {loadingAttendance ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator color={colors.primary} size="large" />
+              <Text style={{ marginTop: 12, color: colors.textMuted }}>Loading attendance logs...</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{ padding: spacing.l }}>
+              {/* Date Filters Card */}
+              <View style={[styles.card, { padding: 16, marginBottom: 16 }]}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 10 }}>Filter Attendance Period</Text>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4 }}>From Date</Text>
+                    <TextInput
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        height: 38,
+                        color: colors.text,
+                        fontSize: 12,
+                        backgroundColor: isDark ? '#111827' : '#F9FAFB'
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                      value={attStartDate}
+                      onChangeText={setAttStartDate}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 4 }}>To Date</Text>
+                    <TextInput
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        height: 38,
+                        color: colors.text,
+                        fontSize: 12,
+                        backgroundColor: isDark ? '#111827' : '#F9FAFB'
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor={colors.textMuted}
+                      value={attEndDate}
+                      onChangeText={setAttEndDate}
+                    />
+                  </View>
+                  <TouchableOpacity 
+                    style={{
+                      backgroundColor: colors.primary,
+                      borderRadius: 8,
+                      paddingHorizontal: 12,
+                      height: 38,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      marginTop: 18
+                    }}
+                    onPress={() => fetchAttendanceLogs(attStartDate, attEndDate)}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>Apply</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {attendanceLogs.length === 0 ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <FontAwesome name="calendar-times-o" size={40} color={colors.textMuted} style={{ marginBottom: 16 }} />
+                  <Text style={{ color: colors.textMuted, fontSize: 16 }}>No attendance logs found for this period.</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={[styles.card, { padding: 16, marginBottom: 20 }]}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 }}>Attendance Summary</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>Total days present in this period</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, gap: 16 }}>
+                      <View style={{ width: 50, height: 50, borderRadius: 25, backgroundColor: `${colors.primary}12`, alignItems: 'center', justifyContent: 'center' }}>
+                        <FontAwesome name="calendar-check-o" size={22} color={colors.primary} />
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>{attendanceLogs.length} Days</Text>
+                        <Text style={{ fontSize: 11, color: colors.textMuted }}>Active Present Records</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12, marginLeft: 4 }}>Check-in History</Text>
+                  
+                  {attendanceLogs.map((log: any, index: number) => {
+                    const dt = new Date(log.check_in_time);
+                    const dateStr = dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const timeStr = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                    
+                    return (
+                      <View key={log._id || index} style={[styles.card, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, marginBottom: 12, borderWidth: 1, borderColor: colors.border }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(16, 185, 129, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
+                            <FontAwesome name="check" size={16} color="#10B981" />
+                          </View>
+                          <View>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{dateStr}</Text>
+                            <Text style={{ fontSize: 11, color: colors.textMuted }}>Status: Present</Text>
+                          </View>
+                        </View>
+                        <View style={{ backgroundColor: isDark ? '#1F2937' : '#F3F4F6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>{timeStr}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </>
+              )}
+            </ScrollView>
+          )}
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Payment History Modal */}
       <Modal visible={showPaymentHistoryModal} animationType="slide" transparent={true} onRequestClose={() => setShowPaymentHistoryModal(false)}>
@@ -778,7 +951,8 @@ export const MemberSummaryScreen = () => {
           )}
         </TouchableOpacity>
       </Modal>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -792,7 +966,7 @@ const DetailItem = ({ icon, label, value, colors, styles, hideBorder = false }: 
 
 const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: { flex: 1, backgroundColor: isDark ? '#090D16' : '#F8FAFC' },
-  content: { padding: spacing.m, paddingTop: 50 },
+  content: { padding: spacing.m, paddingTop: 10 },
   
   // Header
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.l },

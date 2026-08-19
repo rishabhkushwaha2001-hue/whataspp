@@ -101,7 +101,7 @@ def get_default_templates(business_type: str, gym_name: str) -> dict:
                 "Please renew your membership to continue accessing your assigned seat ({seat}) and Wi-Fi. Thank you! 🚀"
             )
         }
-    elif business_type == "general":
+    elif business_type != "gym":
         return {
             "joining_msg_template": (
                 "*{business_name} - SERVICE ACTIVATED ✅*\n\n"

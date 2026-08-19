@@ -342,6 +342,50 @@ async def get_attendance_stats(month: str = None):
     return [{"date": r["_id"], "count": r["count"]} for r in rows]
 
 
+@router.get("/attendance-report")
+async def get_attendance_report(month: str = None):
+    """Member-wise attendance counts for a given month."""
+    db = get_database()
+    now = datetime.now(timezone.utc)
+    if month:
+        try:
+            s = datetime.strptime(month, "%Y-%m").replace(tzinfo=timezone.utc)
+            e = s.replace(month=s.month + 1) if s.month < 12 else s.replace(year=s.year + 1, month=1)
+        except ValueError:
+            raise HTTPException(400, "Use YYYY-MM")
+    else:
+        s = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        e = now
+
+    pipeline = [
+        {"$match": {"check_in_time": {"$gte": s, "$lt": e}}},
+        {"$group": {
+            "_id": "$member_id",
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"count": -1}},
+        {
+            "$lookup": {
+                "from": "members",
+                "localField": "_id",
+                "foreignField": "member_id",
+                "as": "member_info"
+            }
+        },
+        {"$unwind": {"path": "$member_info", "preserveNullAndEmptyArrays": True}},
+        {
+            "$project": {
+                "member_id": "$_id",
+                "count": 1,
+                "full_name": {"$ifNull": ["$member_info.full_name", "$_id"]},
+                "phone": {"$ifNull": ["$member_info.phone", ""]}
+            }
+        }
+    ]
+    rows = await db["attendance"].aggregate(pipeline).to_list(1000)
+    return rows
+
+
 # ─────────────────────────────────────────
 # 9. PLAN BREAKDOWN (revenue by plan duration)
 # ─────────────────────────────────────────
@@ -451,19 +495,19 @@ async def get_member_activity(month: str = None):
     # ── Fetch new members (joining_date in this month) ──────────────────────
     new_cursor = db["members"].find(
         {
-            "joining_date": {
+            "created_at": {
                 "$gte": month_start_utc,
                 "$lt":  month_end_utc,
             }
         },
-        {"_id": 1, "full_name": 1, "phone": 1, "member_id": 1, "category": 1, "joining_date": 1}
+        {"_id": 1, "full_name": 1, "phone": 1, "member_id": 1, "category": 1, "created_at": 1}
     )
     new_members_raw = await new_cursor.to_list(1000)
 
     # Group by day (IST)
     new_by_day: Dict[int, list] = {d: [] for d in range(1, days_in_month + 1)}
     for m in new_members_raw:
-        jd = m.get("joining_date")
+        jd = m.get("created_at")
         if jd:
             jd_ist = jd.astimezone(IST)
             day_ist = jd_ist.day
@@ -481,12 +525,13 @@ async def get_member_activity(month: str = None):
     # payments collection: payment_date, member_id (ref), amount, payment_mode
     renewal_cursor = db["payments"].find(
         {
-            "payment_date": {
+            "start_date": {
                 "$gte": month_start_utc,
                 "$lt":  month_end_utc,
-            }
+            },
+            "type": "Renewal"
         },
-        {"_id": 1, "member_id": 1, "payment_date": 1, "amount": 1}
+        {"_id": 1, "member_id": 1, "start_date": 1, "amount": 1}
     )
     payments_raw = await renewal_cursor.to_list(5000)
 
@@ -517,7 +562,7 @@ async def get_member_activity(month: str = None):
     # Group renewals by day (allow multiple payments from same member on same day)
     renewals_by_day: Dict[int, list] = {d: [] for d in range(1, days_in_month + 1)}
     for p in payments_raw:
-        pd = p.get("payment_date")
+        pd = p.get("start_date")
         mid = str(p.get("member_id", ""))
         if pd and mid:
             pd_ist = pd.astimezone(IST)
