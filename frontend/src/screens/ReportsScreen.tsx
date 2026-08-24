@@ -431,10 +431,11 @@ export const ReportsScreen = () => {
           {plData.length > 0 ? (
             <BarChart
               data={plData}
-              width={CHART_W}
+              width={CHART_W - 60}
+              yAxisLabelWidth={35}
               height={180}
-              barWidth={18}
-              spacing={8}
+              barWidth={16}
+              spacing={6}
               noOfSections={4}
               xAxisColor={colors.border}
               yAxisColor={colors.border}
@@ -608,7 +609,8 @@ export const ReportsScreen = () => {
           {chartData.length > 0 ? (
             <LineChart
               data={chartData}
-              width={CHART_W - 20}
+              width={CHART_W - 60}
+              yAxisLabelWidth={35}
               height={200}
               color={colors.primary}
               thickness={3}
@@ -840,10 +842,11 @@ export const ReportsScreen = () => {
           {growthChart.some((g: any) => g.stacks.some((s: any) => s.value > 0)) ? (
             <BarChart
               stackData={growthChart}
-              width={CHART_W}
+              width={CHART_W - 60}
+              yAxisLabelWidth={35}
               height={160}
-              barWidth={18}
-              spacing={8}
+              barWidth={16}
+              spacing={6}
               xAxisColor={colors.border}
               yAxisColor={colors.border}
               yAxisTextStyle={{ color: colors.textMuted, fontSize: 9 }}
@@ -1179,10 +1182,11 @@ export const ReportsScreen = () => {
           {chartData.length > 0 ? (
             <BarChart
               data={chartData}
-              width={CHART_W}
+              width={CHART_W - 60}
+              yAxisLabelWidth={35}
               height={200}
-              barWidth={12}
-              spacing={6}
+              barWidth={10}
+              spacing={4}
               noOfSections={4}
               xAxisColor={colors.border}
               yAxisColor={colors.border}
@@ -1354,10 +1358,11 @@ export const ReportsScreen = () => {
           {combined.some((c: any) => c.stacks.some((s: any) => s.value > 0)) ? (
             <BarChart
               stackData={combined}
-              width={CHART_W}
+              width={CHART_W - 60}
+              yAxisLabelWidth={35}
               height={200}
-              barWidth={18}
-              spacing={8}
+              barWidth={16}
+              spacing={6}
               xAxisColor={colors.border}
               yAxisColor={colors.border}
               yAxisTextStyle={{ color: colors.textMuted, fontSize: 9 }}

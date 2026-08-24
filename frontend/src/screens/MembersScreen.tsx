@@ -96,14 +96,14 @@ export const MembersScreen = () => {
   const confirmRenewal = async (
     durationMonths: number, amount: number, paymentMode: string,
     nextDueDate?: string, joiningDate?: string, hours?: number,
-    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number, appliedOfferName?: string
+    timing?: string, allocatedSeat?: string, wifiDetails?: string, amountPaid?: number, appliedOfferName?: string, planName?: string
   ) => {
     if (!renewingMember) return;
     try {
       await api.post(`/members/${renewingMember.id || renewingMember._id}/renew`, {
         plan_duration_months: durationMonths, amount, amount_paid: amountPaid ?? null, payment_mode: paymentMode,
         next_due_date: nextDueDate, joining_date: joiningDate,
-        daily_hours: hours, timing, allocated_seat: allocatedSeat, applied_offer_name: appliedOfferName,
+        daily_hours: hours, timing, allocated_seat: allocatedSeat, applied_offer_name: appliedOfferName, plan_name: planName
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       refreshMembers();
@@ -117,6 +117,8 @@ export const MembersScreen = () => {
         timing: timing ?? renewingMember.timing, gym: gymName, durationMonths,
         seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || renewingMember.wifi_details || 'Not Provided') : undefined,
+        plan_name: planName,
+        applied_offer_name: appliedOfferName,
       });
       return { success: true, message: msg };
     } catch {
@@ -125,7 +127,8 @@ export const MembersScreen = () => {
   };
 
   const renderMember = ({ item }: { item: any }) => {
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
     // Sort payments by start_date ascending (exact same logic as MemberSummaryScreen)
     const sortedPayments = (item.payment_history || []).slice().sort((a: any, b: any) => {
@@ -134,20 +137,25 @@ export const MembersScreen = () => {
 
     let activePlan: any = null;
     if (sortedPayments.length > 0) {
-      // 1. Find the payment plan that includes today's date
       for (let i = 0; i < sortedPayments.length; i++) {
         const p = sortedPayments[i];
         const sDate = new Date(p.start_date);
+        sDate.setHours(0, 0, 0, 0);
         const eDate = new Date(p.end_date);
-        if (now >= sDate && now <= eDate) {
+        eDate.setHours(0, 0, 0, 0);
+
+        if (today >= sDate && today <= eDate) {
           activePlan = p;
           break;
         }
       }
 
-      // 2. If no plan matches current date (e.g. member is expired or plans are in future)
       if (!activePlan) {
-        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
+        const allPast = sortedPayments.filter((p: any) => {
+          const eDate = new Date(p.end_date);
+          eDate.setHours(0, 0, 0, 0);
+          return eDate.getTime() < today.getTime();
+        });
         if (allPast.length > 0) {
           activePlan = allPast[allPast.length - 1];
         } else {
@@ -159,8 +167,11 @@ export const MembersScreen = () => {
     const dueDate = activePlan?.end_date ? new Date(activePlan.end_date) : (item.next_due_date ? new Date(item.next_due_date) : new Date());
     const startDateObj = activePlan?.start_date ? new Date(activePlan.start_date) : (item.joining_date ? new Date(item.joining_date) : null);
     
-    const isExpired = dueDate < now;
-    const daysLeft = Math.ceil((dueDate.getTime() - now.getTime()) / 86400000);
+    const dueDateMidnight = new Date(dueDate);
+    dueDateMidnight.setHours(0, 0, 0, 0);
+
+    const isExpired = dueDateMidnight < today;
+    const daysLeft = Math.ceil((dueDateMidnight.getTime() - today.getTime()) / 86400000);
     const isDueSoon = !isExpired && daysLeft <= 7;
     const memberId = item.id || item._id;
 
@@ -174,7 +185,7 @@ export const MembersScreen = () => {
     const joiningDateStr = startDateObj
       ? startDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
       : null;
-    const dueDateStr = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const dueDateStr = dueDateMidnight.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     return (
       <TouchableOpacity
@@ -211,11 +222,11 @@ export const MembersScreen = () => {
           <View style={[styles.cardRow2, { justifyContent: 'space-between' }]}>
             <Text style={[styles.memberId, { flexShrink: 0 }]}>{item.member_id}</Text>
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexShrink: 1, justifyContent: 'flex-end', marginLeft: 8 }}>
-              {item.plan_name || item.plan_duration_months ? (
+              {(activePlan ? activePlan.plan_name : item.plan_name) || item.plan_duration_months ? (
                 <View style={[styles.planBadge, { flexShrink: 1, maxWidth: 120 }]}>
                   <FontAwesome name="star" size={9} color={colors.primary} style={{ flexShrink: 0 }} />
                   <Text style={[styles.planText, { color: colors.primary }]} numberOfLines={1} ellipsizeMode="tail">
-                    {item.plan_name || `${item.plan_duration_months}M Plan`}
+                    {activePlan ? (activePlan.plan_name || `${activePlan.plan_months}M Plan`) : (item.plan_name || `${item.plan_duration_months}M Plan`)}
                   </Text>
                 </View>
               ) : null}
@@ -240,7 +251,7 @@ export const MembersScreen = () => {
           {/* Row 4: Fee + Days */}
           <View style={styles.cardRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 }}>
-              <Text style={styles.feeText}>₹{item.monthly_fees || item.plan_fee || 0}</Text>
+              <Text style={styles.feeText}>₹{activePlan ? activePlan.amount : (item.monthly_fees || item.plan_fee || 0)}</Text>
               {item.pending_amount > 0 ? (
                 item.amount_paid > 0 ? (
                   <View style={[styles.dueBadge, { backgroundColor: '#F59E0B18', paddingHorizontal: 4, paddingVertical: 1.5 }]}>

@@ -243,7 +243,8 @@ export const RemindersScreen = () => {
     allocatedSeat?: string,
     wifiDetails?: string,
     amountPaid?: number,
-    appliedOfferName?: string
+    appliedOfferName?: string,
+    planName?: string
   ) => {
     if (!renewingMember) return { success: false };
     try {
@@ -257,7 +258,8 @@ export const RemindersScreen = () => {
         daily_hours: hours,
         timing: timing,
         allocated_seat: allocatedSeat,
-        applied_offer_name: appliedOfferName
+        applied_offer_name: appliedOfferName,
+        plan_name: planName
       });
       invalidateCache('members', 'dashboard_month', 'dashboard_all');
       fetchDueMembers();
@@ -277,6 +279,8 @@ export const RemindersScreen = () => {
         durationMonths,
         seat: businessType === 'library' ? (allocatedSeat || renewingMember.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || 'Not Provided') : undefined,
+        plan_name: planName,
+        applied_offer_name: appliedOfferName,
       });
       return { success: true, message: msg };
     } catch (error) {

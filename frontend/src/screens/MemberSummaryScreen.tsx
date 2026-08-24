@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Image, Linking, Modal, Platform, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions, Image, Linking, Modal, Platform, TextInput, KeyboardAvoidingView, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { invalidateCache } from '../hooks/useDataStore';
 import { fetchMessageTemplates, buildPaymentReceiptMessage, buildRenewalMessage, getDefaultTemplates } from '../services/messageTemplates';
 import { Skeleton } from '../components/Skeleton';
+import { generateReceiptPDF } from '../services/pdfGenerator';
 
 const { width } = Dimensions.get('window');
 
@@ -138,26 +139,39 @@ export const MemberSummaryScreen = () => {
   }, [member?.payment_history]);
 
   const { activePlan, upcomingPlans } = useMemo(() => {
-    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     let active: any = null;
     let upcoming: any[] = [];
 
     if (sortedPayments.length > 0) {
+      let activeIndex = -1;
       for (let i = 0; i < sortedPayments.length; i++) {
         const p = sortedPayments[i];
         const sDate = new Date(p.start_date);
+        sDate.setHours(0, 0, 0, 0);
         const eDate = new Date(p.end_date);
-        if (now >= sDate && now <= eDate) {
+        eDate.setHours(0, 0, 0, 0);
+
+        if (today >= sDate && today <= eDate) {
           active = p;
-          upcoming = sortedPayments.filter((item: any) => new Date(item.start_date) > new Date(active.end_date));
+          activeIndex = i;
+          upcoming = sortedPayments.slice(i + 1);
           break;
         }
       }
       if (!active) {
-        const allPast = sortedPayments.filter((p: any) => new Date(p.end_date) < now);
+        const allPast = sortedPayments.filter((p: any) => {
+          const eDate = new Date(p.end_date);
+          eDate.setHours(0, 0, 0, 0);
+          return eDate.getTime() < today.getTime();
+        });
+
         if (allPast.length > 0) {
           active = allPast[allPast.length - 1];
-          upcoming = sortedPayments.filter((p: any) => new Date(p.start_date) > new Date(active.end_date));
+          const activeIdx = sortedPayments.findIndex((x: any) => (x.id || x._id) === (active.id || active._id));
+          upcoming = activeIdx !== -1 ? sortedPayments.slice(activeIdx + 1) : [];
         } else {
           active = sortedPayments[0];
           upcoming = sortedPayments.slice(1);
@@ -251,12 +265,16 @@ export const MemberSummaryScreen = () => {
   );
   if (!member) return <View style={styles.container}><Text style={{ color: colors.text }}>Member not found</Text></View>;
 
-  const now = new Date();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   const expiryDate = activePlan?.end_date ? new Date(activePlan.end_date) : (member?.next_due_date ? new Date(member.next_due_date) : null);
   const startDate = activePlan?.start_date ? new Date(activePlan.start_date) : (member?.joining_date ? new Date(member.joining_date) : null);
   
-  const daysRemaining = expiryDate ? Math.ceil((expiryDate.getTime() - new Date().getTime()) / 86400000) : 0;
+  const expiryMidnight = expiryDate ? new Date(expiryDate) : null;
+  if (expiryMidnight) expiryMidnight.setHours(0, 0, 0, 0);
+
+  const daysRemaining = expiryMidnight ? Math.ceil((expiryMidnight.getTime() - today.getTime()) / 86400000) : 0;
   const isExpired = daysRemaining < 0;
   const isDueSoon = !isExpired && daysRemaining <= 7;
   const statusLabel = isExpired ? 'Expired' : isDueSoon ? 'Due Soon' : 'Active';
@@ -313,6 +331,7 @@ export const MemberSummaryScreen = () => {
         seat: businessType === 'library' ? (allocatedSeat || member.allocated_seat || 'Unassigned') : undefined,
         wifi: businessType === 'library' ? (wifiDetails || member.wifi_details || 'Not Provided') : undefined,
         plan_name: planName,
+        applied_offer_name: appliedOfferName,
       });
       return { success: true, message: msg };
     } catch {
@@ -510,7 +529,7 @@ export const MemberSummaryScreen = () => {
             <View style={[styles.progressBarFill, { width: `${progressPercent}%`, backgroundColor: colors.primary }]} />
           </View>
           <View style={styles.progressLabels}>
-            <Text style={[styles.progressLabelText, { color: statusColor }]}>{isExpired ? `Expired ${Math.abs(daysRemaining)} days ago` : `${daysRemaining} Days Left`}</Text>
+            <Text style={[styles.progressLabelText, { color: statusColor }]}>{isExpired ? `Expired ${Math.abs(daysRemaining)} days ago` : daysRemaining === 0 ? 'Expires Today' : `${daysRemaining} Days Left`}</Text>
             <Text style={styles.progressLabelText}>Total {totalPlanDays} Days</Text>
           </View>
 
@@ -519,7 +538,7 @@ export const MemberSummaryScreen = () => {
               <View style={[styles.iconCircleSm, { backgroundColor: `${colors.primary}15` }]}><FontAwesome name="inr" size={12} color={colors.primary} /></View>
               <View>
                 <Text style={styles.gridLabel}>Amount</Text>
-                <Text style={styles.gridValue}>₹{member.monthly_fees || member.plan_fee || 0} <Text style={{ fontSize: 10, color: colors.success }}>Paid</Text></Text>
+                <Text style={styles.gridValue}>₹{activePlan ? activePlan.amount : (member.monthly_fees || member.plan_fee || 0)} <Text style={{ fontSize: 10, color: colors.success }}>Paid</Text></Text>
               </View>
             </View>
             <View style={styles.gridItem}>
@@ -531,7 +550,11 @@ export const MemberSummaryScreen = () => {
                   style={{ width: '100%' }}
                 >
                   <Text style={styles.gridLabel}>Plan Type</Text>
-                  {member.plan_name && member.plan_name !== 'Custom' ? (
+                  {activePlan ? (
+                    <Text style={[styles.gridValue, { color: '#D97706', fontSize: 12 }]} numberOfLines={1} ellipsizeMode="tail">
+                      {activePlan.plan_name || `${activePlan.plan_months} Month`}
+                    </Text>
+                  ) : member.plan_name && member.plan_name !== 'Custom' ? (
                     <Text style={[styles.gridValue, { color: '#D97706', fontSize: 12 }]} numberOfLines={1} ellipsizeMode="tail">{member.plan_name}</Text>
                   ) : (
                     <Text style={styles.gridValue}>{member.plan_duration_months} Month</Text>
@@ -906,15 +929,31 @@ export const MemberSummaryScreen = () => {
                         style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}
                         onPress={() => { setShowPaymentHistoryModal(false); setTimeout(() => setEditPaymentState({ visible: true, payment }), 300); }}
                       >
-                        <FontAwesome name="pencil" size={14} color={colors.textSecondary} style={{ marginRight: 8 }} />
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textSecondary }}>Edit Payment</Text>
+                        <FontAwesome name="pencil" size={13} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}
+                        onPress={() => handleSendReceipt(payment)}
+                      >
+                        <FontAwesome name="whatsapp" size={15} color="#25D366" style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>WhatsApp</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={{ flex: 1, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
-                        onPress={() => handleSendReceipt(payment)}
+                        onPress={async () => {
+                          try {
+                            const success = await generateReceiptPDF(member, payment);
+                            if (!success) {
+                              Alert.alert("Error", "Failed to generate or share PDF. Please try again.");
+                            }
+                          } catch (err) {
+                            Alert.alert("Error", "An unexpected error occurred while generating PDF.");
+                          }
+                        }}
                       >
-                        <FontAwesome name="whatsapp" size={16} color="#25D366" style={{ marginRight: 8 }} />
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.text }}>Send Receipt</Text>
+                        <FontAwesome name="file-pdf-o" size={14} color="#EF4444" style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>PDF</Text>
                       </TouchableOpacity>
                     </View>
                   </View>

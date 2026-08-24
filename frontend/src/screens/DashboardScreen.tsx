@@ -30,19 +30,19 @@ const Sparkline = ({ color, trend }: { color: string, trend: 'up' | 'down' }) =>
 
 const HeroChart = () => (
   <View style={{ height: 60, width: '100%', marginTop: 24, marginBottom: 8 }}>
-    <Svg height="100%" width="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
+    <Svg height="100%" width="100%" viewBox="0 0 350 60" preserveAspectRatio="none">
       <Path
-        d="M0 35 Q 15 35, 30 25 T 60 25 T 100 10 L 100 40 L 0 40 Z"
-        fill="rgba(255,255,255,0.05)"
+        d="M0 50 C 40 48, 70 25, 100 30 C 130 35, 160 50, 190 28 C 220 6, 260 22, 290 14 C 320 6, 335 15, 350 12 L 350 60 L 0 60 Z"
+        fill="rgba(255,255,255,0.08)"
       />
       <Path
-        d="M0 35 Q 15 35, 30 25 T 60 25 T 100 10"
+        d="M0 50 C 40 48, 70 25, 100 30 C 130 35, 160 50, 190 28 C 220 6, 260 22, 290 14 C 320 6, 335 15, 350 12"
         fill="none"
         stroke="#ffffff"
-        strokeWidth="2"
+        strokeWidth="2.5"
       />
-      <Circle cx="100" cy="10" r="3" fill="#ffffff" />
-      <Circle cx="100" cy="10" r="6" fill="rgba(255,255,255,0.3)" />
+      <Circle cx="350" cy="12" r="3" fill="#ffffff" />
+      <Circle cx="350" cy="12" r="6.5" fill="rgba(255,255,255,0.45)" />
     </Svg>
   </View>
 );

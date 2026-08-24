@@ -84,6 +84,7 @@ export const fillTemplate = (template: string, vars: {
   seat?: string;
   wifi?: string;
   plan_name?: string;
+  applied_offer_name?: string;
 }): string => {
   let result = template
     .replace(/\{name\}/g, vars.name || '')
@@ -96,13 +97,15 @@ export const fillTemplate = (template: string, vars: {
     .replace(/\{seat\}/g, vars.seat || 'Unassigned')
     .replace(/\{wifi\}/g, vars.wifi || 'N/A')
     .replace(/\{plan_name\}/g, vars.plan_name && vars.plan_name !== 'Custom' ? vars.plan_name : 'Custom Plan')
+    .replace(/\{applied_offer_name\}|\{offer\}/g, vars.applied_offer_name || '')
     .replace(/\{gym\}|\{library_name\}|\{business_name\}|\{gym_name\}/g, vars.gym || '');
 
   // Auto-inject joining_date, timing, and hours if they exist but template is missing them
-  if ((vars.joining_date && !template.includes('{joining_date}')) || (vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}')) || (vars.seat && !template.includes('{seat}')) || (vars.wifi && !template.includes('{wifi}')) || (vars.plan_name && vars.plan_name !== 'Custom' && !template.includes('{plan_name}'))) {
+  if ((vars.joining_date && !template.includes('{joining_date}')) || (vars.timing && !template.includes('{timing}')) || (vars.hours && !template.includes('{hours}')) || (vars.seat && !template.includes('{seat}')) || (vars.wifi && !template.includes('{wifi}')) || (vars.plan_name && vars.plan_name !== 'Custom' && !template.includes('{plan_name}')) || (vars.applied_offer_name && !template.includes('{applied_offer_name}') && !template.includes('{offer}'))) {
     let extraStr = '';
     if (vars.joining_date && !template.includes('{joining_date}')) extraStr += `\n📅 *Date:* ${vars.joining_date}`;
     if (vars.plan_name && vars.plan_name !== 'Custom' && !template.includes('{plan_name}')) extraStr += `\n⭐ *Plan:* ${vars.plan_name}`;
+    if (vars.applied_offer_name && !template.includes('{applied_offer_name}') && !template.includes('{offer}')) extraStr += `\n🎁 *Offer:* ${vars.applied_offer_name}`;
     if (vars.hours && !template.includes('{hours}')) extraStr += `\n⏰ *Hours:* ${vars.hours} Hrs`;
     if (vars.timing && !template.includes('{timing}')) extraStr += `\n🌞 *Timing:* ${vars.timing}`;
     if (vars.seat && !template.includes('{seat}')) extraStr += `\n🪑 *Assigned Seat:* ${vars.seat}`;
@@ -229,6 +232,7 @@ export const buildRenewalMessage = (
     seat?: string;
     wifi?: string;
     plan_name?: string;
+    applied_offer_name?: string;
   }
 ): string => {
   const totalAmount = Number(vars.fees);
@@ -283,6 +287,7 @@ export const buildRenewalMessage = (
     `\n━━━━━━━━━━━━━━━━━━━━\n` +
     `💰 *PAYMENT SUMMARY*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.applied_offer_name ? `🎁 *Offer:* ${vars.applied_offer_name}\n` : '') +
     `🏷️ *Total Amount:* ₹${totalAmount}\n` +
     `✅ *Amount Paid:* ₹${paidAmount}\n` +
     (isPartial ? `⚠️ *Balance Due:* ₹${dueAmount}\n` : `🎉 *Status:* Fully Paid ✔️\n`) +

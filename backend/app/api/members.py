@@ -158,8 +158,24 @@ async def get_all_members() -> Any:
     members = await cursor.to_list(length=1000)
     
     # Efficiently fetch pending amounts for all members in one query
-    member_ids = [str(m["_id"]) for m in members]
-    
+    # Support string _id, raw ObjectId _id, and custom member_id string
+    member_ids = []
+    id_to_member = {}
+    for m in members:
+        str_id = str(m["_id"])
+        member_ids.append(str_id)
+        id_to_member[str_id] = m
+        try:
+            obj_id = ObjectId(str_id)
+            member_ids.append(obj_id)
+            id_to_member[obj_id] = m
+        except:
+            pass
+        if m.get("member_id"):
+            cust_id = m["member_id"]
+            member_ids.append(cust_id)
+            id_to_member[cust_id] = m
+            
     # Fetch all payments for these members to build payment_history and pending_map
     payments_cursor = db["payments"].find(
         {"member_id": {"$in": member_ids}}
@@ -175,9 +191,15 @@ async def get_all_members() -> Any:
     for p in all_payments:
         mid = p.get("member_id")
         if not mid: continue
-        if mid not in history_map:
-            history_map[mid] = []
-        history_map[mid].append({
+        target_member = id_to_member.get(mid)
+        if not target_member:
+            target_member = id_to_member.get(str(mid))
+        if not target_member: continue
+        
+        target_str_id = str(target_member["_id"])
+        if target_str_id not in history_map:
+            history_map[target_str_id] = []
+        history_map[target_str_id].append({
             "id": str(p["_id"]),
             "amount": p.get("amount", 0),
             "amount_paid": p.get("amount_paid", None),
@@ -192,18 +214,22 @@ async def get_all_members() -> Any:
     # Find latest payment per member for pending amounts
     for p in reversed(all_payments):
         mid = p.get("member_id")
-        if mid and mid not in seen_members:
-            seen_members.add(mid)
-            amt = float(p.get("amount") or 0)
-            amt_paid = p.get("amount_paid")
-            if amt_paid is not None:
-                amt_paid = float(amt_paid)
-                pending = max(0, amt - amt_paid)
-                if pending > 0:
-                    pending_map[mid] = pending
-                paid_map[mid] = amt_paid
-            else:
-                paid_map[mid] = amt
+        if not mid: continue
+        target_member = id_to_member.get(mid) or id_to_member.get(str(mid))
+        if target_member:
+            target_str_id = str(target_member["_id"])
+            if target_str_id not in seen_members:
+                seen_members.add(target_str_id)
+                amt = float(p.get("amount") or 0)
+                amt_paid = p.get("amount_paid")
+                if amt_paid is not None:
+                    amt_paid = float(amt_paid)
+                    pending = max(0, amt - amt_paid)
+                    if pending > 0:
+                        pending_map[target_str_id] = pending
+                    paid_map[target_str_id] = amt_paid
+                else:
+                    paid_map[target_str_id] = amt
     
     for m in members:
         m["_id"] = str(m["_id"])
@@ -589,8 +615,16 @@ async def get_member_summary(member_id: str) -> Any:
         
     member["_id"] = str(member["_id"])
     
-    # Fetch payment history
-    cursor = db["payments"].find({"member_id": member["_id"]}).sort("payment_date", 1)
+    # Fetch payment history (robust matching for string, ObjectId, and custom ID)
+    payment_member_ids = [member["_id"], member.get("member_id")]
+    try:
+        payment_member_ids.append(ObjectId(member["_id"]))
+    except:
+        pass
+        
+    cursor = db["payments"].find(
+        {"member_id": {"$in": [x for x in payment_member_ids if x]}}
+    ).sort("payment_date", 1)
     payments = await cursor.to_list(length=100)
     
     # Map to UI keys
@@ -750,6 +784,8 @@ class RenewPayload(BaseModel):
     daily_hours: Optional[int] = None
     timing: Optional[str] = None
     allocated_seat: Optional[str] = None
+    plan_name: Optional[str] = None
+    applied_offer_name: Optional[str] = None
 
 @router.post("/{member_id}/renew")
 async def renew_member(member_id: str, payload: RenewPayload) -> Any:
@@ -817,6 +853,10 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         update_fields["timing"] = payload.timing
     if payload.allocated_seat is not None:
         update_fields["allocated_seat"] = payload.allocated_seat
+    if payload.plan_name:
+        update_fields["plan_name"] = payload.plan_name
+    if payload.applied_offer_name:
+        update_fields["applied_offer_name"] = payload.applied_offer_name
 
     await db["members"].update_one(
         {"_id": member["_id"]},
@@ -835,6 +875,11 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "payment_method": payload.payment_mode,
         "type": "Renewal"
     }
+    if payload.plan_name:
+        payment_log["plan_name"] = payload.plan_name
+    if payload.applied_offer_name:
+        payment_log["applied_offer_name"] = payload.applied_offer_name
+
     await db["payments"].insert_one(payment_log)
     
     push_token = member.get("push_token")
@@ -942,9 +987,17 @@ async def get_member_payments(member_id: str) -> Any:
     if not member:
         member = await db["members"].find_one({"_id": member_id})
         
-    actual_id = str(member["_id"]) if member else member_id
-    
-    cursor = db["payments"].find({"member_id": actual_id}).sort("payment_date", -1)
+    payment_ids = [actual_id]
+    if member:
+        payment_ids.append(member.get("member_id"))
+        try:
+            payment_ids.append(ObjectId(member["_id"]))
+        except:
+            pass
+            
+    cursor = db["payments"].find(
+        {"member_id": {"$in": [x for x in payment_ids if x]}}
+    ).sort("payment_date", -1)
     payments = await cursor.to_list(length=100)
     for p in payments:
         p["_id"] = str(p["_id"])
@@ -1064,8 +1117,13 @@ async def delete_member(member_id: str) -> Any:
     # Delete Member
     await db["members"].delete_one({"_id": member["_id"]})
     
-    # Delete associated payments (by ObjectId string)
-    await db["payments"].delete_many({"member_id": actual_id})
+    # Delete associated payments (robust deletion by ObjectId string, raw ObjectId, and custom ID)
+    payment_ids_to_del = [actual_id, member_str_id]
+    try:
+        payment_ids_to_del.append(ObjectId(actual_id))
+    except:
+        pass
+    await db["payments"].delete_many({"member_id": {"$in": [x for x in payment_ids_to_del if x]}})
     
     # Delete attendance by both _id string AND member_id (GYM-XXXX style)
     await db["attendance"].delete_many({"$or": [
