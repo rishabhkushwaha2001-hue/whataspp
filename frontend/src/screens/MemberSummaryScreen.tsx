@@ -10,6 +10,7 @@ import { sendWhatsAppMessage } from '../services/whatsapp';
 import { EditMemberModal } from '../components/EditMemberModal';
 import { EditPaymentModal } from '../components/EditPaymentModal';
 import { RenewalModal } from '../components/RenewalModal';
+import { ChangePlanModal } from '../components/ChangePlanModal';
 import { api } from '../services/api';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,6 +42,7 @@ export const MemberSummaryScreen = () => {
 
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [showRenewModal, setShowRenewModal] = useState(false);
+  const [showChangePlanModal, setShowChangePlanModal] = useState(false);
   const [zoomModalVisible, setZoomModalVisible] = useState(false);
   const [showPaymentHistoryModal, setShowPaymentHistoryModal] = useState(false);
   const [editPaymentState, setEditPaymentState] = useState<{ visible: boolean; payment: any }>({ visible: false, payment: null });
@@ -508,7 +510,17 @@ export const MemberSummaryScreen = () => {
         </View>
 
         {/* Current Plan Details Card */}
-        <Text style={styles.sectionTitle}>Current Plan Details</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m, marginLeft: 4, marginRight: 4 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 0 }]}>Current Plan Details</Text>
+          <TouchableOpacity
+            style={styles.changePlanHeaderBtn}
+            onPress={() => setShowChangePlanModal(true)}
+            activeOpacity={0.8}
+          >
+            <FontAwesome name="refresh" size={11} color={colors.primary} />
+            <Text style={[styles.changePlanHeaderText, { color: colors.primary }]}>Change Plan</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.card}>
           <View style={styles.planDateRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -890,7 +902,14 @@ export const MemberSummaryScreen = () => {
                       {/* Top Row: Amount & Mode */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                         <View>
-                          <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>₹{payment.amount}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 24, fontWeight: '800', color: colors.text }}>₹{payment.amount}</Text>
+                            {payment.plan_name ? (
+                              <View style={{ backgroundColor: `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>{payment.plan_name}</Text>
+                              </View>
+                            ) : null}
+                          </View>
                           <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>
                             {payment.payment_mode || 'Cash'} • {payment.date ? new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric'}) : 'N/A'}
                           </Text>
@@ -933,14 +952,24 @@ export const MemberSummaryScreen = () => {
                         <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
-                        style={{ flex: 1, paddingVertical: 14, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}
+                        style={{ flex: 1.3, paddingVertical: 14, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}
+                        onPress={() => {
+                          setShowPaymentHistoryModal(false);
+                          setTimeout(() => setShowChangePlanModal(true), 300);
+                        }}
+                      >
+                        <FontAwesome name="refresh" size={13} color={colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>Change Plan</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={{ flex: 1.2, paddingVertical: 14, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border, flexDirection: 'row', justifyContent: 'center' }}
                         onPress={() => handleSendReceipt(payment)}
                       >
                         <FontAwesome name="whatsapp" size={15} color="#25D366" style={{ marginRight: 6 }} />
                         <Text style={{ fontSize: 12, fontWeight: '600', color: colors.text }}>WhatsApp</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
-                        style={{ flex: 1, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                        style={{ flex: 0.9, paddingVertical: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
                         onPress={async () => {
                           try {
                             const success = await generateReceiptPDF(member, payment);
@@ -967,11 +996,25 @@ export const MemberSummaryScreen = () => {
 
       {/* Modals */}
       <EditMemberModal visible={editModalVisible} member={member} onClose={() => setEditModalVisible(false)} onSaved={(updated) => { setMember({ ...member, ...updated }); setEditModalVisible(false); invalidateCache('members', 'dashboard_month', 'dashboard_all'); }} />
+      <ChangePlanModal
+        visible={showChangePlanModal}
+        member={member}
+        currentPayment={activePlan}
+        gymName={gymName}
+        businessType={businessType}
+        onClose={() => setShowChangePlanModal(false)}
+        onSaved={(updated) => {
+          setMember(updated);
+          invalidateCache('members', 'dashboard_month', 'dashboard_all');
+          refreshMember();
+        }}
+      />
       <EditPaymentModal
         visible={editPaymentState.visible}
         payment={editPaymentState.payment}
         memberId={member?._id || ''}
         onClose={() => setEditPaymentState({ visible: false, payment: null })}
+        onChangePlan={() => setShowChangePlanModal(true)}
         onSaved={(updatedPaymentData) => {
           setEditPaymentState({ visible: false, payment: null });
           invalidateCache('members', 'dashboard_month', 'dashboard_all');
@@ -1072,6 +1115,21 @@ const getStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     ...shadows.card,
   },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: isDark ? '#94A3B8' : '#475569', marginBottom: spacing.m, marginLeft: 4, textTransform: 'uppercase', letterSpacing: 0.8 },
+  changePlanHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE',
+  },
+  changePlanHeaderText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
 
   // Current Plan Details
   planDateRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },

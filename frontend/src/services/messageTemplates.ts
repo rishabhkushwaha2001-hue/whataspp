@@ -425,3 +425,83 @@ export const buildReminderMessage = (
     `${footer}`
   );
 };
+
+/**
+ * Builds an updated plan confirmation WhatsApp message.
+ * Used when a member's plan is updated / upgraded.
+ */
+export const buildPlanUpdatedMessage = (
+  businessType: string,
+  vars: {
+    name: string;
+    phone: string;
+    gym: string;
+    plan_name?: string;
+    durationMonths?: number;
+    durationDays?: number;
+    startDate: string;
+    expiryDate: string;
+    totalAmount: number | string;
+    amountPaid?: number | string;
+    paymentMode?: string;
+    applied_offer_name?: string;
+    seat?: string;
+    hours?: number;
+    timing?: string;
+    wifi?: string;
+  }
+): string => {
+  const gymUp = vars.gym.toUpperCase();
+  const total = Number(vars.totalAmount) || 0;
+  const paid = vars.amountPaid != null ? Number(vars.amountPaid) : total;
+  const due = Math.max(0, total - paid);
+  const isPartial = due > 0;
+  const updateId = `UPD-${Date.now().toString().slice(-6)}`;
+
+  const header = businessType === 'library'
+    ? `📚 *${gymUp}*`
+    : businessType === 'gym'
+    ? `🏋️ *${gymUp}*`
+    : `🏢 *${gymUp}*`;
+
+  const footer = businessType === 'library'
+    ? `Happy learning & reading! 📖`
+    : businessType === 'gym'
+    ? `Keep pushing towards your fitness goals! 💪`
+    : `Thank you for choosing us! 🙏`;
+
+  return (
+    `${header}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `⭐ *MEMBERSHIP PLAN UPDATED*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `Dear *${vars.name}*,\n` +
+    `Your membership plan has been successfully updated. Here are your latest plan details:\n\n` +
+    `📋 *Update Ref:* #${updateId}\n` +
+    `📅 *Effective Date:* ${vars.startDate}\n\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *MEMBER DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `📱 *Phone:* ${vars.phone}\n` +
+    (vars.seat ? `🪑 *Assigned Seat:* ${vars.seat}\n` : '') +
+    (vars.hours ? `⏰ *Timing:* ${vars.hours} Hrs/Day (${vars.timing || 'N/A'})\n` : '') +
+    (vars.wifi ? `📶 *Wi-Fi:* ${vars.wifi}\n` : '') +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `📆 *NEW PLAN DETAILS*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.plan_name ? `⭐ *Plan:* ${vars.plan_name}\n` : '') +
+    (vars.durationMonths ? `🗓️ *Duration:* ${vars.durationMonths} Month(s)\n` : '') +
+    `▶️ *Start Date:* ${vars.startDate}\n` +
+    `🔚 *Expiry Date:* ${vars.expiryDate}\n` +
+    `\n━━━━━━━━━━━━━━━━━━━━\n` +
+    `💰 *PAYMENT SUMMARY*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    (vars.applied_offer_name ? `🎁 *Applied Offer:* ${vars.applied_offer_name}\n` : '') +
+    `🏷️ *Plan Fee:* ₹${total}\n` +
+    `✅ *Amount Paid:* ₹${paid}\n` +
+    (vars.paymentMode ? `💳 *Payment Mode:* ${vars.paymentMode}\n` : '') +
+    (isPartial ? `⚠️ *Balance Due:* ₹${due}\n` : `🎉 *Payment Status:* Fully Paid ✔️\n`) +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `${footer}`
+  );
+};

@@ -1,5 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 motor
 pydantic
 pydantic-settings
@@ -8,4 +8,3 @@ httpx
 python-dateutil
 gunicorn
 python-multipart
-

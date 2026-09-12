@@ -111,7 +111,10 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
   const [weight, setWeight] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Plan Dates
+  // Plan Details & Dates
+  const [planName, setPlanName] = useState('');
+  const [planDurationMonths, setPlanDurationMonths] = useState('1');
+  const [monthlyFees, setMonthlyFees] = useState('');
   const [joiningDate, setJoiningDate] = useState('');
   const [nextDueDate, setNextDueDate] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
@@ -244,6 +247,10 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       const activeStart = activePlan?.start_date || member.joining_date;
       const activeEnd = activePlan?.end_date || member.next_due_date;
 
+      setPlanName(activePlan?.plan_name || member.plan_name || '');
+      setPlanDurationMonths(String(activePlan?.plan_months || member.plan_duration_months || 1));
+      setMonthlyFees(String(activePlan?.amount != null ? activePlan.amount : (member.monthly_fees || member.plan_fee || '')));
+
       setJoiningDate(getLocalDateStr(activeStart));
       setNextDueDate(getLocalDateStr(activeEnd));
       setDateOfBirth(getLocalDateStr(member.date_of_birth || ''));
@@ -375,6 +382,10 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
 
       
       // Update member details
+      if (planName.trim()) payload.plan_name = planName.trim();
+      if (planDurationMonths && !isNaN(parseInt(planDurationMonths))) payload.plan_duration_months = parseInt(planDurationMonths);
+      if (monthlyFees && !isNaN(parseFloat(monthlyFees))) payload.monthly_fees = parseFloat(monthlyFees);
+      if (joiningDate) payload.joining_date = new Date(joiningDate).toISOString();
       if (nextDueDate) payload.next_due_date = new Date(nextDueDate).toISOString();
       if (dateOfBirth) payload.date_of_birth = new Date(dateOfBirth).toISOString();
 
@@ -539,8 +550,18 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
               </>
             )}
 
-            {/* Plan Dates */}
-            <Text style={[styles.section, { color: colors.text }]}>📅 Plan Dates</Text>
+            {/* Plan Details & Dates */}
+            <Text style={[styles.section, { color: colors.text }]}>⭐ Plan Details & Dates</Text>
+            <InputRow colors={colors} label="Plan Name" value={planName} onChangeText={setPlanName} />
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <InputRow colors={colors} label="Plan Fee (₹)" value={monthlyFees} onChangeText={setMonthlyFees} keyboardType="numeric" />
+              </View>
+              <View style={{ width: spacing.m }} />
+              <View style={{ flex: 1 }}>
+                <InputRow colors={colors} label="Duration (Months)" value={planDurationMonths} onChangeText={setPlanDurationMonths} keyboardType="numeric" maxLength={3} />
+              </View>
+            </View>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <View style={fieldStyles.inputGroup}>
@@ -932,7 +953,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   photoLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: 50,
     alignItems: 'center',

@@ -2,10 +2,10 @@
   "expo": {
     "name": "Aetheron Management System",
     "slug": "gym-manager-whatsapp",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "scheme": "gym-manager",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "backgroundColor": "#F3F4F6",
     "icon": "./assets/app_logo.png",
     "splash": {
@@ -43,7 +43,10 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-font",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
@@ -56,12 +59,12 @@
     },
     "owner": "kushmayank2001",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "sdkVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/8b080331-6de2-493f-b127-966283f16220",
-      "fallbackToCacheTimeout": 30000,
-      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD",
       "enabled": true
     }
   }

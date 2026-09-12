@@ -139,7 +139,9 @@ async def create_member(member_in: MemberCreate) -> Any:
         "amount": total_amount,
         "amount_paid": amount_paid_val,  # None = full payment
         "plan_duration": member_dict.get("plan_duration_months", 1),
-        "payment_date": datetime.now(timezone.utc),
+        # ✅ FIX: Use joining_date so revenue is counted in the correct month,
+        # not the month the admin entered it into the system.
+        "payment_date": joining_date,
         "start_date": joining_date,
         "end_date": next_due_date,
         "payment_method": member_dict.get("payment_mode", "Cash"),
@@ -207,6 +209,8 @@ async def get_all_members() -> Any:
             "start_date": p.get("start_date"),
             "end_date": p.get("end_date"),
             "plan_months": p.get("plan_duration", 1),
+            "plan_name": p.get("plan_name"),
+            "applied_offer_name": p.get("applied_offer_name"),
             "payment_mode": p.get("payment_method", "Cash"),
             "type": p.get("type", "Payment")
         })
@@ -638,6 +642,8 @@ async def get_member_summary(member_id: str) -> Any:
             "start_date": p.get("start_date"),
             "end_date": p.get("end_date"),
             "plan_months": p.get("plan_duration", 1),
+            "plan_name": p.get("plan_name"),
+            "applied_offer_name": p.get("applied_offer_name"),
             "payment_mode": p.get("payment_method", "Cash"),
             "type": p.get("type", "Payment")
         })
@@ -755,8 +761,8 @@ async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
 
     await db["members"].update_one({"_id": member["_id"]}, {"$set": update_fields})
 
-    # Also sync latest payment record date range if joining_date or next_due_date changed
-    if "joining_date" in update_fields or "next_due_date" in update_fields:
+    # Also sync latest payment record if joining_date, next_due_date, fees, duration, or plan_name changed
+    if any(k in update_fields for k in ["joining_date", "next_due_date", "monthly_fees", "plan_duration_months", "plan_name"]):
         latest_payment = await db["payments"].find_one(
             {"member_id": {"$in": [str(member["_id"]), member.get("member_id")]}},
             sort=[("payment_date", -1)]
@@ -767,6 +773,12 @@ async def edit_member(member_id: str, payload: EditMemberPayload) -> Any:
                 pay_update["start_date"] = update_fields["joining_date"]
             if "next_due_date" in update_fields and update_fields["next_due_date"]:
                 pay_update["end_date"] = update_fields["next_due_date"]
+            if "monthly_fees" in update_fields and update_fields["monthly_fees"] is not None:
+                pay_update["amount"] = update_fields["monthly_fees"]
+            if "plan_duration_months" in update_fields and update_fields["plan_duration_months"] is not None:
+                pay_update["plan_duration"] = update_fields["plan_duration_months"]
+            if "plan_name" in update_fields and update_fields["plan_name"]:
+                pay_update["plan_name"] = update_fields["plan_name"]
             if pay_update:
                 await db["payments"].update_one({"_id": latest_payment["_id"]}, {"$set": pay_update})
 
@@ -869,7 +881,9 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
         "amount": payload.amount,
         "amount_paid": payload.amount_paid,  # None = full payment
         "plan_duration": payload.plan_duration_months,
-        "payment_date": now,
+        # ✅ FIX: Use renewal_start_date so revenue is booked in the month
+        # the membership actually started, not when the admin processed it.
+        "payment_date": renewal_start_date,
         "start_date": renewal_start_date,
         "end_date": new_due_date,
         "payment_method": payload.payment_mode,
@@ -898,14 +912,159 @@ async def renew_member(member_id: str, payload: RenewPayload) -> Any:
     updated_member["_id"] = str(updated_member["_id"])
     return updated_member
 
+class ChangePlanPayload(BaseModel):
+    plan_name: str
+    plan_duration_months: int
+    amount: float
+    amount_paid: Optional[float] = None
+    start_date: Optional[datetime] = None
+    next_due_date: Optional[datetime] = None
+    payment_mode: Optional[str] = "Cash"
+    applied_offer_name: Optional[str] = None
+    daily_hours: Optional[int] = None
+    timing: Optional[str] = None
+    allocated_seat: Optional[str] = None
+
+@router.post("/{member_id}/change-plan")
+async def change_member_plan(member_id: str, payload: ChangePlanPayload) -> Any:
+    """Change / update current active plan of a member, synchronizing member and payment records."""
+    db = get_database()
+    member = None
+    if len(member_id) == 24:
+        try:
+            member = await db["members"].find_one({"_id": ObjectId(member_id)})
+        except: pass
+    if not member:
+        member = await db["members"].find_one({"member_id": member_id})
+    if not member:
+        member = await db["members"].find_one({"_id": member_id})
+        
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+        
+    # Check seat conflict if applicable
+    new_seat = payload.allocated_seat if payload.allocated_seat is not None else member.get("allocated_seat")
+    new_timing = payload.timing if payload.timing is not None else member.get("timing")
+    
+    if new_seat and new_timing:
+        conflict = await check_seat_overlap(db, new_seat, new_timing, exclude_member_id=member.get("member_id"))
+        if conflict:
+            raise HTTPException(status_code=400, detail=f"Seat {new_seat} is already occupied by {conflict.get('full_name')} during this time ({conflict.get('timing')}). Please select another time or seat.")
+
+    now = datetime.now(timezone.utc)
+    
+    # Calculate dates safely
+    raw_start = payload.start_date or member.get("joining_date") or now
+    if isinstance(raw_start, str):
+        try:
+            start_date = datetime.fromisoformat(raw_start.replace("Z", "+00:00"))
+        except Exception:
+            start_date = now
+    elif isinstance(raw_start, datetime):
+        start_date = raw_start
+    else:
+        start_date = now
+
+    if getattr(start_date, "tzinfo", None) is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+        
+    if payload.next_due_date:
+        raw_next = payload.next_due_date
+        if isinstance(raw_next, str):
+            try:
+                next_due = datetime.fromisoformat(raw_next.replace("Z", "+00:00"))
+            except Exception:
+                next_due = start_date + relativedelta(months=payload.plan_duration_months)
+        elif isinstance(raw_next, datetime):
+            next_due = raw_next
+        else:
+            next_due = start_date + relativedelta(months=payload.plan_duration_months)
+    else:
+        next_due = start_date + relativedelta(months=payload.plan_duration_months)
+
+    if getattr(next_due, "tzinfo", None) is None:
+        next_due = next_due.replace(tzinfo=timezone.utc)
+
+    paid_amt = payload.amount_paid if payload.amount_paid is not None else payload.amount
+
+    update_fields = {
+        "plan_name": payload.plan_name,
+        "plan_duration_months": payload.plan_duration_months,
+        "monthly_fees": payload.amount,
+        "amount_paid": paid_amt,
+        "next_due_date": next_due,
+        "payment_mode": payload.payment_mode or "Cash",
+        "status": "active" if next_due > now else member.get("status", "active")
+    }
+    
+    if payload.start_date:
+        update_fields["joining_date"] = start_date
+    if payload.applied_offer_name is not None:
+        update_fields["applied_offer_name"] = payload.applied_offer_name
+    if payload.daily_hours is not None:
+        update_fields["daily_hours"] = payload.daily_hours
+    if payload.timing is not None:
+        update_fields["timing"] = payload.timing
+    if payload.allocated_seat is not None:
+        update_fields["allocated_seat"] = payload.allocated_seat
+
+    await db["members"].update_one({"_id": member["_id"]}, {"$set": update_fields})
+
+    # Find the active / latest payment record for this member to sync
+    actual_member_id = str(member["_id"])
+    target_payment = await db["payments"].find_one(
+        {"member_id": {"$in": [actual_member_id, member.get("member_id")]}},
+        sort=[("payment_date", -1)]
+    )
+
+    if target_payment:
+        pay_update = {
+            "amount": payload.amount,
+            "amount_paid": paid_amt,
+            "plan_duration": payload.plan_duration_months,
+            "plan_name": payload.plan_name,
+            "start_date": start_date,
+            "end_date": next_due,
+            "payment_method": payload.payment_mode or target_payment.get("payment_method", "Cash"),
+        }
+        if payload.applied_offer_name is not None:
+            pay_update["applied_offer_name"] = payload.applied_offer_name
+        await db["payments"].update_one({"_id": target_payment["_id"]}, {"$set": pay_update})
+    else:
+        # Fallback if no payment record exists yet
+        # ✅ FIX: Use start_date as payment_date so revenue is counted in
+        # the correct month (when the plan started), not today.
+        pay_date = start_date if start_date else now
+        await db["payments"].insert_one({
+            "member_id": actual_member_id,
+            "amount": payload.amount,
+            "amount_paid": paid_amt,
+            "plan_duration": payload.plan_duration_months,
+            "plan_name": payload.plan_name,
+            "payment_date": pay_date,
+            "start_date": start_date,
+            "end_date": next_due,
+            "payment_method": payload.payment_mode or "Cash",
+            "type": "Plan Update",
+            "applied_offer_name": payload.applied_offer_name
+        })
+
+    updated_member = await get_member_summary(actual_member_id)
+    return updated_member
+
+
 class EditPaymentPayload(BaseModel):
+    amount: Optional[float] = None
     amount_paid: Optional[float] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    payment_mode: Optional[str] = None
+    plan_name: Optional[str] = None
+    plan_duration: Optional[int] = None
 
 @router.put("/{member_id}/payments/{payment_id}")
 async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayload) -> Any:
-    """Edit a specific payment record — update dates or paid amount (for partial payments)."""
+    """Edit a specific payment record — update price, dates, paid amount, plan name, or duration with automatic sync to member."""
     db = get_database()
     
     # Locate the member
@@ -925,7 +1084,7 @@ async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayl
     
     # Locate the payment
     try:
-        payment = await db["payments"].find_one({"_id": ObjectId(payment_id), "member_id": actual_member_id})
+        payment = await db["payments"].find_one({"_id": ObjectId(payment_id), "member_id": {"$in": [actual_member_id, member.get("member_id")]}})
     except:
         raise HTTPException(status_code=400, detail="Invalid payment ID")
     
@@ -934,6 +1093,8 @@ async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayl
     
     # Build update fields
     update_fields = {}
+    if payload.amount is not None:
+        update_fields["amount"] = payload.amount
     if payload.amount_paid is not None:
         update_fields["amount_paid"] = payload.amount_paid
     if payload.start_date is not None:
@@ -947,15 +1108,49 @@ async def edit_payment(member_id: str, payment_id: str, payload: EditPaymentPayl
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         update_fields["end_date"] = end
+    if payload.payment_mode is not None:
+        update_fields["payment_method"] = payload.payment_mode
+    if payload.plan_name is not None:
+        update_fields["plan_name"] = payload.plan_name
+    if payload.plan_duration is not None:
+        update_fields["plan_duration"] = payload.plan_duration
     
     if not update_fields:
         raise HTTPException(status_code=400, detail="No fields to update")
     
     await db["payments"].update_one({"_id": ObjectId(payment_id)}, {"$set": update_fields})
+
+    # Sync to member document if this is the active/latest payment
+    latest_payment = await db["payments"].find_one(
+        {"member_id": {"$in": [actual_member_id, member.get("member_id")]}},
+        sort=[("payment_date", -1)]
+    )
+    is_latest = latest_payment and str(latest_payment["_id"]) == str(payment["_id"])
+    
+    member_sync = {}
     if payload.amount_paid is not None:
+        member_sync["amount_paid"] = payload.amount_paid
+    if is_latest:
+        if payload.amount is not None:
+            member_sync["monthly_fees"] = payload.amount
+        if payload.end_date is not None:
+            member_sync["next_due_date"] = update_fields["end_date"]
+            now = datetime.now(timezone.utc)
+            if update_fields["end_date"] > now:
+                member_sync["status"] = "active"
+        if payload.start_date is not None:
+            member_sync["joining_date"] = update_fields["start_date"]
+        if payload.plan_name is not None:
+            member_sync["plan_name"] = payload.plan_name
+        if payload.plan_duration is not None:
+            member_sync["plan_duration_months"] = payload.plan_duration
+        if payload.payment_mode is not None:
+            member_sync["payment_mode"] = payload.payment_mode
+
+    if member_sync:
         await db["members"].update_one(
-            {"_id": ObjectId(actual_member_id)},
-            {"$set": {"amount_paid": payload.amount_paid}}
+            {"_id": member["_id"]},
+            {"$set": member_sync}
         )
     
     updated = await db["payments"].find_one({"_id": ObjectId(payment_id)})
@@ -986,14 +1181,17 @@ async def get_member_payments(member_id: str) -> Any:
         member = await db["members"].find_one({"member_id": member_id})
     if not member:
         member = await db["members"].find_one({"_id": member_id})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
         
+    actual_id = str(member["_id"])
     payment_ids = [actual_id]
-    if member:
+    if member.get("member_id"):
         payment_ids.append(member.get("member_id"))
-        try:
-            payment_ids.append(ObjectId(member["_id"]))
-        except:
-            pass
+    try:
+        payment_ids.append(ObjectId(actual_id))
+    except:
+        pass
             
     cursor = db["payments"].find(
         {"member_id": {"$in": [x for x in payment_ids if x]}}

@@ -4,6 +4,7 @@ import { useTheme, spacing, borderRadius } from '../../src/theme/theme';
 import { GlassCard } from '../../src/components/GlassCard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { api } from '../../src/services/api';
 import { syncPushTokenWithBackend } from '../../src/services/notifications';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -28,7 +29,6 @@ export default function StudentDashboard() {
     
     if (phone) {
       try {
-        const { api } = require('../../src/services/api');
         const res = await api.get(`/members/${phone}`);
         setMemberData(res.data);
         if (res.data.payment_history) {

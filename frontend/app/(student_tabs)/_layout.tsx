@@ -1,14 +1,15 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { ColorValue } from 'react-native';
 import { useTheme } from '../../src/theme/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
+  color: string | ColorValue;
 }) {
-  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props} />;
+  return <FontAwesome size={28} style={{ marginBottom: -3 }} {...props as any} />;
 }
 
 export default function StudentTabLayout() {
@@ -37,6 +38,12 @@ export default function StudentTabLayout() {
         },
         headerShown: false, 
       }}>
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="dashboard"
         options={{

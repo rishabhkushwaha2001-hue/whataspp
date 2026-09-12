@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView,
-  Dimensions, TextInput, Platform, KeyboardAvoidingView, SafeAreaView, Linking
+  Dimensions, TextInput, Platform, KeyboardAvoidingView, Linking
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DatePickerModal } from './DatePickerModal';

@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   Dimensions,
   ScrollView,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';

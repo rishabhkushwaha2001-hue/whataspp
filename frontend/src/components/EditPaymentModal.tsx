@@ -6,6 +6,7 @@ import { ModernInput } from './ModernInput';
 import { DatePickerModal } from './DatePickerModal';
 import { api } from '../services/api';
 import { useAppAlert } from '../hooks/useAppAlert';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { height } = Dimensions.get('window');
 
@@ -15,6 +16,7 @@ interface EditPaymentModalProps {
   memberId: string;   // Member's _id (ObjectId string)
   onClose: () => void;
   onSaved: (updatedData?: any) => void; // Refresh callback
+  onChangePlan?: () => void; // Optional callback to switch to change plan modal
 }
 
 export const EditPaymentModal = ({
@@ -23,11 +25,13 @@ export const EditPaymentModal = ({
   memberId,
   onClose,
   onSaved,
+  onChangePlan,
 }: EditPaymentModalProps) => {
   const { colors } = useTheme();
   const styles = getStyles(colors);
   const { showError, showSuccess, showConfirm, AlertModal } = useAppAlert();
 
+  const [totalAmount, setTotalAmount] = useState('');
   const [amountPaid, setAmountPaid] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -37,10 +41,13 @@ export const EditPaymentModal = ({
 
   useEffect(() => {
     if (visible && payment) {
+      const totVal = payment.amount != null ? payment.amount.toString() : '0';
+      setTotalAmount(totVal);
+
       // amount_paid: if null/undefined = full payment (show total as paid)
       const paidVal = payment.amount_paid != null
         ? payment.amount_paid.toString()
-        : payment.amount.toString();
+        : totVal;
       setAmountPaid(paidVal);
       const getLocalDateStr = (dateStr: string) => {
         const d = new Date(dateStr);
@@ -88,6 +95,11 @@ export const EditPaymentModal = ({
       showError('Error', 'Payment ID not found. Cannot edit.');
       return;
     }
+    const parsedTotal = parseFloat(totalAmount);
+    if (isNaN(parsedTotal) || parsedTotal < 0) {
+      showError('Invalid Amount', 'Please enter a valid total plan amount.');
+      return;
+    }
     const parsedPaid = parseFloat(amountPaid);
     if (isNaN(parsedPaid) || parsedPaid < 0) {
       showError('Invalid Amount', 'Please enter a valid paid amount.');
@@ -100,16 +112,20 @@ export const EditPaymentModal = ({
 
     setSaving(true);
     try {
-      const body: any = { amount_paid: parsedPaid };
+      const body: any = {
+        amount: parsedTotal,
+        amount_paid: parsedPaid,
+      };
       if (startDate) body.start_date = new Date(startDate).toISOString();
       if (endDate) body.end_date = new Date(endDate).toISOString();
 
       await api.put(`/members/${memberId}/payments/${paymentId}`, body);
       onSaved({
         ...payment,
+        amount: parsedTotal,
         amount_paid: parsedPaid,
         start_date: startDate ? new Date(startDate).toISOString() : payment.start_date,
-        end_date: endDate ? new Date(endDate).toISOString() : payment.end_date
+        end_date: endDate ? new Date(endDate).toISOString() : payment.end_date,
       });
       onClose();
     } catch (e: any) {
@@ -146,10 +162,10 @@ export const EditPaymentModal = ({
 
   if (!visible || !payment) return null;
 
-  const totalAmount = payment.amount ?? 0;
+  const totalNum = parseFloat(totalAmount) || (payment.amount ?? 0);
   const paidNum = parseFloat(amountPaid) || 0;
-  const remaining = Math.max(0, totalAmount - paidNum);
-  const isPartial = payment.amount_paid != null && payment.amount_paid < totalAmount;
+  const remaining = Math.max(0, totalNum - paidNum);
+  const isPartial = paidNum < totalNum;
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -160,7 +176,7 @@ export const EditPaymentModal = ({
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Edit Payment</Text>
               <Text style={styles.subtitle}>
-                {payment.type || 'Payment'} • {payment.payment_mode || 'Cash'}
+                {payment.plan_name ? `${payment.plan_name} • ` : ''}{payment.type || 'Payment'} • {payment.payment_mode || 'Cash'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -169,27 +185,66 @@ export const EditPaymentModal = ({
           </View>
 
           <ScrollView style={{ marginBottom: spacing.m }} keyboardShouldPersistTaps="handled">
+            {/* Quick Switch to Change Current Plan */}
+            {onChangePlan && (
+              <TouchableOpacity
+                style={styles.changePlanBanner}
+                onPress={() => {
+                  onClose();
+                  setTimeout(() => onChangePlan(), 250);
+                }}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.secondary || colors.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.changePlanGradient}
+                >
+                  <FontAwesome name="refresh" size={15} color="#fff" />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.changePlanTitle}>Change / Upgrade This Plan</Text>
+                    <Text style={styles.changePlanSub}>Select from packages or custom duration</Text>
+                  </View>
+                  <FontAwesome name="chevron-right" size={12} color="#fff" />
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+
             {/* Current Payment Summary */}
             <View style={[styles.summaryBox, { backgroundColor: `${colors.primary}08`, borderColor: `${colors.primary}25` }]}>
               <Text style={[styles.summaryTitle, { color: colors.primary }]}>Current Payment Info</Text>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Total Plan Amount</Text>
-                <Text style={[styles.summaryValue, { color: colors.text }]}>₹{totalAmount}</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>₹{totalNum}</Text>
               </View>
               {isPartial && (
                 <>
                   <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Previously Paid</Text>
-                    <Text style={[styles.summaryValue, { color: colors.success }]}>₹{payment.amount_paid}</Text>
+                    <Text style={styles.summaryLabel}>Amount Paid</Text>
+                    <Text style={[styles.summaryValue, { color: colors.success }]}>₹{paidNum}</Text>
                   </View>
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Remaining Due</Text>
                     <Text style={[styles.summaryValue, { color: colors.error }]}>
-                      ₹{Math.max(0, totalAmount - payment.amount_paid).toFixed(0)}
+                      ₹{remaining.toFixed(0)}
                     </Text>
                   </View>
                 </>
               )}
+            </View>
+
+            {/* Total Plan Fee Edit */}
+            <Text style={styles.sectionLabel}>🏷️ Edit Plan Total Fee</Text>
+            <View style={{ marginBottom: spacing.m }}>
+              <ModernInput
+                label="Total Plan Amount (₹)"
+                value={totalAmount}
+                onChangeText={setTotalAmount}
+                keyboardType="numeric"
+                placeholder="e.g. 1500"
+                icon={<FontAwesome name="tag" size={14} color={colors.primary} />}
+              />
             </View>
 
             {/* Date Range Edit */}
@@ -232,11 +287,11 @@ export const EditPaymentModal = ({
             {/* Paid Amount Edit */}
             <Text style={styles.sectionLabel}>💰 Update Paid Amount</Text>
             <ModernInput
-              label={`Amount Paid (₹) — Total: ₹${totalAmount}`}
+              label={`Amount Paid (₹) — Total: ₹${totalNum}`}
               value={amountPaid}
               onChangeText={setAmountPaid}
               keyboardType="numeric"
-              placeholder={`Max ₹${totalAmount}`}
+              placeholder={`Max ₹${totalNum}`}
               icon={<FontAwesome name="rupee" size={14} color={colors.accent} />}
             />
 
@@ -245,7 +300,7 @@ export const EditPaymentModal = ({
               <View style={[styles.breakdownRow, { backgroundColor: `${colors.accent}08`, borderColor: `${colors.accent}25` }]}>
                 <View style={styles.breakdownItem}>
                   <Text style={styles.breakdownLabel}>Total</Text>
-                  <Text style={[styles.breakdownValue, { color: colors.text }]}>₹{totalAmount}</Text>
+                  <Text style={[styles.breakdownValue, { color: colors.text }]}>₹{totalNum}</Text>
                 </View>
                 <View style={[styles.breakdownDivider, { backgroundColor: colors.border }]} />
                 <View style={styles.breakdownItem}>
@@ -415,4 +470,26 @@ const getStyles = (colors: any) => StyleSheet.create({
     borderRadius: borderRadius.m,
   },
   saveText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  changePlanBanner: {
+    borderRadius: borderRadius.m,
+    overflow: 'hidden',
+    marginBottom: spacing.m,
+    ...shadows.card,
+  },
+  changePlanGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  changePlanTitle: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  changePlanSub: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    marginTop: 1,
+  },
 });
