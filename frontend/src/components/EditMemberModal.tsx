@@ -338,10 +338,14 @@ export const EditMemberModal = ({ visible, member, onClose, onSaved }: EditMembe
       const manipulatedResult = await ImageManipulator.manipulateAsync(
         rawUri,
         [{ resize: { width: 300, height: 300 } }],
-        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
+        { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
 
-      const uploadedUrl = await uploadToCloudinary(manipulatedResult.uri);
+      const imagePayload = manipulatedResult.base64
+        ? `data:image/jpeg;base64,${manipulatedResult.base64}`
+        : manipulatedResult.uri;
+
+      const uploadedUrl = await uploadToCloudinary(imagePayload);
       if (uploadedUrl) {
         setPhotoUrl(uploadedUrl);
       } else {
