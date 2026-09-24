@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 const RENDER_URL = 'https://whataspp-0u22.onrender.com/api/v1';
 
 // 🏠 LOCAL TESTING (Use this for local dev — change to true only when testing on same WiFi)
-const LOCAL_URL = 'http://192.168.1.36:8000/api/v1';
+const LOCAL_URL = 'http://192.168.1.39:8000/api/v1';
 
 // ⚠️ PRODUCTION: Keep false. Set to true ONLY for local dev testing.
 const USE_LOCAL = false; // 📱 PHONE TESTING MODE — using Render production URL

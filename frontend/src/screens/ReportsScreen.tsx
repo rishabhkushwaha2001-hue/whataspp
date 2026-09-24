@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Modal, Linking, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView,
+  Dimensions, Modal, Linking, ActivityIndicator, TextInput, Platform, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, spacing, borderRadius, shadows } from '../theme/theme';
@@ -221,7 +221,7 @@ const PaymentMethodBar = ({ data, colors }: any) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
 // ═══════════════════════════════════════════════════════════════════════════
-type TabKey = 'Overview' | 'Revenue' | 'Members' | 'Attendance' | 'Finance' | 'AI' | 'Activity' | 'Retention';
+type TabKey = 'Overview' | 'Revenue' | 'Members' | 'Attendance' | 'Finance' | 'AI' | 'Activity' | 'Retention' | 'Payments';
 
 export const ReportsScreen = () => {
   const { colors, theme } = useTheme();
@@ -239,6 +239,50 @@ export const ReportsScreen = () => {
   // Selected month state — default = current month
   const [selMonth, setSelMonth] = useState(now.getMonth()); // 0-indexed
   const [selYear,  setSelYear]  = useState(now.getFullYear());
+
+  // ── Payment Report tab state ──────────────────────────────────────────────
+  const [prStartDate, setPrStartDate] = useState<Date>(new Date(now.getFullYear(), now.getMonth(), 1));
+  const [prEndDate,   setPrEndDate]   = useState<Date>(now);
+  const [prData,      setPrData]      = useState<any>(null);
+  const [prLoading,   setPrLoading]   = useState(false);
+  const [showPrStartCal, setShowPrStartCal] = useState(false);
+  const [showPrEndCal,   setShowPrEndCal]   = useState(false);
+  const [prExpandedDays, setPrExpandedDays] = useState<Record<string, boolean>>({});
+  const [prError, setPrError] = useState<string | null>(null);
+
+  const fetchPaymentReport = useCallback(async (s: Date, e: Date) => {
+    setPrLoading(true);
+    setPrError(null);
+    try {
+      const sd = s.toISOString().split('T')[0];
+      const ed = e.toISOString().split('T')[0];
+      const res = await api.get(`/analytics/payment-report?start_date=${sd}&end_date=${ed}`);
+      setPrData(res.data);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+      console.warn(`Payment report fetch failed [${status}]:`, detail);
+      if (status === 403) {
+        setPrError('Access denied: ' + detail);
+      } else if (status === 404) {
+        setPrError('Payment report endpoint not found. Please update the backend.');
+      } else if (err?.code === 'ECONNABORTED' || err?.code === 'ERR_NETWORK' || !status) {
+        setPrError('Network error: Cannot connect to server. Check your internet or backend.');
+      } else {
+        setPrError(`Failed to load (${status}): ${detail}`);
+      }
+    } finally {
+      setPrLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'Payments') {
+      fetchPaymentReport(prStartDate, prEndDate);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
 
   const curMo = `${selYear}-${String(selMonth + 1).padStart(2, '0')}`;
   const curYr = now.getFullYear();
@@ -2148,11 +2192,266 @@ export const ReportsScreen = () => {
     );
   };
 
+  // ── TAB: Payments (Payment Report) ───────────────────────────────────────
+  const renderPayments = () => {
+    const AVATAR_COLORS = ['#8B5CF6','#EC4899','#10B981','#F59E0B','#3B82F6','#EF4444','#06B6D4','#F97316'];
+
+    const getShiftLabel = (timing: string | null) => {
+      if (!timing) return null;
+      const t = timing.toLowerCase();
+      const matches = [...t.matchAll(/(\d{1,2})(?::\d{2})?\s*(am|pm)/gi)];
+      if (matches.length === 0) return { label: '⏰ Shift', color: '#0284C7', bg: isDark ? 'rgba(59,130,246,0.12)' : '#E0F2FE' };
+      const h = parseInt(matches[0][1]);
+      const period = matches[0][2].toLowerCase();
+      const startHour = period === 'pm' && h !== 12 ? h + 12 : (period === 'am' && h === 12 ? 0 : h);
+      if (startHour >= 4 && startHour < 12)  return { label: '🌅 Morning',   color: '#B45309', bg: isDark ? 'rgba(251,191,36,0.12)' : '#FEF9C3' };
+      if (startHour >= 12 && startHour < 17) return { label: '☀️ Afternoon', color: '#C2410C', bg: isDark ? 'rgba(249,115,22,0.12)'  : '#FFEDD5' };
+      return { label: '🌆 Evening', color: '#7C3AED', bg: isDark ? 'rgba(139,92,246,0.12)'  : '#EDE9FE' };
+    };
+
+    return (
+      <View>
+        {/* Date Range Selector */}
+        <View style={{ backgroundColor: isDark ? '#1F2937' : '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: colors.border }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15, marginBottom: 12 }}>📅 Date Range</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={() => setShowPrStartCal(true)}
+              style={{ flex: 1, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 10, padding: 10, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 2 }}>FROM</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>
+                {prStartDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowPrEndCal(true)}
+              style={{ flex: 1, borderWidth: 1.5, borderColor: colors.primary, borderRadius: 10, padding: 10, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 10, color: colors.textMuted, marginBottom: 2 }}>TO</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>
+                {prEndDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Quick presets */}
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {[
+              { label: 'This Month', fn: () => { const s = new Date(now.getFullYear(), now.getMonth(), 1); setPrStartDate(s); setPrEndDate(now); fetchPaymentReport(s, now); } },
+              { label: 'Last Month', fn: () => { const s = new Date(now.getFullYear(), now.getMonth() - 1, 1); const e = new Date(now.getFullYear(), now.getMonth(), 0); setPrStartDate(s); setPrEndDate(e); fetchPaymentReport(s, e); } },
+              { label: 'Last 3 Months', fn: () => { const s = new Date(now.getFullYear(), now.getMonth() - 2, 1); setPrStartDate(s); setPrEndDate(now); fetchPaymentReport(s, now); } },
+              { label: 'This Year', fn: () => { const s = new Date(now.getFullYear(), 0, 1); setPrStartDate(s); setPrEndDate(now); fetchPaymentReport(s, now); } },
+            ].map(p => (
+              <TouchableOpacity key={p.label} onPress={p.fn}
+                style={{ backgroundColor: `${colors.primary}15`, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.primary }}>{p.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => fetchPaymentReport(prStartDate, prEndDate)}
+            style={{ marginTop: 12, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Apply & Fetch Report</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Summary Strip */}
+        {prData && !prLoading && (
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+            <View style={{ flex: 1, backgroundColor: `${colors.primary}15`, borderRadius: 12, padding: 14, alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.primary }}>₹{prData.total_amount?.toLocaleString('en-IN')}</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Total Collected</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: `${colors.success}15`, borderRadius: 12, padding: 14, alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.success }}>{prData.total_payments}</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Payments</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: `${(colors.warning || '#F59E0B')}15`, borderRadius: 12, padding: 14, alignItems: 'center' }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.warning || '#F59E0B' }}>{prData.days?.length || 0}</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>Active Days</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Loading */}
+        {prLoading && (
+          <View style={{ paddingVertical: 60, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 14 }}>Loading payments...</Text>
+          </View>
+        )}
+
+        {/* Error */}
+        {!prLoading && prError && (
+          <View style={{ paddingVertical: 40, alignItems: 'center', paddingHorizontal: 20 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#EF444420', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <FontAwesome name="exclamation-circle" size={32} color="#EF4444" />
+            </View>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: 16, marginBottom: 8, textAlign: 'center' }}>
+              Failed to Load
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
+              {prError}
+            </Text>
+            <TouchableOpacity
+              onPress={() => fetchPaymentReport(prStartDate, prEndDate)}
+              style={{ marginTop: 20, backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 24 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* No data */}
+        {!prLoading && !prError && prData && prData.days?.length === 0 && (
+          <View style={{ paddingVertical: 60, alignItems: 'center' }}>
+            <FontAwesome name="inbox" size={48} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, marginTop: 14, fontSize: 16, fontWeight: '600' }}>No payments found</Text>
+            <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: 13, textAlign: 'center' }}>Try changing the date range</Text>
+          </View>
+        )}
+
+        {/* Day groups */}
+        {!prLoading && prData?.days?.map((day: any) => {
+          const dayKey = day.date;
+          const isOpen = prExpandedDays[dayKey] !== false; // default open
+          const dateLabel = new Date(dayKey + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+
+          return (
+            <View key={dayKey} style={{ marginBottom: 16 }}>
+              {/* Day header */}
+              <TouchableOpacity
+                onPress={() => setPrExpandedDays(prev => ({ ...prev, [dayKey]: !isOpen }))}
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1F2937' : '#F1F5F9',
+                  borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: isOpen ? 8 : 0 }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }}>📅 {dateLabel}</Text>
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                    {day.count} payment{day.count !== 1 ? 's' : ''} · ₹{day.total?.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: `${colors.primary}20`, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, marginRight: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.primary }}>₹{day.total?.toLocaleString('en-IN')}</Text>
+                </View>
+                <FontAwesome name={isOpen ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              {/* Payment cards */}
+              {isOpen && day.payments.map((p: any, idx: number) => {
+                const avatarColor = AVATAR_COLORS[(p.member_name || 'A').charCodeAt(0) % AVATAR_COLORS.length];
+                const initials = (p.member_name || 'U').split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase();
+                const shift = getShiftLabel(p.member_timing);
+                const validFrom = p.start_date ? new Date(p.start_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+                const validTo   = p.end_date   ? new Date(p.end_date).toLocaleDateString('en-GB',   { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+                const due = p.amount - p.amount_paid;
+
+                return (
+                  <View key={p.id || idx} style={{ backgroundColor: colors.surface, borderRadius: 14, marginBottom: 10,
+                    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
+                    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 }}
+                  >
+                    {/* Left accent bar */}
+                    <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4,
+                      backgroundColor: p.is_partial ? (colors.warning || '#F59E0B') : colors.success }} />
+
+                    <View style={{ padding: 14, paddingLeft: 18 }}>
+                      {/* Row 1: Avatar + Name + Status */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                        {/* Photo / Initials */}
+                        {p.member_photo ? (
+                          <Image source={{ uri: p.member_photo }}
+                            style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: `${avatarColor}40`, flexShrink: 0 }} />
+                        ) : (
+                          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: `${avatarColor}20`,
+                            borderWidth: 2, borderColor: `${avatarColor}40`, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '800', color: avatarColor }}>{initials}</Text>
+                          </View>
+                        )}
+
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.text }} numberOfLines={1}>{p.member_name}</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>{p.member_id || p.member_phone}</Text>
+                        </View>
+
+                        {/* Paid / Partial badge */}
+                        <View style={{ backgroundColor: p.is_partial ? `${colors.warning || '#F59E0B'}20` : `${colors.success}20`,
+                          paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: p.is_partial ? (colors.warning || '#F59E0B') : colors.success }}>
+                            {p.is_partial ? 'Partial' : 'Paid ✓'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Row 2: Amount info */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <Text style={{ fontSize: 20, fontWeight: '900', color: colors.text }}>₹{p.amount_paid?.toLocaleString('en-IN')}</Text>
+                        {p.is_partial && <Text style={{ fontSize: 12, color: colors.error }}>Due: ₹{due?.toLocaleString('en-IN')}</Text>}
+                        {p.plan_name && (
+                          <View style={{ backgroundColor: `${colors.primary}15`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>{p.plan_name}</Text>
+                          </View>
+                        )}
+                        <View style={{ backgroundColor: isDark ? '#374151' : '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{p.payment_mode}</Text>
+                        </View>
+                      </View>
+
+                      {/* Row 3: Validity + Shift */}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {validFrom && validTo && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4,
+                            backgroundColor: isDark ? '#1E3A5F' : '#EFF6FF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                            <FontAwesome name="calendar" size={10} color="#3B82F6" />
+                            <Text style={{ fontSize: 11, color: '#3B82F6', fontWeight: '600' }}>
+                              {validFrom} → {validTo}
+                            </Text>
+                          </View>
+                        )}
+                        {shift && (
+                          <View style={{ backgroundColor: shift.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: shift.color }}>{shift.label}</Text>
+                          </View>
+                        )}
+                        {p.plan_months && (
+                          <View style={{ backgroundColor: isDark ? '#1F2937' : '#F9FAFB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                            <Text style={{ fontSize: 11, color: colors.textMuted }}>⏱ {p.plan_months}M Plan</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })}
+
+        {/* Calendar Pickers */}
+        <CalendarPicker
+          visible={showPrStartCal} title="From Date" selected={prStartDate}
+          onSelect={d => { setPrStartDate(d); setShowPrStartCal(false); }}
+          onClose={() => setShowPrStartCal(false)}
+        />
+        <CalendarPicker
+          visible={showPrEndCal} title="To Date" selected={prEndDate}
+          onSelect={d => { setPrEndDate(d); setShowPrEndCal(false); }}
+          onClose={() => setShowPrEndCal(false)}
+        />
+      </View>
+    );
+  };
+
   // ── Tab Config ────────────────────────────────────────────────────────────
   const TABS: { key: TabKey; icon: string; label: string }[] = [
     { key: 'Overview',    icon: 'home',        label: 'Overview' },
     { key: 'Revenue',     icon: 'rupee',       label: 'Revenue' },
     { key: 'Members',     icon: 'users',       label: 'Members' },
+    { key: 'Payments',    icon: 'money',       label: 'Payments' },
     { key: 'Activity',    icon: 'user-plus',   label: 'Activity' },
     { key: 'Retention',   icon: 'heartbeat',   label: 'Retention' },
     { key: 'Attendance',  icon: 'calendar',    label: 'Attend.' },
@@ -2209,6 +2508,7 @@ export const ReportsScreen = () => {
           activeTab === 'Overview'   ? renderOverview()   :
           activeTab === 'Revenue'    ? renderRevenue()    :
           activeTab === 'Members'    ? renderMembers()    :
+          activeTab === 'Payments'   ? renderPayments()   :
           activeTab === 'Activity'   ? renderActivity()   :
           activeTab === 'Retention'  ? renderRetention()  :
           activeTab === 'Attendance' ? renderAttendance() :

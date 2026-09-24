@@ -881,6 +881,7 @@ export const MemberSummaryScreen = () => {
             <Text style={styles.headerTitle}>Payment History</Text>
             <View style={{ width: 32 }} />
           </View>
+
           <ScrollView contentContainerStyle={{ padding: spacing.l }}>
             {!member?.payment_history || member.payment_history.length === 0 ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
@@ -920,7 +921,6 @@ export const MemberSummaryScreen = () => {
                           </Text>
                         </View>
                       </View>
-
                       {/* Middle Row: Duration Info */}
                       <View style={{ backgroundColor: isDark ? '#111827' : '#F9FAFB', padding: 12, borderRadius: 8, marginBottom: 16 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>

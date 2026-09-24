@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ScrollView, Linking, TouchableOpacity, RefreshControl, Alert, TextInput, Switch } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ScrollView, Linking, TouchableOpacity, RefreshControl, Alert, TextInput, Switch, Image } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -401,10 +401,19 @@ export const RemindersScreen = () => {
               style={styles.cardWrapper}
             >
               <View style={styles.card}>
-                {/* Avatar */}
-                <View style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40` }]}>
-                  <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
-                </View>
+                {/* Avatar — photo if available, else initials */}
+                <TouchableOpacity
+                  activeOpacity={item.photo_url ? 0.85 : 1}
+                  style={[styles.avatar, { backgroundColor: `${avatarColor}20`, borderColor: `${avatarColor}40`, overflow: 'hidden' }]}
+                  onPress={() => item.photo_url && router.push(`/members/${memberId}`)}
+                  disabled={!item.photo_url}
+                >
+                  {item.photo_url ? (
+                    <Image source={{ uri: item.photo_url }} style={{ width: '100%', height: '100%' }} />
+                  ) : (
+                    <Text style={[styles.avatarText, { color: avatarColor }]}>{initials}</Text>
+                  )}
+                </TouchableOpacity>
 
                 {/* Main content */}
                 <View style={styles.cardBody}>

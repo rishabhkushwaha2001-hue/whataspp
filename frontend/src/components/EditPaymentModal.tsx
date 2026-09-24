@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { height } = Dimensions.get('window');
 
+
 interface EditPaymentModalProps {
   visible: boolean;
   payment: any;       // The payment record to edit

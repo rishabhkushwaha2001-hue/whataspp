@@ -814,3 +814,125 @@ async def get_insights():
             "forecast": round(forecast),
         }
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAYMENT REPORT — grouped by payment date, with full member details
+# GET /analytics/payment-report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+# OR  /analytics/payment-report?month=YYYY-MM
+# ─────────────────────────────────────────────────────────────────────────────
+@router.get("/payment-report")
+async def get_payment_report(
+    month: str = None,
+    start_date: str = None,
+    end_date: str = None,
+):
+    """
+    Returns payments in a date range grouped by day.
+    Each payment includes: member name, photo, timing, plan, amount, amount_paid, validity period.
+    """
+    db = get_database()
+
+    # Resolve date range
+    if start_date and end_date:
+        try:
+            s = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            e = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(400, "Use YYYY-MM-DD format")
+    elif month:
+        try:
+            s = datetime.strptime(month, "%Y-%m").replace(tzinfo=timezone.utc)
+            e = s.replace(month=s.month + 1) if s.month < 12 else s.replace(year=s.year + 1, month=1)
+        except ValueError:
+            raise HTTPException(400, "Use YYYY-MM format")
+    else:
+        raise HTTPException(400, "Provide month or start_date & end_date")
+
+    # Fetch payments in range with member lookup
+    pipeline = [
+        {"$match": {"payment_date": {"$gte": s, "$lt": e}}},
+        {"$addFields": {"member_obj_id": {"$toObjectId": "$member_id"}}},
+        {"$lookup": {
+            "from": "members",
+            "localField": "member_obj_id",
+            "foreignField": "_id",
+            "as": "mi"
+        }},
+        {"$unwind": {"path": "$mi", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "_id": {"$toString": "$_id"},
+            "amount":       1,
+            "amount_paid":  1,
+            "payment_date": 1,
+            "payment_method": 1,
+            "plan_name":    1,
+            "plan_duration": 1,
+            "start_date":   1,
+            "end_date":     1,
+            "type":         1,
+            "member_id":    1,
+            "member_name":  {"$ifNull": ["$mi.full_name", "Unknown"]},
+            "member_phone": {"$ifNull": ["$mi.phone", ""]},
+            "member_photo": {"$ifNull": ["$mi.photo_url", None]},
+            "member_timing": {"$ifNull": ["$mi.timing", None]},
+            "member_id_display": {"$ifNull": ["$mi.member_id", ""]},
+        }},
+        {"$sort": {"payment_date": 1}},
+    ]
+
+    payments = await db["payments"].aggregate(pipeline).to_list(2000)
+
+    # Group by date (YYYY-MM-DD)
+    grouped: dict = {}
+    total_amount = 0.0
+    total_members = 0
+
+    for p in payments:
+        pd = p.get("payment_date")
+        if pd:
+            day_key = pd.strftime("%Y-%m-%d") if hasattr(pd, "strftime") else str(pd)[:10]
+        else:
+            day_key = "Unknown"
+
+        amt = float(p.get("amount") or 0)
+        amt_paid = p.get("amount_paid")
+        amt_paid_val = float(amt_paid) if amt_paid is not None else amt
+
+        entry = {
+            "id":             p.get("_id", ""),
+            "member_name":    p.get("member_name", "Unknown"),
+            "member_phone":   p.get("member_phone", ""),
+            "member_photo":   p.get("member_photo"),
+            "member_timing":  p.get("member_timing"),
+            "member_id":      p.get("member_id_display", ""),
+            "amount":         amt,
+            "amount_paid":    amt_paid_val,
+            "is_partial":     amt_paid is not None and amt_paid_val < amt,
+            "payment_mode":   p.get("payment_method", "Cash"),
+            "plan_name":      p.get("plan_name"),
+            "plan_months":    p.get("plan_duration", 1),
+            "start_date":     p.get("start_date").isoformat() if p.get("start_date") else None,
+            "end_date":       p.get("end_date").isoformat() if p.get("end_date") else None,
+            "payment_date":   pd.isoformat() if pd else None,
+            "type":           p.get("type", "Payment"),
+        }
+
+        if day_key not in grouped:
+            grouped[day_key] = {"date": day_key, "total": 0.0, "count": 0, "payments": []}
+        grouped[day_key]["payments"].append(entry)
+        grouped[day_key]["total"] += amt_paid_val
+        grouped[day_key]["count"] += 1
+        total_amount += amt_paid_val
+        total_members += 1
+
+    days = sorted(grouped.values(), key=lambda x: x["date"], reverse=True)
+
+    return {
+        "start_date": s.date().isoformat(),
+        "end_date":   (e - timedelta(days=1)).date().isoformat(),
+        "total_amount": round(total_amount, 2),
+        "total_payments": total_members,
+        "days": days,
+    }
+

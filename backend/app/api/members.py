@@ -147,6 +147,11 @@ async def create_member(member_in: MemberCreate) -> Any:
         "payment_method": member_dict.get("payment_mode", "Cash"),
         "type": "New Enrollment"
     }
+    # ✅ Save plan_name and applied_offer_name so Payment Report shows correct plan
+    if member_dict.get("plan_name"):
+        payment_log["plan_name"] = member_dict["plan_name"]
+    if member_dict.get("applied_offer_name"):
+        payment_log["applied_offer_name"] = member_dict["applied_offer_name"]
     await db["payments"].insert_one(payment_log)
     
     created = await db["members"].find_one({"_id": result.inserted_id})

@@ -265,22 +265,49 @@ export const MembersScreen = () => {
               ) : (
                 <Text style={[styles.paidLabel, { color: colors.success, fontSize: 9 }]}>Paid</Text>
               )}
-              {item.timing ? (
-                <View style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  backgroundColor: isDark ? 'rgba(59, 130, 246, 0.12)' : '#E0F2FE',
-                  paddingHorizontal: 4,
-                  paddingVertical: 1.5,
-                  borderRadius: 4,
-                  gap: 2
-                }}>
-                  <FontAwesome name="clock-o" size={9} color="#0284C7" />
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: '#0284C7' }}>
-                    {item.timing.replace(/\s*to\s*/gi, '-').replace(/:00/g, '')}
-                  </Text>
-                </View>
-              ) : null}
+              {item.timing ? (() => {
+                // Determine shift label from timing string
+                const t = item.timing.toLowerCase();
+                const hourMatch = t.match(/(\d{1,2})\s*(?::\d{2})?\s*(am|pm)/i);
+                let shiftLabel = '⏰ Shift';
+                let shiftBg = isDark ? 'rgba(59, 130, 246, 0.12)' : '#E0F2FE';
+                let shiftColor = '#0284C7';
+
+                // Extract start hour in 24h
+                let startHour = -1;
+                const timeMatches = [...t.matchAll(/(\d{1,2})(?::\d{2})?\s*(am|pm)/gi)];
+                if (timeMatches.length > 0) {
+                  const h = parseInt(timeMatches[0][1]);
+                  const period = timeMatches[0][2].toLowerCase();
+                  startHour = period === 'pm' && h !== 12 ? h + 12 : (period === 'am' && h === 12 ? 0 : h);
+                }
+
+                if (startHour >= 4 && startHour < 12) {
+                  shiftLabel = '🌅 Morning';
+                  shiftBg = isDark ? 'rgba(251, 191, 36, 0.12)' : '#FEF9C3';
+                  shiftColor = '#B45309';
+                } else if (startHour >= 12 && startHour < 17) {
+                  shiftLabel = '☀️ Afternoon';
+                  shiftBg = isDark ? 'rgba(249, 115, 22, 0.12)' : '#FFEDD5';
+                  shiftColor = '#C2410C';
+                } else if (startHour >= 17 || startHour === 0) {
+                  shiftLabel = '🌆 Evening';
+                  shiftBg = isDark ? 'rgba(139, 92, 246, 0.12)' : '#EDE9FE';
+                  shiftColor = '#7C3AED';
+                }
+
+                return (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center',
+                    backgroundColor: shiftBg,
+                    paddingHorizontal: 5, paddingVertical: 2,
+                    borderRadius: 4, gap: 2,
+                  }}>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: shiftColor }}>{shiftLabel}</Text>
+                  </View>
+                );
+              })() : null}
+
             </View>
             <View style={styles.daysBox}>
               <Text style={[styles.daysNum, { color: isExpired ? colors.error : daysLeft <= 7 ? (colors.warning || '#F59E0B') : colors.text }]}>
